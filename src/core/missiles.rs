@@ -5,12 +5,11 @@ use bevy::mesh::MeshTag;
 use bevy::prelude::*;
 
 use crate::conf::missiles::FLIGHT_MS_PER_ROOT_TILE;
-use crate::conf::z_order::MISSILE_Z_OFFSET;
 use crate::core::effects::{
     EffectInstance, EffectMaterial, EffectMaterials, anchor, init_instance, init_material,
 };
 use crate::core::{Appearances, InstanceManager};
-use crate::map::{FloorEntities, Position};
+use crate::map::{DrawLayer, DrawOrder, DrawRank, FloorEntities, Position};
 use crate::network::events::LaunchMissile;
 
 /// The pattern cell a missile draws, which is its flight direction.
@@ -56,19 +55,29 @@ fn flight_duration(from: &Position, to: &Position) -> Duration {
     Duration::from_millis((FLIGHT_MS_PER_ROOT_TILE * tiles.sqrt()) as u64)
 }
 
-/// Where the missile sits at `fraction` of its flight.
-///
-/// Takes tiles rather than world coordinates so the `to_world` conversion and
-/// the z offset live here instead of being the caller's to remember. Lerping
-/// the whole `Vec3` gets the world-space y flip and the floor offset for free
-/// -- and lerping z is what keeps the missile above the tile it is currently
-/// crossing, rather than sliding behind items further down and right.
+/// Where the missile sits at `fraction` of its flight. Lerping the whole `Vec3`
+/// gets the world-space y flip and the per-floor offset for free.
 fn missile_position(from: &Position, to: &Position, fraction: f32, sprite_size: Vec2) -> Vec3 {
     let world = from
         .to_world()
         .lerp(to.to_world(), fraction.clamp(0.0, 1.0));
 
-    anchor(world, sprite_size, MISSILE_Z_OFFSET)
+    anchor(world, sprite_size)
+}
+
+/// The tile the missile is over at `fraction` of its flight, which is the tile
+/// whose draw order it takes.
+///
+/// A missile flies over everything on the tile it is currently crossing, so it
+/// carries that tile's key with `DrawLayer::Missile`, one layer above its `Top`
+/// items. OTClient reaches the same result differently, by drawing missiles in a
+/// pass after the tile loop.
+fn missile_tile(from: &Position, to: &Position, fraction: f32) -> Position {
+    let f = fraction.clamp(0.0, 1.0);
+    let x = from.x as f32 + (to.x as f32 - from.x as f32) * f;
+    let y = from.y as f32 + (to.y as f32 - from.y as f32) * f;
+
+    Position::new(x.round() as u16, y.round() as u16, from.z)
 }
 
 /// A missile in flight. Its instance slot is written once at launch -- the
@@ -94,16 +103,13 @@ pub fn on_launch_missile(
     floors: Res<FloorEntities>,
 ) {
     // A missile that goes nowhere has no direction and a zero duration, which
-    // would divide by zero in `fly_missiles`. OT schedules immediate removal;
-    // never spawning is the same outcome without the round trip, and it makes
-    // the division unreachable rather than merely guarded.
+    // would divide by zero in `fly_missiles`.
     if event.from == event.to {
         return;
     }
 
-    // `None` means the server named a missile these assets do not have. A
-    // missing projectile is cosmetic, so warn and skip rather than ending the
-    // session as the outfit path does.
+    // A missing projectile is cosmetic, so this warns where the outfit path
+    // ends the session.
     let Some(sprite) = appearances.get_missile(event.missile_id) else {
         warn!(
             "server sent missile {}, which this client\'s assets do not have",
@@ -156,6 +162,12 @@ pub fn on_launch_missile(
             MeshMaterial2d(material),
             MeshTag(index),
             Transform::from_translation(missile_position(&event.from, &event.to, 0.0, sprite_size)),
+            DrawOrder::new(
+                missile_tile(&event.from, &event.to, 0.0),
+                DrawRank::Standing,
+                DrawLayer::Missile,
+                0,
+            ),
             Visibility::Inherited,
         ))
         .id();
@@ -166,13 +178,12 @@ pub fn on_launch_missile(
         .add_child(entity);
 }
 
-/// Advances every missile and collects the ones that have arrived.
 pub fn fly_missiles(
     mut commands: Commands,
     time: Res<Time>,
-    mut missiles: Query<(Entity, &mut Missile, &mut Transform)>,
+    mut missiles: Query<(Entity, &mut Missile, &mut Transform, &mut DrawOrder)>,
 ) {
-    for (entity, mut missile, mut transform) in &mut missiles {
+    for (entity, mut missile, mut transform, mut order) in &mut missiles {
         missile.elapsed += time.delta();
         if missile.elapsed >= missile.duration {
             commands.entity(entity).despawn();
@@ -182,6 +193,11 @@ pub fn fly_missiles(
         let fraction = missile.elapsed.as_secs_f32() / missile.duration.as_secs_f32();
         transform.translation =
             missile_position(&missile.from, &missile.to, fraction, missile.sprite_size);
+        DrawOrder::move_to(
+            &mut order,
+            &missile_tile(&missile.from, &missile.to, fraction),
+            DrawLayer::Missile,
+        );
     }
 }
 
@@ -248,8 +264,6 @@ mod tests {
     /// (3216, -3216). Tile (104, 100, 7) is four tiles east, so 128 px right.
     #[test]
     fn a_missile_starts_on_its_source_tile_and_ends_on_its_target() {
-        use crate::conf::z_order::TOP_Z_OFFSET;
-
         let from = Position::new(100, 100, 7);
         let to = Position::new(104, 100, 7);
         let size = Vec2::new(32.0, 32.0);
@@ -261,9 +275,30 @@ mod tests {
         assert_eq!(start.y, -3216.0);
         assert_eq!(end.x, 3344.0);
         assert_eq!(end.y, -3216.0);
+        assert_eq!(start.z, 0.0, "placement carries no draw order");
+    }
 
-        // Above whatever the tile it is over holds, at both ends.
-        assert!(start.z > from.to_world().z + TOP_Z_OFFSET);
-        assert!(end.z > to.to_world().z + TOP_Z_OFFSET);
+    /// A missile takes the key of the tile it is over, not a value interpolated
+    /// between its endpoints -- and it flies above whatever that tile holds.
+    #[test]
+    fn a_missile_flies_over_the_tile_it_is_crossing() {
+        use crate::map::DrawOrigin;
+
+        let from = Position::new(100, 100, 7);
+        let to = Position::new(104, 100, 7);
+        let origin = DrawOrigin::around(&from);
+
+        assert_eq!(missile_tile(&from, &to, 0.0), from);
+        assert_eq!(missile_tile(&from, &to, 1.0), to);
+        // Halfway is the tile halfway along, not either endpoint.
+        assert_eq!(missile_tile(&from, &to, 0.5), Position::new(102, 100, 7));
+
+        let midpoint = missile_tile(&from, &to, 0.5);
+        let missile = DrawOrder::new(midpoint.clone(), DrawRank::Standing, DrawLayer::Missile, 0)
+            .key(&origin);
+        assert!(
+            missile > DrawOrder::new(midpoint, DrawRank::Standing, DrawLayer::Top, 15).key(&origin),
+            "above the top items of the tile it is crossing"
+        );
     }
 }

@@ -5,7 +5,6 @@ use std::ops::{Add, Sub};
 
 use crate::agent::WalkingDirection;
 use crate::conf::map::TILE_SIZE;
-use crate::conf::z_order::{FLOOR_Z_MULTIPLIER, POSITION_Z_MULTIPLIER};
 
 #[derive(Component, Hash, PartialEq, Eq, Clone, Debug)]
 pub struct Position {
@@ -34,13 +33,16 @@ impl Position {
         }
     }
 
+    /// The tile's top-left corner in world space. **`z` is always zero**: draw
+    /// order is not a function of position, it is a `DrawOrder` component that
+    /// `map::draw_order::apply_draw_order` turns into a z. A `Vec3` is still
+    /// returned because every caller feeds it straight to a `Transform`.
     pub fn to_world(&self) -> Vec3 {
         let floor_offset = ((7 - self.z as i32) * 32) as f32;
         Vec3::new(
             ((self.x as f32) * TILE_SIZE) - floor_offset,
             (-(self.y as f32) * TILE_SIZE) + floor_offset,
-            ((15 - self.z) as f32 * FLOOR_Z_MULTIPLIER)
-                + ((self.x as f32) + (self.y as f32)) * POSITION_Z_MULTIPLIER,
+            0.0,
         )
     }
 

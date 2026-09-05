@@ -13,36 +13,18 @@ pub mod map {
     pub const UNDERGROUND_REACH: u8 = 2;
 }
 
-pub mod z_order {
-    pub const FLOOR_Z_MULTIPLIER: f32 = 100.0;
-    pub const POSITION_Z_MULTIPLIER: f32 = 0.02;
-    pub const AGENT_Z_OFFSET: f32 = 0.013;
-    pub const TOP_Z_OFFSET: f32 = 0.015;
-    /// Ground and border items render in a separate pass below agents.
-    /// -1.0 exceeds the max viewport position delta (~16 tiles × 0.02 = 0.32).
-    pub const GROUND_PASS_OFFSET: f32 = -1.0;
-    /// Where the target square should land in ABSOLUTE tile Z: 0.002 below
-    /// `AGENT_Z_OFFSET`, matching the spacing already proven between
-    /// `AGENT_Z_OFFSET` and `TOP_Z_OFFSET`. OTClient draws the square before
-    /// the outfit, so it belongs beneath the creature it marks.
-    pub const TARGET_SQUARE_Z_OFFSET: f32 = 0.011;
+pub mod draw_order {
+    /// Tiles of slack on each side of the drawn window, so a creature or a
+    /// missile at the edge still keys to its own tile instead of clamping onto
+    /// its neighbour's.
+    pub const VIEW_MARGIN_TILES: usize = 2;
 
-    /// The square is spawned as a CHILD of the agent, whose transform already
-    /// includes `AGENT_Z_OFFSET`. Transform hierarchies compose additively, so
-    /// the LOCAL z must be the difference, not the absolute offset. Using the
-    /// absolute value here puts the square in front of the creature instead of
-    /// under it.
-    pub const TARGET_SQUARE_LOCAL_Z: f32 = TARGET_SQUARE_Z_OFFSET - AGENT_Z_OFFSET;
-
-    /// Effects draw above ground, items and creatures, and below `Top` items —
-    /// OTClient's tile draw order. Sits between `AGENT_Z_OFFSET` (0.013) and
-    /// `TOP_Z_OFFSET` (0.015).
-    pub const EFFECT_Z_OFFSET: f32 = 0.014;
-
-    /// A missile flies over everything on the tile it is currently crossing, so
-    /// it sits one step above `TOP_Z_OFFSET` (0.015). OTClient reaches the same
-    /// result differently, by drawing missiles in a pass after the tile loop.
-    pub const MISSILE_Z_OFFSET: f32 = 0.016;
+    /// Keys reserved per tile for `map::DrawLayer` and for the stack slot
+    /// within a layer. `LAYER_COUNT` must exceed the largest `DrawLayer`
+    /// discriminant, and their product times the window size must stay under
+    /// 2^24 — both pinned by tests in `map::draw_order`.
+    pub const LAYER_COUNT: u32 = 16;
+    pub const SLOT_COUNT: u32 = 16;
 }
 
 pub mod target {

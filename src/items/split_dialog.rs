@@ -187,13 +187,10 @@ pub fn on_open_split_dialog(
 /// click and drag maths assumes — anything else and the thumb stops tracking the
 /// mouse.
 ///
-/// **Deliberately not gated on `Changed<SliderValue>`.** The value is set on the
-/// frame the dialog spawns, when the track still measures `(0, 0)` and travel is
-/// therefore zero; a `Changed` gate would place the thumb at the far left on that
-/// one frame and never run again, so a slider defaulted to the full stack would
-/// draw as if it were set to one. Writing only on a difference keeps the
-/// unconditional run from dirtying `Node` and `Text` every frame — and there is
-/// at most one of these alive, only while the dialog is open.
+/// **Not gated on `Changed<SliderValue>`.** The value is set on the frame the
+/// dialog spawns, when the track still measures `(0, 0)`, so a gate would place
+/// the thumb once at the far left and never run again. See the vault's
+/// `a-slider-thumb-sits-at-one-end-and-never-moves`.
 pub fn sync_split_slider(
     slider_q: Query<(&SliderValue, &SliderRange, &ComputedNode, &Children), With<SplitSlider>>,
     mut thumb_q: Query<(&mut Node, &ComputedNode), With<SliderThumb>>,

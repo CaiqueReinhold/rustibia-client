@@ -16,7 +16,6 @@ use crate::agent::{
 };
 use crate::conf::agent::{HUD_BAR_HEIGHT, HUD_BAR_WIDTH};
 use crate::conf::ui::ui_colors;
-use crate::conf::z_order::AGENT_Z_OFFSET;
 use crate::core::OutfitId;
 use crate::core::{Appearances, InstanceManager, OutfitSprite, SpriteSheet};
 use crate::core::{MAX_LAYERS, SpriteAnimator, SpriteConfig};
@@ -25,7 +24,7 @@ use crate::agent::{
     material::{AgentInstance, AgentMaterial, AgentParams},
     movement::{MoveQueue, Moving},
 };
-use crate::map::{Map, Position};
+use crate::map::{DrawLayer, DrawOrder, DrawRank, Map, Position};
 
 #[derive(Resource, Default, Debug)]
 pub struct LoadedMaterials {
@@ -157,11 +156,14 @@ pub fn spawn_agent(
             Mesh2d(mesh.clone()),
             MeshMaterial2d(material.clone()),
             MeshTag(index),
+            DrawOrder::new(position.clone(), DrawRank::Standing, DrawLayer::Creature, 0),
             position,
+            // z is left at zero and filled in by `map::draw_order`, which owns
+            // every game-world z in the client.
             Transform::from_xyz(
                 world_position.x - elevation,
                 world_position.y + elevation,
-                world_position.z + AGENT_Z_OFFSET,
+                0.0,
             ),
             SpriteAnimator::new(Arc::clone(&outfit.still_sprite), facing as u32, 0, 0),
             AgentAnimConfigs {

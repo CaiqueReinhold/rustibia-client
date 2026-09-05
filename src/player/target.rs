@@ -3,8 +3,7 @@ use bevy::prelude::*;
 use crate::agent::AgentId;
 use crate::conf::map::TILE_SIZE;
 use crate::conf::target::{SQUARE_COLOR, SQUARE_THICKNESS};
-use crate::conf::z_order::TARGET_SQUARE_LOCAL_Z;
-use crate::map::Map;
+use crate::map::{Map, TARGET_SQUARE_LOCAL_Z};
 use crate::network::events::TargetLost;
 
 /// The agent this player is attacking, as a session-local `AgentId`.
@@ -36,10 +35,9 @@ impl CombatTarget {
 
     /// Applies a click optimistically and returns what to tell the server.
     ///
-    /// Deciding and applying in one call is deliberate: the caller cannot obtain
-    /// a value to send without having already applied it, so "optimistic before
-    /// send" is a property of this function rather than of statement order in the
-    /// gesture handler.
+    /// One call, so a caller cannot obtain a value to send without having already
+    /// applied it: "optimistic before send" is a property of this signature rather
+    /// than of statement order at the call site.
     pub fn apply_click(&mut self, agent_id: AgentId) -> (Option<AgentId>, u32) {
         let next = self.next_for_click(agent_id);
         self.target = next;
@@ -280,32 +278,25 @@ mod tests {
     }
 
     /// The square is a child of the agent, and transform hierarchies compose
-    /// additively. Using the absolute offset as the local z would put the square
-    /// at world_z + AGENT_Z_OFFSET + TARGET_SQUARE_Z_OFFSET — in FRONT of the
-    /// creature and above TOP_Z_OFFSET — which is the opposite of what OTClient
-    /// does and what the constant's name promises.
+    /// additively, so the target layer's own offset as the local z would put the
+    /// square in FRONT of the creature.
     ///
-    /// This drives the real `refresh_target_square` rather than just re-deriving
-    /// the constants: it spawns a stand-in agent entity with the transform real
-    /// agents carry (`AGENT_Z_OFFSET` baked into local z, per
-    /// `agent/movement.rs`), applies a click, and reads back the *actual* local z
-    /// the square was spawned with. A version of this test that only checked
-    /// `AGENT_Z_OFFSET + TARGET_SQUARE_LOCAL_Z == TARGET_SQUARE_Z_OFFSET` would
-    /// be a tautology — true by construction of the constants, regardless of
-    /// which constant the call site actually uses — so it would not have caught
-    /// the original bug. Confirmed this version does: swapping
-    /// `TARGET_SQUARE_LOCAL_Z` for `TARGET_SQUARE_Z_OFFSET` at the call site
-    /// makes it fail (composed 0.024, not under `AGENT_Z_OFFSET`).
+    /// This drives the real `refresh_target_square` and reads back the local z it
+    /// spawned with. Checking the two constants against each other instead would
+    /// be a tautology, true by construction whichever one the call site uses.
     #[test]
     fn the_square_composes_to_just_under_the_agent() {
-        use crate::conf::z_order::{AGENT_Z_OFFSET, TARGET_SQUARE_Z_OFFSET, TOP_Z_OFFSET};
+        use crate::map::{DrawLayer, DrawOrder, DrawOrigin, DrawRank, Position};
+
+        let tile = Position::new(1000, 1000, 7);
+        let origin = DrawOrigin::around(&tile);
+        let agent_z =
+            DrawOrder::new(tile.clone(), DrawRank::Standing, DrawLayer::Creature, 0).key(&origin);
 
         let mut world = World::new();
         world.init_resource::<CombatTarget>();
         let mut map = Map::default();
-        let agent_entity = world
-            .spawn(Transform::from_xyz(0.0, 0.0, AGENT_Z_OFFSET))
-            .id();
+        let agent_entity = world.spawn(Transform::from_xyz(0.0, 0.0, agent_z)).id();
         map.add_agent(7, agent_entity);
         world.insert_resource(map);
 
@@ -318,17 +309,18 @@ mod tests {
             .single(&world)
             .expect("a target square was spawned");
         let square_local_z = world.get::<Transform>(square_entity).unwrap().translation.z;
-        let composed = AGENT_Z_OFFSET + square_local_z;
+        let composed = agent_z + square_local_z;
 
-        assert!(
-            (composed - TARGET_SQUARE_Z_OFFSET).abs() < f32::EPSILON,
-            "composed {composed} should equal {TARGET_SQUARE_Z_OFFSET}, got local z {square_local_z}"
+        assert_eq!(
+            composed,
+            DrawOrder::new(tile.clone(), DrawRank::Standing, DrawLayer::Target, 0).key(&origin),
+            "composed to the target layer, got local z {square_local_z}"
         );
+        assert!(composed < agent_z, "the square draws under the creature");
         assert!(
-            composed < AGENT_Z_OFFSET,
-            "the square draws under the creature"
+            composed < DrawOrder::new(tile, DrawRank::Standing, DrawLayer::Top, 0).key(&origin),
+            "and under top-layer items"
         );
-        assert!(composed < TOP_Z_OFFSET, "and under top-layer items");
     }
 
     /// `refresh_target_square` despawns any existing square before spawning a new
@@ -338,17 +330,11 @@ mod tests {
     /// survives, parented under the newest target.
     #[test]
     fn switching_targets_leaves_exactly_one_square() {
-        use crate::conf::z_order::AGENT_Z_OFFSET;
-
         let mut world = World::new();
         world.init_resource::<CombatTarget>();
         let mut map = Map::default();
-        let first_agent = world
-            .spawn(Transform::from_xyz(0.0, 0.0, AGENT_Z_OFFSET))
-            .id();
-        let second_agent = world
-            .spawn(Transform::from_xyz(32.0, 0.0, AGENT_Z_OFFSET))
-            .id();
+        let first_agent = world.spawn(Transform::from_xyz(0.0, 0.0, 0.0)).id();
+        let second_agent = world.spawn(Transform::from_xyz(32.0, 0.0, 0.0)).id();
         map.add_agent(7, first_agent);
         map.add_agent(9, second_agent);
         world.insert_resource(map);

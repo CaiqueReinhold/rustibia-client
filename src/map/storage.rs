@@ -23,10 +23,8 @@ pub struct Map {
     tiles: HashMap<Position, MapTile>,
     agents: HashMap<AgentId, Entity>,
     /// Where each indexed agent currently sits, per `index_agent`/`unindex_agent`.
-    /// This is the single source of truth for the tile index: callers that need
-    /// to unindex an agent no longer supply a position (which can already be
-    /// stale by the time they call), they just name the agent and this map says
-    /// where to remove it from.
+    /// The single source of truth for the tile index: callers name the agent
+    /// rather than a position, which can already be stale by the time they call.
     agent_tiles: HashMap<AgentId, Position>,
 }
 

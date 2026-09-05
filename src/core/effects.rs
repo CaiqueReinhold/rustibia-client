@@ -11,11 +11,11 @@ use bevy::shader::ShaderRef;
 use bevy::sprite_render::{AlphaMode2d, Material2d};
 
 use crate::conf::effects::STATIC_DURATION;
-use crate::conf::z_order::EFFECT_Z_OFFSET;
 use crate::core::sprite::{AnimationLoop, SpriteAnimation, SpriteConfig};
 use crate::core::{Appearances, InstanceManager, SpriteAnimator, SpriteSheet};
 use crate::map::FloorEntities;
 use crate::map::Position;
+use crate::map::{DrawLayer, DrawOrder, DrawRank};
 use crate::network::events::ShowEffect;
 
 /// One effect's slot in the shader storage buffer.
@@ -32,13 +32,8 @@ pub struct EffectInstance {
     pub shift: Vec2,
 }
 
-/// Effects reuse `shaders/items.wgsl` rather than copying it: that shader is
-/// generic over "single-layer atlas sprite", and is named after its first caller
-/// rather than its only possible one.
-///
-/// A separate material type, instead of importing `ItemMaterial`, keeps the
-/// effect system independent of `ItemsPlugin` — and avoids a second
-/// `Material2dPlugin` registration for the same type, which panics.
+/// A separate type from `ItemMaterial` despite pointing at the same shader: a
+/// second `Material2dPlugin` registration for one type panics.
 #[derive(Asset, AsBindGroup, TypePath, Debug, Clone, Default)]
 pub struct EffectMaterial {
     #[texture(0)]
@@ -67,8 +62,6 @@ impl Material2d for EffectMaterial {
     }
 }
 
-/// One buffer for every effect on screen, and one mesh and material per atlas
-/// sheet group, built on first use. There are seven groups.
 #[derive(Resource, Debug, Default)]
 pub struct EffectMaterials {
     pub(super) by_group: HashMap<String, (Handle<Mesh>, Handle<EffectMaterial>)>,
@@ -82,9 +75,8 @@ pub fn setup_resources(mut commands: Commands, mut buffers: ResMut<Assets<Shader
     });
 }
 
-/// A live effect. Children of the floor entity for their tile, so this
-/// module only has to know which floor to parent to — not how floor
-/// occlusion decides what to hide.
+/// A live effect. Parented to its floor entity, which is what makes floor
+/// occlusion apply to it without this module knowing how occlusion works.
 #[derive(Component)]
 pub struct Effect {
     /// `None` when the animation ends itself — the animator is the authority.
@@ -114,12 +106,11 @@ pub(super) fn init_material(
         .insert(group.to_string(), (mesh, material));
 }
 
-/// Fills in everything about an instance except its sprite id, which needs an
-/// animator that does not exist yet — the same split `items::instancing`'s
-/// `init_instance` makes.
+/// Everything about an instance except its sprite id, which needs an animator
+/// that does not exist yet.
 ///
-/// `boxes` is indexed by `pattern_x` alone: effect 41 is 2x2 with 2 boxes,
-/// effect 1 has 6 phases and 1 box.
+/// `boxes` is indexed by `pattern_x` alone, not per phase: effect 41 is 2x2 with
+/// 2 boxes, effect 1 has 6 phases and 1 box.
 pub(super) fn init_instance(
     instance: &mut EffectInstance,
     sprite: &SpriteConfig,
@@ -153,11 +144,8 @@ pub fn on_show_effect(
     appearances: Res<Appearances>,
     floors: Res<FloorEntities>,
 ) {
-    // `None` means the server named an effect these assets do not have. Unlike
-    // `get_outfit`'s equivalent gap, which triggers `ClientOutdated` and ends
-    // the session, a missing effect is cosmetic: warn and skip this cast
-    // rather than tearing down the connection over a hit spark the client
-    // failed to draw.
+    // A missing effect is cosmetic, so this warns where `get_outfit`'s
+    // equivalent gap raises `ClientOutdated` and ends the session.
     let Some(sprite) = appearances.get_effect(event.effect_id) else {
         warn!(
             "server sent effect {}, which this client's assets do not have",
@@ -204,7 +192,8 @@ pub fn on_show_effect(
                 Mesh2d(mesh.clone()),
                 MeshMaterial2d(material.clone()),
                 MeshTag(index),
-                Transform::from_translation(anchor(tile.to_world(), sprite_size, EFFECT_Z_OFFSET)),
+                Transform::from_translation(anchor(tile.to_world(), sprite_size)),
+                DrawOrder::new(tile.clone(), DrawRank::Standing, DrawLayer::Effect, 0),
                 Visibility::Inherited,
                 animator,
             ))
@@ -215,10 +204,8 @@ pub fn on_show_effect(
     }
 }
 
-/// Every tile the message paints: the base position, then one per delta.
-///
-/// The wire carries no floor per tile, so an area effect is flat by
-/// construction.
+/// Every tile the message paints. The wire carries no floor per tile, so an
+/// area effect is flat by construction.
 fn effect_tiles(base: &Position, delta: &[(i8, i8)]) -> Vec<Position> {
     let mut tiles = Vec::with_capacity(delta.len() + 1);
     tiles.push(base.clone());
@@ -230,12 +217,9 @@ fn effect_tiles(base: &Position, delta: &[(i8, i8)]) -> Vec<Position> {
     tiles
 }
 
-/// The pattern a tile draws, taken from its own absolute coordinates.
-///
-/// 196 of the 207 effects are 1x1 and always get `(0, 0)`. For the eleven 2x2
-/// and 3x3 ones this is what tiles a field seamlessly across an area instead of
-/// repeating one corner — and it is stable per tile, so a repeat of the same
-/// area effect does not shimmer.
+/// The pattern a tile draws, taken from its own absolute coordinates — which is
+/// what tiles a multi-cell effect seamlessly across an area, and what keeps it
+/// stable per tile so a repeat does not shimmer.
 fn pattern_for(position: &Position, sprite: &SpriteConfig) -> (u32, u32) {
     (
         position.x as u32 % sprite.pattern_x.max(1),
@@ -243,51 +227,26 @@ fn pattern_for(position: &Position, sprite: &SpriteConfig) -> (u32, u32) {
     )
 }
 
-/// Where an effect's quad sits, from its tile's world position and its sheet's
-/// sprite size.
-///
 /// `Position::to_world` returns the tile's TOP-LEFT CORNER. A 64 px quad centres
 /// on that corner correctly — large Tibia sprites extend up and to the left of
 /// their tile — and a 32 px one has to be nudged half a tile down and right. The
 /// rule is per axis because two effect sheet groups are 32x64 and 64x32.
-///
-/// The z offset is a parameter because effects and missiles sit on different
-/// planes -- 0.014 and 0.016 -- while sharing this rule exactly.
-pub(super) fn anchor(world: Vec3, sprite_size: Vec2, z_offset: f32) -> Vec3 {
+pub(super) fn anchor(world: Vec3, sprite_size: Vec2) -> Vec3 {
     let half_tile_x = if sprite_size.x <= 32.0 { 16.0 } else { 0.0 };
     let half_tile_y = if sprite_size.y <= 32.0 { -16.0 } else { 0.0 };
-    Vec3::new(
-        world.x + half_tile_x,
-        world.y + half_tile_y,
-        world.z + z_offset,
-    )
+    Vec3::new(world.x + half_tile_x, world.y + half_tile_y, 0.0)
 }
 
 /// How long an effect lives, or `None` when its own animation ends it.
 ///
-/// `Counted` is 191 of the 207 effects and is left to `SpriteAnimator`, because
-/// `count` is a number of RUNS: effect 77 (`loop_count: 402`) is `NonUniform`
-/// with 16 phases summing to 1490 ms, so its real lifetime is
-/// `402 * 1490 ms ≈ 599 s`, about ten minutes — a rule expressed as a single
-/// pass would cut it to 1490 ms, a 400x truncation. The other 16 never finish
-/// on their own.
+/// `Counted` returns `None` because `count` is a number of RUNS, not phases:
+/// effect 77 runs 402 times over a 1490 ms pass, so a rule expressed as a single
+/// pass would truncate it 400-fold. See the vault's `effects-rendering` for what
+/// that costs.
 ///
-/// The consequence: a counted effect holds its entity and instance slot for
-/// its entire run, up to ~10 minutes for effect 77, because this function
-/// defers to the animator instead of capping it. Unreachable today — the
-/// server only ever sends effects 1, 3 and 4 — but a real consequence of the
-/// design, not a hypothetical one, if that ever changes.
-///
-/// The `never_advances` arm comes first because `SpriteAnimation::Static`
-/// reports `AnimationLoop::Infinite` — matching on the loop mode alone would
-/// give a static effect a zero-length pass.
-///
-/// `PingPong` is handed one pass exactly like `Infinite`, but "one pass" here
-/// means one traversal of the phases, not a full there-and-back cycle:
-/// `SpriteAnimator::settle_on_timed_phase`'s doc records that cycle as
-/// `2n - 2`, so a real ping-pong effect would be despawned mid-return. No
-/// shipped effect is PINGPONG, so this arm is a placeholder for data that
-/// does not exist, not a considered lifetime.
+/// The `never_advances` arm has to come first: `SpriteAnimation::Static` reports
+/// `AnimationLoop::Infinite`, so matching on the loop mode alone gives a static
+/// effect a zero-length pass.
 fn lifetime(animation: &SpriteAnimation) -> Option<Duration> {
     if animation.never_advances() {
         return Some(STATIC_DURATION);
@@ -298,17 +257,9 @@ fn lifetime(animation: &SpriteAnimation) -> Option<Duration> {
     }
 }
 
-/// Collects effects that are over: the ttl decides for the 16 that carry one,
-/// the animator for the 191 that do not.
-///
-/// Runs `.after(AnimationSet)`. `SpriteAnimator` sets `finished` only once the
-/// last phase has had its full time on screen, so despawning in the same frame
-/// cuts nothing short — while running before the animator would hold every
-/// effect one frame past its end.
-///
-/// The query requires both components: `on_show_effect` always spawns them
-/// together, so an `Effect` without a `SpriteAnimator` is unreachable today —
-/// but were one ever to exist, it would sit here unvisited and leak silently.
+/// Must run `.after(AnimationSet)`: `SpriteAnimator` sets `finished` only once
+/// the last phase has had its full time on screen, so running earlier holds
+/// every effect a frame past its end.
 pub fn despawn_finished_effects(
     mut commands: Commands,
     time: Res<Time>,
@@ -337,12 +288,8 @@ pub fn on_remove_effect(
     instances.dealloc_index(tag.0);
 }
 
-/// Despawns the session's effects and drops their buffer slots.
-///
-/// Mandatory, unlike floating text: effects are children of the floor entities,
-/// which are `Startup`-spawned and survive the session, so nothing else collects
-/// them. Mirrors `items::session::cleanup_session`, including replacing the
-/// instance manager wholesale rather than draining it.
+/// Mandatory, unlike floating text: effects hang off the floor entities, which
+/// are `Startup`-spawned and outlive the session, so nothing else collects them.
 pub(super) fn cleanup_session(mut commands: Commands, effects: Query<Entity, With<Effect>>) {
     for entity in &effects {
         commands.entity(entity).despawn();
@@ -350,17 +297,9 @@ pub(super) fn cleanup_session(mut commands: Commands, effects: Query<Entity, Wit
     commands.insert_resource(InstanceManager::<EffectInstance>::default());
 }
 
-/// Writes the animator's current frame into the effect's buffer slot.
-///
-/// The `Changed<SpriteAnimator>` filter is only meaningful because
-/// `tick_sprite_animators` writes through `bypass_change_detection` and flags a
-/// change on a real phase advance and nothing else. Break that and this matches
-/// every effect every frame — one extra copy and comparison each, not an extra
-/// upload: `InstanceManager::update` dirties only when the bytes actually
-/// change, and `upload_effect_buffer` early-returns while clean.
-///
-/// Only `sprite_id` moves: an effect's bbox and shift are fixed for its whole
-/// life, because its pattern never changes.
+/// The `Changed<SpriteAnimator>` filter only gates because `tick_sprite_animators`
+/// writes through `bypass_change_detection` and flags a change on a real phase
+/// advance and nothing else.
 pub fn update_effect_instances(
     effects: Query<(&SpriteAnimator, &MeshTag), (With<Effect>, Changed<SpriteAnimator>)>,
     mut instances: ResMut<InstanceManager<EffectInstance>>,
@@ -504,11 +443,7 @@ mod tests {
     /// the tile it belongs to.
     #[test]
     fn a_32px_sprite_is_nudged_onto_its_tile() {
-        let placed = anchor(
-            Vec3::new(100.0, 200.0, 5.0),
-            Vec2::new(32.0, 32.0),
-            EFFECT_Z_OFFSET,
-        );
+        let placed = anchor(Vec3::new(100.0, 200.0, 0.0), Vec2::new(32.0, 32.0));
 
         assert_eq!(placed.x, 116.0);
         assert_eq!(placed.y, 184.0);
@@ -518,11 +453,7 @@ mod tests {
     /// extend up and to the left of the tile they occupy.
     #[test]
     fn a_64px_sprite_keeps_the_tile_corner() {
-        let placed = anchor(
-            Vec3::new(100.0, 200.0, 5.0),
-            Vec2::new(64.0, 64.0),
-            EFFECT_Z_OFFSET,
-        );
+        let placed = anchor(Vec3::new(100.0, 200.0, 0.0), Vec2::new(64.0, 64.0));
 
         assert_eq!(placed.x, 100.0);
         assert_eq!(placed.y, 200.0);
@@ -533,11 +464,7 @@ mod tests {
     /// out on one axis.
     #[test]
     fn a_mixed_size_sprite_is_corrected_on_one_axis_only() {
-        let placed = anchor(
-            Vec3::new(100.0, 200.0, 5.0),
-            Vec2::new(32.0, 64.0),
-            EFFECT_Z_OFFSET,
-        );
+        let placed = anchor(Vec3::new(100.0, 200.0, 0.0), Vec2::new(32.0, 64.0));
 
         assert_eq!(placed.x, 116.0, "32 px wide, so nudged");
         assert_eq!(placed.y, 200.0, "64 px tall, so not");
@@ -579,19 +506,31 @@ mod tests {
         assert_eq!(instance.bbox_size, Vec2::new(64.0, 64.0));
     }
 
-    /// Effects draw over creatures and under top items.
+    /// Effects draw over creatures and under top items, on their own tile.
     #[test]
     fn an_effect_sits_between_the_agent_and_the_top_item_planes() {
-        use crate::conf::z_order::{AGENT_Z_OFFSET, TOP_Z_OFFSET};
+        use crate::map::DrawOrigin;
 
-        let placed = anchor(
-            Vec3::new(0.0, 0.0, 5.0),
-            Vec2::new(32.0, 32.0),
-            EFFECT_Z_OFFSET,
+        let tile = Position::new(1000, 1000, 7);
+        let origin = DrawOrigin::around(&tile);
+        let effect =
+            DrawOrder::new(tile.clone(), DrawRank::Standing, DrawLayer::Effect, 0).key(&origin);
+
+        assert!(
+            effect
+                > DrawOrder::new(tile.clone(), DrawRank::Standing, DrawLayer::Creature, 0)
+                    .key(&origin)
         );
-
-        assert!(placed.z > 5.0 + AGENT_Z_OFFSET);
-        assert!(placed.z < 5.0 + TOP_Z_OFFSET);
+        assert!(
+            effect
+                < DrawOrder::new(tile.clone(), DrawRank::Standing, DrawLayer::Top, 0).key(&origin)
+        );
+        // And `anchor` contributes nothing to it.
+        assert_eq!(
+            anchor(tile.to_world(), Vec2::new(32.0, 32.0)).z,
+            0.0,
+            "placement is x/y only; draw order is the DrawOrder component"
+        );
     }
 
     /// 191 of the 207 effects are counted, and `count` is a number of RUNS, not

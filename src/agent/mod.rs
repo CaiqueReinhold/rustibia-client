@@ -50,6 +50,12 @@ impl Plugin for AgentPlugin {
                 instancing::upload_instance_buffer.run_if(in_state(GameState::InGame)),
             )
             .add_systems(
+                PostUpdate,
+                movement::sync_agent_draw_order
+                    .before(crate::map::DrawOrderSet)
+                    .run_if(in_state(GameState::InGame)),
+            )
+            .add_systems(
                 Update,
                 (
                     hud::update_display_name_health_state,

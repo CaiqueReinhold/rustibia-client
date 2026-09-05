@@ -6,6 +6,7 @@ use bevy::prelude::*;
 use bevy::render::render_resource::TextureFormat;
 
 use crate::conf::viewport::{GAME_VIEW_HEIGHT, GAME_VIEW_WIDTH};
+use crate::map::DRAW_KEY_MAX;
 
 /// Integer upscale factor for the offscreen render texture.
 /// Sprites are rendered nearest-neighbor at this scale inside the texture.
@@ -58,6 +59,11 @@ pub fn spawn_game_camera(mut commands: Commands, mut images: ResMut<Assets<Image
         width: GAME_VIEW_WIDTH,
         height: GAME_VIEW_HEIGHT,
     };
+    // z is a draw-order key here, not a depth (see `map::draw_order`), and keys
+    // run far past the default 1000-unit planes. Anything outside them is
+    // clipped with no error.
+    projection.near = -DRAW_KEY_MAX;
+    projection.far = DRAW_KEY_MAX;
     commands.spawn((
         Camera2d,
         Camera {

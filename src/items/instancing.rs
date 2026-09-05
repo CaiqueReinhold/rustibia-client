@@ -1,12 +1,12 @@
 use crate::{
-    conf::z_order::{GROUND_PASS_OFFSET, TOP_Z_OFFSET},
     core::{Appearances, InstanceManager, SpriteAnimator, SpriteConfig},
+    items::ItemConfig,
     items::{
         Item,
         item::ItemFlag,
         material::{ItemInstance, ItemMaterial},
     },
-    map::{FloorEntities, Map, Position},
+    map::{DrawLayer, DrawOrder, DrawRank, FloorEntities, Map, Position},
 };
 use bevy::prelude::*;
 use bevy::{asset::RenderAssetUsages, mesh::MeshTag, render::storage::ShaderStorageBuffer};
@@ -74,9 +74,12 @@ pub fn process_tile_changed(
 
         if let Some(items) = map.get_items(&position) {
             let world_pos = position.to_world();
+            // The parent contributes nothing to z: a tile's ground, its corpse
+            // and its wall sit in three different ranks, so no tile-wide base
+            // key exists to put here.
             let parent = commands
                 .spawn((
-                    Transform::from_xyz(world_pos.x, world_pos.y, world_pos.z),
+                    Transform::from_xyz(world_pos.x, world_pos.y, 0.0),
                     Visibility::Inherited,
                 ))
                 .id();
@@ -109,6 +112,30 @@ pub fn process_tile_changed(
             }
             state.occupied_tiles.insert(position.clone(), parent);
         }
+    }
+}
+
+/// Where an item draws: which whole-floor pass, and where within its tile.
+///
+/// The order of the tests is load-bearing: a blood pool carries `bottom` AND
+/// `liquidpool` in the appearance data, so `LiquidPool` has to come before
+/// `Bottom` or the pool ranks with the walls and draws over the corpse that
+/// bled it.
+fn placement(config: &ItemConfig) -> (DrawRank, DrawLayer) {
+    if config.has_flag(ItemFlag::Top) {
+        (DrawRank::Standing, DrawLayer::Top)
+    } else if config.has_flag(ItemFlag::Ground) {
+        (DrawRank::Ground, DrawLayer::Ground)
+    } else if config.has_flag(ItemFlag::Border) {
+        (DrawRank::Ground, DrawLayer::Border)
+    } else if config.has_flag(ItemFlag::LyingObject) {
+        (DrawRank::Lying, DrawLayer::Items)
+    } else if config.has_flag(ItemFlag::LiquidPool) {
+        (DrawRank::Lying, DrawLayer::Bottom)
+    } else if config.has_flag(ItemFlag::Bottom) {
+        (DrawRank::Standing, DrawLayer::Bottom)
+    } else {
+        (DrawRank::Standing, DrawLayer::Items)
     }
 }
 
@@ -147,13 +174,7 @@ fn spawn_item(
     let animator = SpriteAnimator::new(Arc::clone(&sprite), px, py, pz);
     instance.sprite_id = animator.current_sprite_ids[0];
 
-    let z = if item.config.has_flag(ItemFlag::Top) {
-        TOP_Z_OFFSET
-    } else if item.config.has_flag(ItemFlag::Ground) || item.config.has_flag(ItemFlag::Border) {
-        GROUND_PASS_OFFSET + 0.001 * stack_index as f32
-    } else {
-        0.001 * stack_index as f32
-    };
+    let (rank, layer) = placement(&item.config);
     let half_tile_x = if sheet.sprite_size.x <= 32.0 {
         16.0
     } else {
@@ -164,7 +185,7 @@ fn spawn_item(
     } else {
         0.0
     };
-    let translation = Vec3::new(-elevation + half_tile_x, elevation + half_tile_y, z);
+    let translation = Vec3::new(-elevation + half_tile_x, elevation + half_tile_y, 0.0);
 
     commands
         .spawn((
@@ -173,6 +194,7 @@ fn spawn_item(
             MeshMaterial2d(material.clone()),
             MeshTag(index),
             Transform::from_translation(translation),
+            DrawOrder::new(position.clone(), rank, layer, stack_index as u32),
             Visibility::Inherited,
             animator,
         ))
@@ -244,5 +266,81 @@ pub fn upload_instance_buffer(
 
     for (_, mat) in loaded_materials.materials.values() {
         let _ = materials.get_mut(mat);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::map::{DrawOrder, DrawOrigin, Position};
+
+    fn config(flags: Vec<ItemFlag>) -> ItemConfig {
+        ItemConfig {
+            id: 1,
+            flags,
+            friction: None,
+            slot: None,
+            minimap_color: None,
+            elevation: None,
+        }
+    }
+
+    /// The flags an item really carries, taken from `appearances.json`: a blood
+    /// pool is `bottom` + `liquidpool` and NO `lying_object`, while a corpse is
+    /// `lying_object` and carries no placement flag at all. Ranking the pool by
+    /// its `bottom` flag would put it in with the walls and it would then draw
+    /// over the very corpse that bled it.
+    #[test]
+    fn a_blood_pool_ranks_with_the_corpse_and_not_with_the_walls() {
+        let pool = placement(&config(vec![
+            ItemFlag::Bottom,
+            ItemFlag::LiquidPool,
+            ItemFlag::Unmove,
+        ]));
+        let corpse = placement(&config(vec![ItemFlag::LyingObject, ItemFlag::Container]));
+        let wall = placement(&config(vec![ItemFlag::Bottom, ItemFlag::Unpass]));
+
+        assert_eq!(pool, (DrawRank::Lying, DrawLayer::Bottom));
+        assert_eq!(corpse, (DrawRank::Lying, DrawLayer::Items));
+        assert_eq!(wall, (DrawRank::Standing, DrawLayer::Bottom));
+
+        let tile = Position::new(1000, 1000, 7);
+        let origin = DrawOrigin::around(&tile);
+        let key = |(rank, layer)| DrawOrder::new(tile.clone(), rank, layer, 0).key(&origin);
+
+        assert!(key(pool) < key(corpse), "the body lies on the pool");
+        assert!(key(corpse) < key(wall), "and a wall stands over both");
+    }
+
+    /// Grounds and borders are the pass that goes first, so nothing they draw
+    /// under can be cut by them.
+    #[test]
+    fn grounds_and_borders_are_the_first_pass() {
+        assert_eq!(
+            placement(&config(vec![ItemFlag::Ground])),
+            (DrawRank::Ground, DrawLayer::Ground)
+        );
+        assert_eq!(
+            placement(&config(vec![ItemFlag::Border])),
+            (DrawRank::Ground, DrawLayer::Border)
+        );
+    }
+
+    /// `Top` wins over everything, including a lying flag, because a door drawn
+    /// under the floor it hangs in is worse than one drawn over a corpse.
+    #[test]
+    fn a_top_item_stays_on_top_whatever_else_it_carries() {
+        assert_eq!(
+            placement(&config(vec![ItemFlag::Top, ItemFlag::LyingObject])),
+            (DrawRank::Standing, DrawLayer::Top)
+        );
+    }
+
+    #[test]
+    fn a_plain_item_stands_on_its_tile() {
+        assert_eq!(
+            placement(&config(vec![ItemFlag::Take])),
+            (DrawRank::Standing, DrawLayer::Items)
+        );
     }
 }

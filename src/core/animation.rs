@@ -56,12 +56,8 @@ impl SpriteAnimator {
         self.finished
     }
 
-    /// One phase forward, then settle onto a displayed phase: skip forward
-    /// past any phase the config gives no time to, or, if the run just
-    /// finished resting on padding, roll back to the last phase that had any
-    /// time. Then re-point the timer at however long the phase it lands on
-    /// lasts. For a uniform animation that sets the value it already had, so
-    /// there is one code path rather than two.
+    /// One phase forward, then settle onto a phase that is actually displayed,
+    /// then re-point the timer at however long that phase lasts.
     fn advance(&mut self) {
         self.step();
         self.settle_on_timed_phase();
@@ -70,24 +66,11 @@ impl SpriteAnimator {
     }
 
     /// Moves off any phase the config gives no time to, so the animator always
-    /// rests on one that is actually displayed -- forward while the run is
-    /// still going, backward once it has finished on padding.
+    /// rests on one that is actually displayed -- forward while the run is still
+    /// going, backward once it has finished on padding.
     ///
-    /// The forward walk below terminates on its own -- it is a fixed-count
-    /// loop, not a search, so it exits regardless of the config. `never_advances`
-    /// (see `new`) plays no part in that; what it buys is different, keeping
-    /// the timer on its zero-duration `Once` sentinel so `tick_sprite_animators`
-    /// skips this animator without ever calling this method.
-    ///
-    /// PingPong's walk is a cycle of length `2n - 2`, not `n`: it revisits
-    /// every interior phase twice per lap and each end phase once, so reaching
-    /// a given phase can take up to `2n - 2` steps. The bound below rounds
-    /// that up to `2n` rather than special-casing PingPong.
-    ///
-    /// A counted run can finish resting on an untimed phase: `step` holds the
-    /// last phase rather than advancing past it once finished, so the forward
-    /// walk can never reach anything beyond it. That case is handed to
-    /// `rest_on_last_timed_phase`, which walks backward instead.
+    /// The `2n` bound covers PingPong, whose walk is a cycle of length `2n - 2`
+    /// rather than `n`: it revisits every interior phase twice per lap.
     fn settle_on_timed_phase(&mut self) {
         let phase_count = self.config.animation.total_animation_phases();
         for _ in 0..2 * phase_count {
@@ -97,14 +80,6 @@ impl SpriteAnimator {
             self.step();
         }
 
-        // Defence in depth, not redundancy: this is only ever a no-op because
-        // the `2n` bound above is exactly right for every loop mode. If that
-        // bound were ever wrong again, the forward loop could exit early on an
-        // untimed phase of a run that never finishes (Infinite, PingPong) --
-        // and without this guard that phase would simply be displayed. With
-        // it, a wrong bound instead shows up as a backward stutter on an
-        // otherwise-looping animation, which is a far more visible bug to
-        // notice than a silently wrong frame.
         if self.finished && self.config.animation.phase_is_untimed(self.current_phase) {
             self.rest_on_last_timed_phase();
         }
@@ -112,28 +87,16 @@ impl SpriteAnimator {
 
     /// Walks backward from a finished run's untimed tail to the last phase the
     /// config actually gave time to -- the frame a despawn observer sees, and,
-    /// for an item (which is never despawned), the frame it is stuck showing
-    /// for good. Without this, effect 221 finishes on its padding rather than
-    /// its last real frame, and items 22679 and 24925 rest on their padding
-    /// permanently.
-    ///
-    /// The `self.current_phase > 0` guard is what makes this terminate and
-    /// keeps it from underflowing -- structurally, the walk is monotone
-    /// decreasing and bounded below by it regardless of the config. What
-    /// `never_advances` (see `new`) actually buys is different: it guarantees
-    /// this animator only ever ticks (and so only ever gets here) when some
-    /// phase in the config is timed, which is what guarantees the phase this
-    /// stops on is a real one rather than just phase 0 because the guard ran
-    /// out.
+    /// for an item, the frame it is stuck showing for good. Without it effect
+    /// 221 rests on its padding, as do items 22679 and 24925.
     fn rest_on_last_timed_phase(&mut self) {
         while self.current_phase > 0 && self.config.animation.phase_is_untimed(self.current_phase) {
             self.current_phase -= 1;
         }
     }
 
-    /// One phase forward, honouring the loop mode -- the logic `advance` used
-    /// to run directly, factored out so `settle_on_timed_phase` can call it
-    /// without re-arming the timer on every internal hop.
+    /// One phase forward, honouring the loop mode, without re-arming the timer --
+    /// `settle_on_timed_phase` calls this for every internal hop.
     fn step(&mut self) {
         let phase_count = self.config.animation.total_animation_phases();
         // A one-phase animation has nowhere to advance to. Counted still has to
@@ -200,17 +163,10 @@ pub fn tick_sprite_animators(time: Res<Time>, mut query: Query<&mut SpriteAnimat
             continue;
         }
 
-        // Ticking through the `Mut` would mark the animator `Changed` on every
-        // frame, not just the ones where the phase advances, and every
-        // `Changed<SpriteAnimator>` filter downstream would stop filtering. The
-        // buffer uploads survive that — `InstanceManager::update` compares before
-        // it dirties, and a frame with no advance writes the same bytes back — so
-        // the cost is not a re-upload. It is re-deriving and comparing every
-        // instance every frame, and `animate_ui_items`, whose `&mut ImageNode`
-        // write is an unconditional `DerefMut`: every animated UI item would be
-        // `Changed` each frame, which bevy_ui's accessibility pass filters on and
-        // answers by re-walking the node's children. The advance below is the only
-        // observable change, so it is the only one that gets flagged.
+        // Ticking through the `Mut` would mark the animator `Changed` every
+        // frame, and every `Changed<SpriteAnimator>` filter downstream would stop
+        // filtering. The advance below is the only observable change, so it is
+        // the only one flagged.
         let inner = animator.bypass_change_detection();
         inner.timer.tick(time.delta());
         if !inner.timer.just_finished() {

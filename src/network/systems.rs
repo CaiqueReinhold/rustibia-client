@@ -101,9 +101,9 @@ pub(super) fn on_connect(event: On<Connect>, mut commands: Commands, ping: Res<P
 }
 
 pub(super) fn receive_messages(mut commands: Commands, mut connection: ResMut<ConnectionState>) {
-    // The async task drops its sender when the TCP connection fails or
-    // closes. Without this check the client used to hang in Connecting
-    // forever when the server was unreachable.
+    // The async task drops its sender when the TCP connection fails or closes.
+    // Without this check the client hangs in Connecting for ever when the
+    // server is unreachable.
     if connection.receiver.is_closed() && connection.receiver.is_empty() {
         commands.trigger(events::ConnectionLost);
         return;
