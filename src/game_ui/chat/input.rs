@@ -185,11 +185,12 @@ pub fn on_submit_chat_input(
     use crate::network::{ClientMessage, SendMessage};
 
     let active = state.active;
-    let out = outbound_for(active);
+    let Some(out) = outbound_for(&state, active) else {
+        return;
+    };
 
     commands.trigger(SendMessage(ClientMessage::Say {
         message: event.text.clone(),
-        message_type: out.message_type,
         target: out.target,
     }));
 

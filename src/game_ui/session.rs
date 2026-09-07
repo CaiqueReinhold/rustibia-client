@@ -38,14 +38,14 @@ mod tests {
         world
     }
 
-    /// Chat is per character: the channels the server offered and the author names
-    /// learned from introductions both describe the session that just ended.
+    /// Chat is per character: the channels the server offered and the private tabs
+    /// minted for correspondents both describe the session that just ended.
     #[test]
     fn cleanup_empties_the_chat_state() {
         let mut world = seeded_world();
         {
             let mut state = world.resource_mut::<ChatState>();
-            state.player_names.insert(1, "Rizael".to_string());
+            state.pm_tab("Rizael");
             state
                 .available
                 .push(crate::game_ui::chat::state::ChannelConfig {
@@ -60,7 +60,11 @@ mod tests {
         world.run_system_once(cleanup_session).unwrap();
 
         let state = world.resource::<ChatState>();
-        assert!(state.player_names.is_empty());
+        assert!(
+            state
+                .pm_name(crate::game_ui::chat::state::ChannelId::Private(0))
+                .is_none()
+        );
         assert!(state.available.is_empty());
         assert!(!world.resource::<ChatMode>().active);
     }

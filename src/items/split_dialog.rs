@@ -252,7 +252,7 @@ mod tests {
     fn item(flags: Vec<ItemFlag>, amount: u32) -> Item {
         Item::new(
             Arc::new(ItemConfig {
-                id: 2148,
+                id: ItemId(2148),
                 flags,
                 friction: None,
                 slot: None,

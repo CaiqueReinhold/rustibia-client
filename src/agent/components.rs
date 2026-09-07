@@ -6,9 +6,19 @@ use crate::conf::{
     agent::{DIAGONAL_STEP_FACTOR, SPEED_PARAM_A, SPEED_PARAM_B, SPEED_PARAM_C},
     server::TICK_DURATION_MS,
 };
-use crate::core::SpriteConfig;
+use crate::core::{OutfitColors, SpriteConfig};
 
-pub type AgentId = u16;
+/// An agent as this player's session names it. Session-local to the server, which reuses it — never a stable identity, and never comparable with a chat or container id.
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+#[repr(transparent)]
+pub struct AgentId(pub u16);
+
+impl Default for AgentId {
+    /// Only for `Agent`'s `Default`, which exists for spawning before the id lands.
+    fn default() -> Self {
+        Self(0)
+    }
+}
 
 #[derive(Debug, Clone, Copy, Default)]
 pub enum Mounted {
@@ -30,7 +40,7 @@ pub struct Agent {
     pub direction: FacingDirection,
     pub addons: u8,
     pub mounted: Mounted,
-    pub outfit_colors: (u8, u8, u8, u8),
+    pub outfit_colors: OutfitColors,
     pub speed: u16,
     pub boxes: [[Rect; 4]; 2],
     pub shift: Vec2,

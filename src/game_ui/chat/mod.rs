@@ -39,7 +39,7 @@ impl Plugin for ChatPlugin {
             .add_observer(messages::on_message_trimmed_ui_render)
             .add_observer(input::on_submit_chat_input)
             .add_observer(network::on_channel_list_received)
-            .add_observer(network::on_player_introduced)
+            .add_observer(network::on_private_chat_opened)
             .add_observer(network::on_chat_message_received)
             .add_observer(network::on_open_channel_wire)
             .add_observer(network::on_close_channel_wire)

@@ -164,7 +164,6 @@ pub fn on_channels_dialog_button(
     event: On<DialogButtonPressed>,
     dialogs: Query<(), With<ChannelsDialog>>,
     field_q: Query<&TextInputContents, With<PrivateNameField>>,
-    mut state: ResMut<ChatState>,
     mut commands: Commands,
 ) {
     if dialogs.get(event.dialog).is_err() {
@@ -175,10 +174,6 @@ pub fn on_channels_dialog_button(
     {
         let name = contents.get().trim().to_owned();
         if !name.is_empty() {
-            // Setting the pending name and sending must stay together: it is the
-            // only thing that lets `on_player_introduced` tell this request apart
-            // from an introduction that merely precedes someone's first message.
-            state.pending_pm_open = Some(name.clone());
             commands.trigger(SendMessage(ClientMessage::OpenPmChat { name }));
         }
     }

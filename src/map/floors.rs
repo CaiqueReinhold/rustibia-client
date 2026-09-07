@@ -156,6 +156,8 @@ pub fn update_floors_visibility(
 mod tests {
     use super::*;
     use crate::agent::Agent;
+    use crate::agent::AgentId;
+    use crate::items::ItemId;
     use crate::items::{Item, ItemConfig, ItemFlag};
     use bevy::ecs::system::RunSystemOnce;
     use std::sync::Arc;
@@ -164,7 +166,7 @@ mod tests {
         map.replace_tile(
             vec![Arc::new(Item::new(
                 Arc::new(ItemConfig {
-                    id: 100,
+                    id: ItemId(100),
                     flags: vec![ItemFlag::Ground],
                     friction: Some(150),
                     slot: None,
@@ -271,7 +273,13 @@ mod tests {
         world.insert_resource(FloorEntities {
             floors: floors.clone().try_into().unwrap(),
         });
-        world.spawn((Player { agent_id: 1 }, Agent::default(), player));
+        world.spawn((
+            Player {
+                agent_id: AgentId(1),
+            },
+            Agent::default(),
+            player,
+        ));
         (world, floors)
     }
 

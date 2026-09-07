@@ -148,7 +148,7 @@ pub fn on_show_effect(
     // equivalent gap raises `ClientOutdated` and ends the session.
     let Some(sprite) = appearances.get_effect(event.effect_id) else {
         warn!(
-            "server sent effect {}, which this client's assets do not have",
+            "server sent effect {:?}, which this client's assets do not have",
             event.effect_id
         );
         return;

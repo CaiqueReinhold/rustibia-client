@@ -7,7 +7,10 @@ use crate::{
     map::Position,
 };
 
-pub type ItemId = u16;
+/// An item's identity in the catalogue shipped with the client. Global and stable.
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord, serde::Deserialize)]
+#[repr(transparent)]
+pub struct ItemId(pub u16);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Copy, PartialOrd, Ord)]
 pub enum InventorySlot {
@@ -80,7 +83,7 @@ impl ItemPlacement {
             ItemPlacement::Map { position, .. } => position.clone(),
             ItemPlacement::Container { container_id, slot } => Position {
                 x: CONTAINER_COORD_FLAG,
-                y: *container_id,
+                y: container_id.0,
                 z: *slot as u8,
             },
             ItemPlacement::Inventory { slot } => Position {
@@ -238,7 +241,7 @@ mod tests {
 
     fn config_with(flags: Vec<ItemFlag>) -> Arc<ItemConfig> {
         Arc::new(ItemConfig {
-            id: 2886,
+            id: ItemId(2886),
             flags,
             friction: None,
             slot: None,
@@ -364,7 +367,7 @@ mod tests {
     #[test]
     fn container_placement_encodes_flag_id_slot() {
         let p = ItemPlacement::Container {
-            container_id: 5,
+            container_id: ContainerId(5),
             slot: 9,
         };
         assert_eq!(

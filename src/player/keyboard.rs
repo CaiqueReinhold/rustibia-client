@@ -232,6 +232,8 @@ pub fn cancel_targeting_on_escape(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::AgentId;
+    use crate::items::ItemId;
     use crate::items::{InventorySlot, ItemPlacement};
     use crate::player::InteractionMode;
     use bevy::ecs::system::RunSystemOnce;
@@ -256,13 +258,13 @@ mod tests {
     fn escape_cancels_the_crosshair_before_the_target() {
         let mut world = seeded_world();
         let mut target = CombatTarget::default();
-        target.apply_click(7);
+        target.apply_click(AgentId(7));
         world.insert_resource(target);
         *world.resource_mut::<InteractionMode>() = InteractionMode::Targeting {
             source: ItemPlacement::Inventory {
                 slot: InventorySlot::Head,
             },
-            source_item_id: 1,
+            source_item_id: ItemId(1),
         };
         press_escape(&mut world);
 
@@ -272,14 +274,14 @@ mod tests {
             *world.resource::<InteractionMode>(),
             InteractionMode::Idle
         ));
-        assert_eq!(world.resource::<CombatTarget>().target, Some(7));
+        assert_eq!(world.resource::<CombatTarget>().target, Some(AgentId(7)));
     }
 
     #[test]
     fn escape_clears_the_target_when_no_crosshair_is_up() {
         let mut world = seeded_world();
         let mut target = CombatTarget::default();
-        target.apply_click(7);
+        target.apply_click(AgentId(7));
         world.insert_resource(target);
         press_escape(&mut world);
 

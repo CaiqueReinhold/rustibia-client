@@ -286,8 +286,12 @@ impl PersistentConnection {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::AgentId;
     use crate::agent::{FacingDirection, Health, Mana};
+    use crate::core::OutfitColors;
+    use crate::core::OutfitId;
     use crate::core::{EndGameSession, SessionEndReason};
+    use crate::items::ContainerId;
     use crate::map::Position;
     use bevy::ecs::system::RunSystemOnce;
     use std::time::Duration;
@@ -297,14 +301,14 @@ mod tests {
 
     fn describe_player() -> ServerMessage {
         ServerMessage::DescribePlayer {
-            agent_id: 1,
+            agent_id: AgentId(1),
             position: Position { x: 0, y: 0, z: 7 },
             facing: FacingDirection::South,
             name: "Rizael".to_string(),
             level: 1,
             health: Health { current: 1, max: 1 },
             mana: Mana { current: 1, max: 1 },
-            outfit: (128, (0, 0, 0, 0)),
+            outfit: (OutfitId(128), OutfitColors::default()),
             speed: 100,
             capacity: 0,
             inventory_head: None,
@@ -343,7 +347,9 @@ mod tests {
             })
             .unwrap();
         srv_send
-            .send_blocking(ServerMessage::ContainerClosed { container_id: 3 })
+            .send_blocking(ServerMessage::ContainerClosed {
+                container_id: ContainerId(3),
+            })
             .unwrap();
         srv_send.send_blocking(describe_player()).unwrap();
 

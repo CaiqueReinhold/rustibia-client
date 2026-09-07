@@ -20,6 +20,25 @@ pub enum ChatMessageType {
     Channel,
 }
 
+/// Who an outbound `Say` is addressed to. One discriminant rather than a message type
+/// plus an overloaded target field, so a channel id and a recipient cannot be confused.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SayTarget {
+    Local,
+    Channel(u16),
+    Player(String),
+}
+
+impl SayTarget {
+    pub fn message_type(&self) -> ChatMessageType {
+        match self {
+            SayTarget::Local => ChatMessageType::Local,
+            SayTarget::Channel(_) => ChatMessageType::Channel,
+            SayTarget::Player(_) => ChatMessageType::Private,
+        }
+    }
+}
+
 #[derive(Component, Debug)]
 pub struct TextMessage {
     timer: Timer,

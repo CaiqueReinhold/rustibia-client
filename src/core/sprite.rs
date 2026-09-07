@@ -10,13 +10,48 @@ use serde_json::*;
 
 use crate::items::ItemId;
 
-pub type OutfitId = u16;
-pub type OutfitColors = (u8, u8, u8, u8);
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, serde::Deserialize)]
+#[repr(transparent)]
+pub struct OutfitId(pub u16);
+/// The four dyeable regions of an outfit, in the order the wire uses them. Named
+/// rather than a 4-tuple: `color1` said nothing about which region it was, and all
+/// four are interchangeable to the type checker as bare `u8`s.
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, Default)]
+pub struct OutfitColors {
+    pub head: u8,
+    pub body: u8,
+    pub legs: u8,
+    pub feet: u8,
+}
+
+impl OutfitColors {
+    pub fn new(head: u8, body: u8, legs: u8, feet: u8) -> Self {
+        Self {
+            head,
+            body,
+            legs,
+            feet,
+        }
+    }
+
+    /// The layout the outfit shader reads: one region per byte, head in the low bits.
+    pub fn packed(self) -> u32 {
+        self.head as u32
+            | ((self.body as u32) << 8)
+            | ((self.legs as u32) << 16)
+            | ((self.feet as u32) << 24)
+    }
+}
 /// Ids of the `effect` and `missile` appearance categories. Both are sparse and
 /// small (effects reach 309, missiles 62) and neither shares a namespace with
 /// items or outfits, so they stay separate maps rather than one merged one.
-pub type EffectId = u16;
-pub type MissileId = u16;
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, serde::Deserialize)]
+#[repr(transparent)]
+pub struct EffectId(pub u16);
+
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, serde::Deserialize)]
+#[repr(transparent)]
+pub struct MissileId(pub u16);
 
 #[derive(Debug)]
 pub struct OutfitSprite {
@@ -58,7 +93,7 @@ impl Appearances {
     pub fn get_item(&self, id: ItemId) -> Arc<SpriteConfig> {
         Arc::clone(
             self.items.get(&id).unwrap_or_else(|| {
-                panic!("item {id} is in items.json but missing from sprite.json")
+                panic!("item {id:?} is in items.json but missing from sprite.json")
             }),
         )
     }
@@ -245,11 +280,11 @@ pub fn read_sprites_config() -> SpriteConfigs {
     let mut items: HashMap<ItemId, Arc<SpriteConfig>> = HashMap::new();
     for conf in sprites["items"].as_array().unwrap().iter() {
         let sprite = read_sprite_config(conf);
-        items.insert(sprite.id, Arc::new(sprite));
+        items.insert(ItemId(sprite.id), Arc::new(sprite));
     }
     let mut outfits: HashMap<OutfitId, OutfitSprite> = HashMap::new();
     for out in sprites["outfits"].as_array().unwrap().iter() {
-        let id = out["id"].as_u64().unwrap() as OutfitId;
+        let id = OutfitId(out["id"].as_u64().unwrap() as u16);
         let still_sprite = read_sprite_config(&out["still_sprite"]);
         let moving_sprite = read_sprite_config(&out["moving_sprite"]);
         outfits.insert(
@@ -265,21 +300,24 @@ pub fn read_sprites_config() -> SpriteConfigs {
     SpriteConfigs {
         items,
         outfits,
-        effects: read_flat_configs(&sprites["effects"]),
-        missiles: read_flat_configs(&sprites["missiles"]),
+        effects: read_flat_configs(&sprites["effects"], EffectId),
+        missiles: read_flat_configs(&sprites["missiles"], MissileId),
     }
 }
 
 /// Effects and missiles are flat lists of configs keyed by their own id — no
 /// still/moving split, one frame group each.
-fn read_flat_configs(value: &Value) -> HashMap<u16, Arc<SpriteConfig>> {
+fn read_flat_configs<K: Eq + std::hash::Hash>(
+    value: &Value,
+    key: impl Fn(u16) -> K,
+) -> HashMap<K, Arc<SpriteConfig>> {
     let mut configs = HashMap::new();
     let Some(entries) = value.as_array() else {
         return configs;
     };
     for conf in entries.iter() {
         let sprite = read_sprite_config(conf);
-        configs.insert(sprite.id, Arc::new(sprite));
+        configs.insert(key(sprite.id), Arc::new(sprite));
     }
     configs
 }
@@ -461,7 +499,10 @@ mod tests {
         assert_eq!(configs.missiles.len(), 56);
 
         // Effect 1 is the red hit splash: six phases, played once.
-        let effect = configs.effects.get(&1).expect("effect 1 is present");
+        let effect = configs
+            .effects
+            .get(&EffectId(1))
+            .expect("effect 1 is present");
         assert_eq!(effect.animation.total_animation_phases(), 6);
         assert_eq!(
             effect.animation.loop_mode(),
@@ -470,7 +511,10 @@ mod tests {
 
         // Missiles are static and 3x3 -- eight flight directions plus the centre --
         // and `boxes` is indexed by pattern_x, so it is shorter than an outfit's.
-        let missile = configs.missiles.get(&1).expect("missile 1 is present");
+        let missile = configs
+            .missiles
+            .get(&MissileId(1))
+            .expect("missile 1 is present");
         assert!(matches!(missile.animation, SpriteAnimation::Static));
         assert_eq!(missile.pattern_x, 3);
         assert_eq!(missile.boxes.len(), 3);

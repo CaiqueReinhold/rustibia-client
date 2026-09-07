@@ -21,7 +21,7 @@ pub use items::ItemConfigs;
 pub use session::{EndGameSession, SessionCleanup, SessionEndReason, SessionEnding};
 pub use sprite::*;
 pub use systems::PingState;
-pub use text::{ChatMessageType, TextMessageType};
+pub use text::{ChatMessageType, SayTarget, TextMessageType};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, States, Default)]
 pub enum GameState {

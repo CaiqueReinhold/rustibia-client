@@ -29,13 +29,9 @@ pub fn read_item_configs() -> HashMap<ItemId, Arc<ItemConfig>> {
 }
 
 fn read_item_config(config: &Value) -> Option<Arc<ItemConfig>> {
-    let id = config["id"].as_u64()? as ItemId;
+    let id = ItemId(config["id"].as_u64()? as u16);
     let minimap_color = config["minimap_color"].as_u64().map(|v| v as u8);
-    // Only ground items carry friction, mirroring the server's data invariant that
-    // `tile_friction` appears on exactly its ground items and nothing else. Without
-    // the condition every item would hold `Some(0)` and `get_tile_friction`'s
-    // "first item with a value" rule would resolve to the bottom of the stack.
-    //
+
     // A ground item with no readable `ground_speed` fails the whole parse rather
     // than defaulting: friction 0 is a legitimate value, so a silent default would
     // be indistinguishable from a frictionless tile and would surface as mispaced

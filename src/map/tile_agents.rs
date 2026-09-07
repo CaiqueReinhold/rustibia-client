@@ -26,6 +26,7 @@ pub fn sync_tile_agents(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::AgentId;
     use bevy::ecs::system::RunSystemOnce;
 
     fn at(x: u16, y: u16) -> Position {
@@ -43,7 +44,7 @@ mod tests {
         let mut world = world_with_map();
         world.spawn((
             Agent {
-                agent_id: 5,
+                agent_id: AgentId(5),
                 ..Default::default()
             },
             at(10, 10),
@@ -51,7 +52,10 @@ mod tests {
 
         world.run_system_once(sync_tile_agents).unwrap();
 
-        assert_eq!(world.resource::<Map>().agents_on(&at(10, 10)), &[5]);
+        assert_eq!(
+            world.resource::<Map>().agents_on(&at(10, 10)),
+            &[AgentId(5)]
+        );
     }
 
     #[test]
@@ -60,7 +64,7 @@ mod tests {
         let e = world
             .spawn((
                 Agent {
-                    agent_id: 5,
+                    agent_id: AgentId(5),
                     ..Default::default()
                 },
                 at(10, 10),
@@ -72,7 +76,10 @@ mod tests {
         world.run_system_once(sync_tile_agents).unwrap();
 
         assert!(world.resource::<Map>().agents_on(&at(10, 10)).is_empty());
-        assert_eq!(world.resource::<Map>().agents_on(&at(11, 10)), &[5]);
+        assert_eq!(
+            world.resource::<Map>().agents_on(&at(11, 10)),
+            &[AgentId(5)]
+        );
     }
 
     /// Topmost is the last entry, mirroring `Map::peek_item`. Push order is
@@ -82,7 +89,7 @@ mod tests {
         let mut world = world_with_map();
         world.spawn((
             Agent {
-                agent_id: 1,
+                agent_id: AgentId(1),
                 ..Default::default()
             },
             at(10, 10),
@@ -91,14 +98,17 @@ mod tests {
 
         world.spawn((
             Agent {
-                agent_id: 2,
+                agent_id: AgentId(2),
                 ..Default::default()
             },
             at(10, 10),
         ));
         world.run_system_once(sync_tile_agents).unwrap();
 
-        assert_eq!(world.resource::<Map>().agents_on(&at(10, 10)), &[1, 2]);
+        assert_eq!(
+            world.resource::<Map>().agents_on(&at(10, 10)),
+            &[AgentId(1), AgentId(2)]
+        );
     }
 
     /// A tile nobody stands on answers empty rather than panicking — the gesture

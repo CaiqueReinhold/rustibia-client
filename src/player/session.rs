@@ -29,7 +29,9 @@ pub(super) fn cleanup_session(mut commands: Commands) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::AgentId;
     use crate::game_ui::WindowId;
+    use crate::items::ItemId;
     use crate::items::{InventorySlot, ItemPlacement};
     use crate::map::Position;
     use bevy::ecs::system::RunSystemOnce;
@@ -73,7 +75,7 @@ mod tests {
             source: ItemPlacement::Inventory {
                 slot: InventorySlot::Head,
             },
-            source_item_id: 1,
+            source_item_id: ItemId(1),
         };
 
         world.run_system_once(cleanup_session).unwrap();
@@ -90,7 +92,7 @@ mod tests {
     fn cleanup_clears_the_combat_target() {
         let mut world = seeded_world();
         let mut target = CombatTarget::default();
-        target.apply_click(7);
+        target.apply_click(AgentId(7));
         world.insert_resource(target);
 
         world.run_system_once(cleanup_session).unwrap();

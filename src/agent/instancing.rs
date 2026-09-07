@@ -16,6 +16,7 @@ use crate::agent::{
 };
 use crate::conf::agent::{HUD_BAR_HEIGHT, HUD_BAR_WIDTH};
 use crate::conf::ui::ui_colors;
+use crate::core::OutfitColors;
 use crate::core::OutfitId;
 use crate::core::{Appearances, InstanceManager, OutfitSprite, SpriteSheet};
 use crate::core::{MAX_LAYERS, SpriteAnimator, SpriteConfig};
@@ -92,7 +93,7 @@ pub fn spawn_agent(
     appearances: &Appearances,
     outfit_id: OutfitId,
     map: &Map,
-    outfit_colors: (u8, u8, u8, u8),
+    outfit_colors: OutfitColors,
     facing: FacingDirection,
     speed: u16,
     addons: u8,
@@ -139,10 +140,7 @@ pub fn spawn_agent(
         resolve_agent_sprite_ids(&outfit.still_sprite, 0, facing as u32, addons as u32, 0);
     instance.sprite_ids = sprite_ids;
     instance.layer_count = layer_count;
-    instance.outfit_colors = outfit_colors.0 as u32
-        | ((outfit_colors.1 as u32) << 8)
-        | ((outfit_colors.2 as u32) << 16)
-        | ((outfit_colors.3 as u32) << 24);
+    instance.outfit_colors = outfit_colors.packed();
     let bbox = &outfit.still_sprite.boxes[facing as usize];
     instance.bbox_min = bbox.min;
     instance.bbox_size = bbox.max;
@@ -425,10 +423,7 @@ pub fn update_agent_instances(
         instances.update(tag.0, |instance| {
             instance.sprite_ids = sprite_ids;
             instance.layer_count = layer_count;
-            instance.outfit_colors = agent.outfit_colors.0 as u32
-                | ((agent.outfit_colors.1 as u32) << 8)
-                | ((agent.outfit_colors.2 as u32) << 16)
-                | ((agent.outfit_colors.3 as u32) << 24);
+            instance.outfit_colors = agent.outfit_colors.packed();
             instance.bbox_min = bbox.min;
             instance.bbox_size = bbox.max;
             instance.shift = agent.shift;

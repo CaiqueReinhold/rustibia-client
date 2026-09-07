@@ -8,7 +8,10 @@ use thiserror::Error;
 use crate::{
     agent::{AgentId, FacingDirection, Health, Mana, WalkingDirection},
     conf::map::{STACK_MAX_VISIBLE_ITEMS, TILES_X, TILES_Y},
-    core::{ChatMessageType, FloatingTextType, OutfitColors, OutfitId, TextMessageType},
+    core::{
+        ChatMessageType, EffectId, FloatingTextType, MissileId, OutfitColors, OutfitId, SayTarget,
+        TextMessageType,
+    },
     game_ui::{SkillProgress, SkillType},
     items::{ContainerId, InventorySlot, ItemId},
     map::Position,
@@ -82,8 +85,7 @@ pub enum ClientMessage {
     },
     Say {
         message: String,
-        message_type: ChatMessageType,
-        target: u16,
+        target: SayTarget,
     },
     RequestChannels,
     OpenChannel {
@@ -123,7 +125,7 @@ const SRV_SPAWN_AGENT: u8 = 17;
 const SRV_TELEPORT_AGENT: u8 = 18;
 const SRV_CHAT_MESSAGE: u8 = 19;
 const SRV_CHANNEL_LIST: u8 = 20;
-const SRV_INTRODUCE_PLAYER: u8 = 21;
+const SRV_PRIVATE_CHAT_OPENED: u8 = 21;
 const SRV_FLOATING_TEXT: u8 = 22;
 const SRV_TARGET_LOST: u8 = 23;
 const SRV_AGENT_LIFE_UPDATED: u8 = 24;
@@ -146,7 +148,7 @@ pub enum ServerMessage {
         level: u16,
         health: Health,
         mana: Mana,
-        outfit: (OutfitId, (u8, u8, u8, u8)),
+        outfit: (OutfitId, OutfitColors),
         speed: u16,
         capacity: u32,
         inventory_head: Option<ItemId>,
@@ -228,7 +230,7 @@ pub enum ServerMessage {
         position: Position,
     },
     ChatMessage {
-        author: u16,
+        author: String,
         message_type: ChatMessageType,
         channel: u16,
         position: Option<Position>,
@@ -237,8 +239,7 @@ pub enum ServerMessage {
     ChannelList {
         channels: Vec<(u16, String)>,
     },
-    IntroducePlayer {
-        local_id: u16,
+    PrivateChatOpened {
         name: String,
     },
     FloatingText {
@@ -251,7 +252,7 @@ pub enum ServerMessage {
         seq: u32,
     },
     ShowEffect {
-        effect_id: u16,
+        effect_id: EffectId,
         position: Position,
         delta: Vec<(i8, i8)>,
     },
@@ -279,7 +280,7 @@ pub enum ServerMessage {
     LaunchMissile {
         from: Position,
         to: Position,
-        missile_id: u16,
+        missile_id: MissileId,
     },
 }
 
@@ -301,10 +302,10 @@ impl Display for ServerMessage {
                 write!(f, "TileChanged {{ position: {} }}", position)
             }
             ServerMessage::OpenContainer { container_id, .. } => {
-                write!(f, "OpenContainer {{ container_id: {} }}", container_id)
+                write!(f, "OpenContainer {{ container_id: {container_id:?} }}")
             }
             ServerMessage::UpdateContainer { container_id, .. } => {
-                write!(f, "UpdateContainer {{ container_id: {} }}", container_id)
+                write!(f, "UpdateContainer {{ container_id: {container_id:?} }}")
             }
             msg => {
                 write!(f, "{:?}", msg)
@@ -424,7 +425,7 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
         SRV_PONG => Ok(ServerMessage::Pong),
         SRV_LOGIN_ERROR => Ok(ServerMessage::LoginError),
         SRV_DESCRIBE_PLAYER => {
-            let agent_id = buf.read_u16_le()?;
+            let agent_id = AgentId(buf.read_u16_le()?);
             let position = decode_position(buf)?;
             let facing = decode_facing(buf)?;
             let name_len = buf.read_u16_le()? as usize;
@@ -438,11 +439,13 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
                 current: buf.read_u32_le()?,
                 max: buf.read_u32_le()?,
             };
-            let outfit = buf.read_u16_le()?;
-            let color1 = buf.read_u8()?;
-            let color2 = buf.read_u8()?;
-            let color3 = buf.read_u8()?;
-            let color4 = buf.read_u8()?;
+            let outfit = OutfitId(buf.read_u16_le()?);
+            let colors = OutfitColors::new(
+                buf.read_u8()?,
+                buf.read_u8()?,
+                buf.read_u8()?,
+                buf.read_u8()?,
+            );
             let speed = buf.read_u16_le()?;
             let capacity = buf.read_u32_le()?;
             let inventory_head = decode_optional_item(buf)?;
@@ -463,7 +466,7 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
                 level,
                 health,
                 mana,
-                outfit: (outfit, (color1, color2, color3, color4)),
+                outfit: (outfit, colors),
                 speed,
                 capacity,
                 inventory_head,
@@ -525,7 +528,7 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
             Ok(ServerMessage::TextMessage { text, message_type })
         }
         SRV_OPEN_CONTAINER => {
-            let container_id = buf.read_u16_le()?;
+            let container_id = ContainerId(buf.read_u16_le()?);
             let capacity = buf.read_u8()?;
             let has_parent = buf.read_u8()? != 0;
             let title_len = buf.read_u8()? as usize;
@@ -540,7 +543,7 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
             })
         }
         SRV_UPDATE_CONTAINER => {
-            let container_id = buf.read_u16_le()?;
+            let container_id = ContainerId(buf.read_u16_le()?);
             let items = decode_items(buf)?;
             Ok(ServerMessage::UpdateContainer {
                 container_id,
@@ -548,7 +551,7 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
             })
         }
         SRV_CONTAINER_CLOSED => {
-            let container_id = buf.read_u16_le()?;
+            let container_id = ContainerId(buf.read_u16_le()?);
             Ok(ServerMessage::ContainerClosed { container_id })
         }
         SRV_PLAYER_WALK_DENIED => Ok(ServerMessage::PlayerWalkDenied),
@@ -565,36 +568,38 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
             Ok(ServerMessage::PlayerCapacityUpdated { capacity })
         }
         SRV_AGENT_DIRECTION_CHANGED => Ok(ServerMessage::AgentChangedDirection {
-            agent_id: buf.read_u16_le()?,
+            agent_id: AgentId(buf.read_u16_le()?),
             facing: decode_facing(buf)?,
         }),
         SRV_REMOVE_AGENT => Ok(ServerMessage::RemoveAgent {
-            agent_id: buf.read_u16_le()?,
+            agent_id: AgentId(buf.read_u16_le()?),
         }),
         SRV_TARGET_LOST => Ok(ServerMessage::TargetLost {
             seq: buf.read_u32_le()?,
         }),
         SRV_MOVE_AGENT => Ok(ServerMessage::MoveAgent {
-            agent_id: buf.read_u16_le()?,
+            agent_id: AgentId(buf.read_u16_le()?),
             direction: decode_direction(buf)?,
             from: decode_position(buf)?,
         }),
         SRV_SPAWN_AGENT => {
-            let agent_id = buf.read_u16_le()?;
+            let agent_id = AgentId(buf.read_u16_le()?);
             let position = decode_position(buf)?;
             let facing = decode_facing(buf)?;
             let name_len = buf.read_u16_le()? as usize;
             let name = buf.read_string(name_len)?;
             let health = buf.read_u32_le()?;
-            let outfit_id = buf.read_u16_le()?;
-            let color1 = buf.read_u8()?;
-            let color2 = buf.read_u8()?;
-            let color3 = buf.read_u8()?;
-            let color4 = buf.read_u8()?;
+            let outfit_id = OutfitId(buf.read_u16_le()?);
+            let colors = OutfitColors::new(
+                buf.read_u8()?,
+                buf.read_u8()?,
+                buf.read_u8()?,
+                buf.read_u8()?,
+            );
             let speed = buf.read_u16_le()?;
             Ok(ServerMessage::SpawnAgent {
                 agent_id,
-                outfit: (outfit_id, (color1, color2, color3, color4)),
+                outfit: (outfit_id, colors),
                 position,
                 facing,
                 name,
@@ -603,11 +608,12 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
             })
         }
         SRV_TELEPORT_AGENT => Ok(ServerMessage::TeleportAgent {
-            agent_id: buf.read_u16_le()?,
+            agent_id: AgentId(buf.read_u16_le()?),
             position: decode_position(buf)?,
         }),
         SRV_CHAT_MESSAGE => {
-            let author = buf.read_u16_le()?;
+            let author_len = buf.read_u16_le()? as usize;
+            let author = buf.read_string(author_len)?;
             let message_type = decode_chat_message_type(buf.read_u8()?)?;
             let channel = buf.read_u16_le()?;
             let position = decode_optional_position(buf)?;
@@ -632,11 +638,10 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
             }
             Ok(ServerMessage::ChannelList { channels })
         }
-        SRV_INTRODUCE_PLAYER => {
-            let local_id = buf.read_u16_le()?;
+        SRV_PRIVATE_CHAT_OPENED => {
             let name_len = buf.read_u16_le()? as usize;
             let name = buf.read_string(name_len)?;
-            Ok(ServerMessage::IntroducePlayer { local_id, name })
+            Ok(ServerMessage::PrivateChatOpened { name })
         }
         SRV_FLOATING_TEXT => {
             let text_len = buf.read_u16_le()? as usize;
@@ -652,7 +657,7 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
             })
         }
         SRV_AGENT_LIFE_UPDATED => {
-            let agent_id = buf.read_u16_le()?;
+            let agent_id = AgentId(buf.read_u16_le()?);
             let current = buf.read_u32_le()?;
             let max = buf.read_u32_le()?;
             Ok(ServerMessage::AgentLifeChanged {
@@ -662,7 +667,7 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
             })
         }
         SRV_AGENT_MANA_CHANGED => {
-            let agent_id = buf.read_u16_le()?;
+            let agent_id = AgentId(buf.read_u16_le()?);
             let current = buf.read_u32_le()?;
             let max = buf.read_u32_le()?;
             Ok(ServerMessage::AgentManaChanged {
@@ -702,7 +707,7 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
             experience: buf.read_u64_le()?,
         }),
         SRV_SHOW_EFFECT => {
-            let effect_id = buf.read_u16_le()?;
+            let effect_id = EffectId(buf.read_u16_le()?);
             let position = decode_position(buf)?;
             let delta = decode_position_delta(buf)?;
             Ok(ServerMessage::ShowEffect {
@@ -714,7 +719,7 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
         SRV_LAUNCH_MISSILE => {
             let from = decode_position(buf)?;
             let to = decode_position(buf)?;
-            let missile_id = buf.read_u16_le()?;
+            let missile_id = MissileId(buf.read_u16_le()?);
             Ok(ServerMessage::LaunchMissile {
                 from,
                 to,
@@ -735,7 +740,7 @@ fn decode_tile(buf: &mut Reader) -> Result<ItemStack, MessageDecodeError> {
         }
         let amount = buf.read_u8()?;
         if i < STACK_MAX_VISIBLE_ITEMS {
-            tile[i] = Some((id, amount));
+            tile[i] = Some((ItemId(id), amount));
             i += 1;
         }
     }
@@ -750,7 +755,7 @@ fn decode_items(buf: &mut Reader) -> Result<Box<[Option<(ItemId, u8)>]>, Message
             break;
         }
         let amount = buf.read_u8()?;
-        items.push(Some((id, amount)));
+        items.push(Some((ItemId(id), amount)));
     }
     Ok(items.into())
 }
@@ -826,7 +831,7 @@ fn decode_optional_item(buf: &mut Reader) -> Result<Option<ItemId>, MessageDecod
     if item_id == 0xFFFF {
         Ok(None)
     } else {
-        Ok(Some(item_id))
+        Ok(Some(ItemId(item_id)))
     }
 }
 
@@ -853,7 +858,7 @@ fn decode_position_delta(buf: &mut Reader) -> Result<Vec<(i8, i8)>, MessageDecod
 }
 
 fn encode_optional_agent(agent_id: Option<AgentId>, dst: &mut BytesMut) {
-    dst.put_u16_le(agent_id.unwrap_or(0xFFFF));
+    dst.put_u16_le(agent_id.map_or(0xFFFF, |id| id.0));
 }
 
 fn decode_direction(buf: &mut Reader) -> Result<WalkingDirection, MessageDecodeError> {
@@ -899,7 +904,7 @@ impl Encoder for GameMessageCodec {
             } => {
                 dst.put_u8(CLI_MOVE_ITEM);
                 encode_position(from, dst);
-                dst.put_u16_le(item_id);
+                dst.put_u16_le(item_id.0);
                 dst.put_u8(amount);
                 dst.put_u8(stack_index);
                 encode_position(to, dst);
@@ -914,16 +919,16 @@ impl Encoder for GameMessageCodec {
             } => {
                 dst.put_u8(CLI_USE_ITEM);
                 encode_position(position, dst);
-                dst.put_u16_le(item_id);
+                dst.put_u16_le(item_id.0);
                 dst.put_u8(stack_index);
             }
             ClientMessage::CloseContainer { container_id } => {
                 dst.put_u8(CLI_CLOSE_CONTAINER);
-                dst.put_u16_le(container_id);
+                dst.put_u16_le(container_id.0);
             }
             ClientMessage::OpenParentContainer { container_id } => {
                 dst.put_u8(CLI_OPEN_PARENT_CONTAINER);
-                dst.put_u16_le(container_id);
+                dst.put_u16_le(container_id.0);
             }
             ClientMessage::ChangeDirection { direction } => {
                 dst.put_u8(CLI_CHANGE_DIRECTION);
@@ -941,10 +946,10 @@ impl Encoder for GameMessageCodec {
             } => {
                 dst.put_u8(CLI_USE_ITEM_WITH);
                 encode_position(source, dst);
-                dst.put_u16_le(source_item_id);
+                dst.put_u16_le(source_item_id.0);
                 dst.put_u8(source_index);
                 encode_position(target, dst);
-                dst.put_u16_le(target_item_id);
+                dst.put_u16_le(target_item_id.0);
                 dst.put_u8(target_index);
                 encode_optional_agent(target_agent, dst);
             }
@@ -952,14 +957,18 @@ impl Encoder for GameMessageCodec {
                 dst.put_u8(CLI_LOOK);
                 encode_position(position, dst);
             }
-            ClientMessage::Say {
-                message,
-                message_type,
-                target,
-            } => {
+            ClientMessage::Say { message, target } => {
                 dst.put_u8(CLI_SAY);
-                dst.put_u8(encode_chat_message_type(message_type));
-                dst.put_u16_le(target);
+                dst.put_u8(encode_chat_message_type(target.message_type()));
+                match &target {
+                    SayTarget::Local => {}
+                    SayTarget::Channel(channel) => dst.put_u16_le(*channel),
+                    SayTarget::Player(name) => {
+                        let name_bytes = name.as_bytes();
+                        dst.put_u16_le(name_bytes.len() as u16);
+                        dst.put_slice(name_bytes);
+                    }
+                }
                 // Trailing: the server derives the length from the frame, matching
                 // CLI_LOGIN. Do not write an inline length here.
                 dst.put_slice(message.as_bytes());
@@ -1058,42 +1067,49 @@ mod tests {
     }
 
     #[test]
-    fn say_encodes_type_target_then_trailing_message() {
+    fn say_encodes_type_then_trailing_message() {
         let payload = payload_of(ClientMessage::Say {
             message: "hello".to_owned(),
-            message_type: ChatMessageType::Local,
-            target: 0,
+            target: SayTarget::Local,
         });
         assert_eq!(payload[0], CLI_SAY);
         assert_eq!(payload[1], 0x01, "Local");
-        assert_eq!(u16::from_le_bytes([payload[2], payload[3]]), 0);
         assert_eq!(
-            &payload[4..],
+            &payload[2..],
             b"hello",
             "message is trailing, no inline length"
         );
     }
 
     #[test]
-    fn say_carries_the_channel_in_target() {
+    fn say_carries_the_channel_for_a_channel_line() {
         let payload = payload_of(ClientMessage::Say {
             message: "hi".to_owned(),
-            message_type: ChatMessageType::Channel,
-            target: 7,
+            target: SayTarget::Channel(7),
         });
         assert_eq!(payload[1], 0x03, "Channel");
         assert_eq!(u16::from_le_bytes([payload[2], payload[3]]), 7);
+        assert_eq!(&payload[4..], b"hi");
     }
 
+    /// The recipient is a length-prefixed name, so the message can only be found after
+    /// it. The server decodes this same literal frame in
+    /// `decode_private_say_carries_the_recipient_name`.
     #[test]
-    fn private_say_uses_type_two() {
+    fn encodes_a_private_say() {
         let payload = payload_of(ClientMessage::Say {
-            message: "psst".to_owned(),
-            message_type: ChatMessageType::Private,
-            target: 3,
+            message: "hi".to_owned(),
+            target: SayTarget::Player("Rizael".to_owned()),
         });
+        assert_eq!(payload[0], CLI_SAY);
         assert_eq!(payload[1], 0x02, "Private");
-        assert_eq!(u16::from_le_bytes([payload[2], payload[3]]), 3);
+        assert_eq!(
+            u16::from_le_bytes([payload[2], payload[3]]),
+            6,
+            "name length"
+        );
+        assert_eq!(&payload[4..10], b"Rizael");
+        assert_eq!(&payload[10..], b"hi");
     }
 
     #[test]
@@ -1127,7 +1143,7 @@ mod tests {
     #[test]
     fn set_target_encodes_some_and_none() {
         let payload = payload_of(ClientMessage::SetTarget {
-            agent_id: Some(7),
+            agent_id: Some(AgentId(7)),
             seq: 5,
         });
         assert_eq!(payload[0], 17);
@@ -1149,12 +1165,12 @@ mod tests {
     fn use_item_with_encodes_the_target_agent_last() {
         let payload = payload_of(ClientMessage::UseItemWith {
             source: Position { x: 10, y: 11, z: 7 },
-            source_item_id: 1234,
+            source_item_id: ItemId(1234),
             source_index: 0,
             target: Position { x: 12, y: 13, z: 7 },
-            target_item_id: 5678,
+            target_item_id: ItemId(5678),
             target_index: 1,
-            target_agent: Some(42),
+            target_agent: Some(AgentId(42)),
         });
 
         assert_eq!(&payload[payload.len() - 2..], &[42, 0]);
@@ -1164,10 +1180,10 @@ mod tests {
     fn no_target_agent_encodes_as_the_sentinel() {
         let payload = payload_of(ClientMessage::UseItemWith {
             source: Position { x: 10, y: 11, z: 7 },
-            source_item_id: 1234,
+            source_item_id: ItemId(1234),
             source_index: 0,
             target: Position { x: 12, y: 13, z: 7 },
-            target_item_id: 5678,
+            target_item_id: ItemId(5678),
             target_index: 1,
             target_agent: None,
         });
@@ -1188,7 +1204,8 @@ mod tests {
     #[test]
     fn decodes_a_chat_message() {
         let mut payload = vec![SRV_CHAT_MESSAGE];
-        payload.extend_from_slice(&3u16.to_le_bytes()); // author
+        payload.extend_from_slice(&6u16.to_le_bytes()); // author length
+        payload.extend_from_slice(b"Rizael");
         payload.push(0x03); // Channel
         payload.extend_from_slice(&7u16.to_le_bytes()); // channel
         payload.push(0x00); // position absent
@@ -1205,7 +1222,7 @@ mod tests {
                 position,
                 text,
             } => {
-                assert_eq!(author, 3);
+                assert_eq!(author, "Rizael");
                 assert!(matches!(message_type, ChatMessageType::Channel));
                 assert_eq!(channel, 7);
                 assert_eq!(position, None, "no position bytes may be consumed");
@@ -1222,7 +1239,8 @@ mod tests {
     #[test]
     fn decodes_a_local_chat_message() {
         let mut payload = vec![SRV_CHAT_MESSAGE];
-        payload.extend_from_slice(&3u16.to_le_bytes()); // author
+        payload.extend_from_slice(&6u16.to_le_bytes()); // author length
+        payload.extend_from_slice(b"Rizael");
         payload.push(0x01); // Local
         payload.extend_from_slice(&0u16.to_le_bytes()); // channel
         payload.push(0x01); // position present
@@ -1251,20 +1269,16 @@ mod tests {
     }
 
     #[test]
-    fn decodes_introduce_player() {
-        let mut payload = vec![SRV_INTRODUCE_PLAYER];
-        payload.extend_from_slice(&9u16.to_le_bytes());
+    fn decodes_private_chat_opened() {
+        let mut payload = vec![SRV_PRIVATE_CHAT_OPENED];
         payload.extend_from_slice(&6u16.to_le_bytes());
         payload.extend_from_slice(b"Rizael");
 
         let mut codec = GameMessageCodec {};
         let mut buf = frame(&payload);
         match codec.decode(&mut buf).unwrap().unwrap() {
-            ServerMessage::IntroducePlayer { local_id, name } => {
-                assert_eq!(local_id, 9);
-                assert_eq!(name, "Rizael");
-            }
-            other => panic!("expected IntroducePlayer, got {other:?}"),
+            ServerMessage::PrivateChatOpened { name } => assert_eq!(name, "Rizael"),
+            other => panic!("expected PrivateChatOpened, got {other:?}"),
         }
         assert!(buf.is_empty());
     }
@@ -1400,8 +1414,7 @@ mod tests {
     /// buffer and panic, killing the connection task.
     #[test]
     fn rejects_a_length_field_past_the_end_of_the_payload() {
-        let mut payload = vec![SRV_INTRODUCE_PLAYER];
-        payload.extend_from_slice(&9u16.to_le_bytes());
+        let mut payload = vec![SRV_PRIVATE_CHAT_OPENED];
         payload.extend_from_slice(&600u16.to_le_bytes()); // claims 600 bytes of name
         payload.extend_from_slice(b"Rizael");
 
@@ -1470,7 +1483,7 @@ mod tests {
     #[test]
     fn rejects_an_unknown_chat_message_type() {
         let mut payload = vec![SRV_CHAT_MESSAGE];
-        payload.extend_from_slice(&0u16.to_le_bytes());
+        payload.extend_from_slice(&0u16.to_le_bytes()); // author length
         payload.push(0x09); // not a valid type
         payload.extend_from_slice(&0u16.to_le_bytes());
         payload.push(0x00); // position absent
@@ -1509,7 +1522,7 @@ mod tests {
                 position,
                 delta,
             })) => {
-                assert_eq!(effect_id, 1);
+                assert_eq!(effect_id, EffectId(1));
                 assert_eq!(position, Position::new(1028, 1029, 7));
                 delta
             }

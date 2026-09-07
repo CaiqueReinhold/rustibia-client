@@ -112,7 +112,7 @@ pub fn on_launch_missile(
     // ends the session.
     let Some(sprite) = appearances.get_missile(event.missile_id) else {
         warn!(
-            "server sent missile {}, which this client\'s assets do not have",
+            "server sent missile {:?}, which this client\'s assets do not have",
             event.missile_id
         );
         return;

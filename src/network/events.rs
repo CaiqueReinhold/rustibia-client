@@ -3,7 +3,10 @@ use bevy::prelude::*;
 use crate::{
     agent::{AgentId, FacingDirection, Health, Mana, WalkingDirection},
     conf::map::{TILES_X, TILES_Y},
-    core::{ChatMessageType, FloatingTextType, OutfitColors, OutfitId, TextMessageType},
+    core::{
+        ChatMessageType, EffectId, FloatingTextType, MissileId, OutfitColors, OutfitId,
+        TextMessageType,
+    },
     game_ui::{SkillProgress, SkillType},
     items::{ContainerId, InventorySlot, ItemId},
     map::Position,
@@ -32,7 +35,7 @@ pub struct SpawnPlayer {
     pub _level: u16,
     pub health: Health,
     pub mana: Mana,
-    pub outfit: (OutfitId, (u8, u8, u8, u8)),
+    pub outfit: (OutfitId, OutfitColors),
     pub speed: u16,
     pub capacity: u32,
     pub inventory_head: Option<ItemId>,
@@ -80,9 +83,10 @@ pub struct ShowTextMessage {
 #[derive(Event, Debug)]
 pub struct ShowFloatingText {
     pub text: String,
-    /// The block key, not the anchor. Only ever `Some` for text this client raised
-    /// itself off `ChatMessage`; the wire names no speaker.
-    pub agent_id: Option<AgentId>,
+    /// The block key, not the anchor: consecutive lines from the same speaker on the
+    /// same tile merge into one block. Only ever `Some` for text this client raised
+    /// itself off `ChatMessage`; the wire names no speaker on a damage number.
+    pub speaker: Option<String>,
     pub position: Position,
     pub text_type: FloatingTextType,
     pub color: Option<(u8, u8, u8)>,
@@ -164,7 +168,7 @@ pub struct SpawnAgent {
 
 #[derive(Event, Debug)]
 pub struct ChatMessageReceived {
-    pub author: u16,
+    pub author: String,
     pub message_type: ChatMessageType,
     pub channel: u16,
     pub position: Option<Position>,
@@ -177,28 +181,27 @@ pub struct ChannelListReceived {
 }
 
 #[derive(Event, Debug)]
-pub struct PlayerIntroduced {
-    pub local_id: u16,
+pub struct PrivateChatOpened {
     pub name: String,
 }
 
 #[derive(Event, Debug)]
 pub struct AgentLifeChanged {
-    pub agent_id: u16,
+    pub agent_id: AgentId,
     pub current: u32,
     pub max: u32,
 }
 
 #[derive(Event, Debug)]
 pub struct AgentManaChanged {
-    pub agent_id: u16,
+    pub agent_id: AgentId,
     pub current: u32,
     pub max: u32,
 }
 
 #[derive(Event, Debug)]
 pub struct ShowEffect {
-    pub effect_id: u16,
+    pub effect_id: EffectId,
     pub position: Position,
     pub delta: Vec<(i8, i8)>,
 }
@@ -207,7 +210,7 @@ pub struct ShowEffect {
 pub struct LaunchMissile {
     pub from: Position,
     pub to: Position,
-    pub missile_id: u16,
+    pub missile_id: MissileId,
 }
 
 #[derive(Event, Debug)]
@@ -397,8 +400,8 @@ pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
         ServerMessage::ChannelList { channels } => {
             commands.trigger(ChannelListReceived { channels });
         }
-        ServerMessage::IntroducePlayer { local_id, name } => {
-            commands.trigger(PlayerIntroduced { local_id, name });
+        ServerMessage::PrivateChatOpened { name } => {
+            commands.trigger(PrivateChatOpened { name });
         }
         ServerMessage::FloatingText {
             text,
@@ -408,7 +411,7 @@ pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
         } => {
             commands.trigger(ShowFloatingText {
                 text,
-                agent_id: None,
+                speaker: None,
                 position,
                 text_type,
                 color,

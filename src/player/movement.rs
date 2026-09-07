@@ -333,6 +333,8 @@ pub fn fire_pending_action(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::AgentId;
+    use crate::items::ItemId;
     use crate::items::{Item, ItemConfig, ItemFlag};
     use crate::map::Position;
     use bevy::ecs::system::RunSystemOnce;
@@ -345,7 +347,7 @@ mod tests {
     /// A world holding a player on a walkable strip, its walk cooldown already spent.
     fn a_world_ready_to_walk() -> (World, Entity) {
         let ground = Arc::new(ItemConfig {
-            id: 1,
+            id: ItemId(1),
             flags: vec![ItemFlag::Ground],
             friction: Some(150),
             slot: None,
@@ -360,16 +362,18 @@ mod tests {
         let entity = world
             .spawn((
                 Agent {
-                    agent_id: 2,
+                    agent_id: AgentId(2),
                     speed: 120,
                     ..Default::default()
                 },
-                Player { agent_id: 2 },
+                Player {
+                    agent_id: AgentId(2),
+                },
                 at(1027, 1028),
                 Transform::default(),
             ))
             .id();
-        map.add_agent(2, entity);
+        map.add_agent(AgentId(2), entity);
         world.insert_resource(map);
         world.insert_resource(Time::<()>::default());
 

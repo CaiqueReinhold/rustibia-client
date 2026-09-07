@@ -14,7 +14,10 @@ use crate::{
     player::{ContainerNavTarget, MouseHoverState},
 };
 
-pub type ContainerId = u16;
+/// An open container as this player's session names it. Session-local to the server, and reused.
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+#[repr(transparent)]
+pub struct ContainerId(pub u16);
 
 #[derive(Resource)]
 pub struct PreventContainerCloseEvent {
@@ -408,16 +411,21 @@ mod tests {
 
     #[test]
     fn resolves_the_items_up_to_the_first_empty_slot() {
-        let configs = configs(&[100, 200]);
+        let configs = configs(&[ItemId(100), ItemId(200)]);
         let items = as_item_vec(
-            &[Some((100, 1)), Some((200, 5)), None, Some((100, 1))],
+            &[
+                Some((ItemId(100), 1)),
+                Some((ItemId(200), 5)),
+                None,
+                Some((ItemId(100), 1)),
+            ],
             &configs,
         )
         .expect("all ids are known");
 
         assert_eq!(items.len(), 2, "the empty slot ends the container");
-        assert_eq!(items[0].config.id, 100);
-        assert_eq!(items[1].config.id, 200);
+        assert_eq!(items[0].config.id, ItemId(100));
+        assert_eq!(items[1].config.id, ItemId(200));
         assert_eq!(items[1].amount, 5);
     }
 
@@ -426,7 +434,7 @@ mod tests {
     /// `ClientOutdated`.
     #[test]
     fn rejects_the_whole_container_on_an_unknown_id() {
-        let configs = configs(&[100]);
-        assert!(as_item_vec(&[Some((100, 1)), Some((999, 1))], &configs).is_none());
+        let configs = configs(&[ItemId(100)]);
+        assert!(as_item_vec(&[Some((ItemId(100), 1)), Some((ItemId(999), 1))], &configs).is_none());
     }
 }

@@ -199,12 +199,13 @@ pub fn move_dragged_item(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::items::ItemId;
     use crate::items::{ItemConfig, ItemFlag};
 
     fn item(flags: Vec<ItemFlag>, amount: u32) -> Item {
         Item::new(
             Arc::new(ItemConfig {
-                id: 2148,
+                id: ItemId(2148),
                 flags,
                 friction: None,
                 slot: None,

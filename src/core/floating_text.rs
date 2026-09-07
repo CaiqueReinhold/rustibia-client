@@ -18,7 +18,6 @@ use bevy::prelude::*;
 use bevy::text::FontSmoothing;
 use bevy_text_outline::TextOutline;
 
-use crate::agent::AgentId;
 use crate::camera::GameCamera;
 use crate::conf::floating_text as ft;
 use crate::conf::map::TILE_SIZE;
@@ -42,7 +41,7 @@ pub enum FloatingTextType {
 #[derive(Component, Debug)]
 pub struct FloatingText {
     pub kind: FloatingTextType,
-    pub speaker: Option<AgentId>,
+    pub speaker: Option<String>,
     /// The tile this text is pinned to, for life.
     pub anchor: Position,
     /// `Time::elapsed` at spawn. The collision sort key.
@@ -264,7 +263,7 @@ pub fn on_floating_text(
                     commands.spawn((
                         FloatingText {
                             kind: FloatingTextType::HitPoints,
-                            speaker: event.agent_id,
+                            speaker: event.speaker.clone(),
                             anchor: anchor.clone(),
                             spawned_at: now,
                             offset_y,
@@ -298,9 +297,7 @@ pub fn on_floating_text(
             let existing = speech_q
                 .iter()
                 .find(|(_, ft, _, _)| {
-                    ft.anchor == anchor
-                        && ft.kind == event.text_type
-                        && ft.speaker == event.agent_id
+                    ft.anchor == anchor && ft.kind == event.text_type && ft.speaker == event.speaker
                 })
                 .map(|(entity, _, _, _)| entity);
 
@@ -326,7 +323,7 @@ pub fn on_floating_text(
             commands.spawn((
                 FloatingText {
                     kind: event.text_type,
-                    speaker: event.agent_id,
+                    speaker: event.speaker.clone(),
                     anchor: anchor.clone(),
                     spawned_at: now,
                     offset_y: 0.0,
@@ -559,6 +556,7 @@ pub fn position_floating_texts(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::AgentId;
 
     #[test]
     fn an_explicit_colour_wins_over_the_default() {
@@ -971,11 +969,9 @@ mod tests {
     use crate::game_ui::{GameUiAssets, GameViewport};
     use crate::network::events::ShowFloatingText;
 
-    use crate::agent::AgentId;
-
     /// The agent every observer test speaks and bleeds through, standing on
     /// `SPEAKER_TILE`.
-    const SPEAKER: AgentId = 1;
+    const SPEAKER: &str = "Rizael";
 
     fn speaker_tile() -> Position {
         Position::new(10, 10, 7)
@@ -1014,7 +1010,7 @@ mod tests {
         let mut world = observer_world();
         world.trigger(ShowFloatingText {
             text: "-25".to_owned(),
-            agent_id: Some(SPEAKER),
+            speaker: Some(SPEAKER.to_owned()),
             position: speaker_tile(),
             text_type: FloatingTextType::HitPoints,
             color: None,
@@ -1050,7 +1046,7 @@ mod tests {
             let mut world = observer_world();
             world.trigger(ShowFloatingText {
                 text: "-25".to_owned(),
-                agent_id: Some(SPEAKER),
+                speaker: Some(SPEAKER.to_owned()),
                 position: speaker_tile(),
                 text_type: kind,
                 color: None,
@@ -1074,7 +1070,7 @@ mod tests {
         for text in ["-12", "-8"] {
             world.trigger(ShowFloatingText {
                 text: text.to_owned(),
-                agent_id: Some(SPEAKER),
+                speaker: Some(SPEAKER.to_owned()),
                 position: speaker_tile(),
                 text_type: FloatingTextType::HitPoints,
                 color: Some((255, 255, 255)),
@@ -1091,7 +1087,7 @@ mod tests {
         for text in ["hi there", "how are you"] {
             world.trigger(ShowFloatingText {
                 text: text.to_owned(),
-                agent_id: Some(SPEAKER),
+                speaker: Some(SPEAKER.to_owned()),
                 position: speaker_tile(),
                 text_type: FloatingTextType::PlayerMessage,
                 color: None,
@@ -1108,7 +1104,7 @@ mod tests {
     #[test]
     fn a_message_on_another_tile_starts_its_own_block() {
         let mut world = observer_world();
-        const NEIGHBOUR: AgentId = 2;
+        const NEIGHBOUR: &str = "Kestrel";
         let neighbour_tile = Position::new(11, 10, 7);
 
         for (speaker, tile, text) in [
@@ -1117,7 +1113,7 @@ mod tests {
         ] {
             world.trigger(ShowFloatingText {
                 text: text.to_owned(),
-                agent_id: Some(speaker),
+                speaker: Some(speaker.to_owned()),
                 position: tile,
                 text_type: FloatingTextType::PlayerMessage,
                 color: None,
@@ -1139,7 +1135,7 @@ mod tests {
         for tile in [speaker_tile(), walked_to.clone()] {
             world.trigger(ShowFloatingText {
                 text: "hi".to_owned(),
-                agent_id: Some(SPEAKER),
+                speaker: Some(SPEAKER.to_owned()),
                 position: tile,
                 text_type: FloatingTextType::PlayerMessage,
                 color: None,
@@ -1167,7 +1163,7 @@ mod tests {
         let mut world = observer_world();
         world.trigger(ShowFloatingText {
             text: "-25".to_owned(),
-            agent_id: None,
+            speaker: None,
             position: speaker_tile(),
             text_type: FloatingTextType::HitPoints,
             color: None,
@@ -1183,7 +1179,7 @@ mod tests {
         for i in 0..=ft::SPEECH_MAX_LINES {
             world.trigger(ShowFloatingText {
                 text: format!("line {i}"),
-                agent_id: Some(SPEAKER),
+                speaker: Some(SPEAKER.to_owned()),
                 position: speaker_tile(),
                 text_type: FloatingTextType::PlayerMessage,
                 color: None,
@@ -1216,7 +1212,7 @@ mod tests {
         ] {
             world.trigger(ShowFloatingText {
                 text: "hi".to_owned(),
-                agent_id: Some(SPEAKER),
+                speaker: Some(SPEAKER.to_owned()),
                 position: speaker_tile(),
                 text_type: kind,
                 color: None,
@@ -1238,12 +1234,12 @@ mod tests {
     #[test]
     fn two_speakers_on_one_tile_get_a_block_each() {
         let mut world = observer_world();
-        const NEIGHBOUR: AgentId = 2;
+        const NEIGHBOUR: &str = "Kestrel";
 
         for speaker in [SPEAKER, NEIGHBOUR] {
             world.trigger(ShowFloatingText {
                 text: "hi".to_owned(),
-                agent_id: Some(speaker),
+                speaker: Some(speaker.to_owned()),
                 position: speaker_tile(),
                 text_type: FloatingTextType::PlayerMessage,
                 color: None,
@@ -1261,7 +1257,7 @@ mod tests {
         for text in ["first", "second"] {
             world.trigger(ShowFloatingText {
                 text: text.to_owned(),
-                agent_id: Some(SPEAKER),
+                speaker: Some(SPEAKER.to_owned()),
                 position: speaker_tile(),
                 text_type: FloatingTextType::CreatureSay,
                 color: None,
@@ -1286,7 +1282,7 @@ mod tests {
         let mut world = observer_world();
         world.trigger(ShowFloatingText {
             text: "-1".to_owned(),
-            agent_id: Some(SPEAKER),
+            speaker: Some(SPEAKER.to_owned()),
             position: speaker_tile(),
             text_type: FloatingTextType::HitPoints,
             color: None,
@@ -1304,7 +1300,7 @@ mod tests {
         let mut world = observer_world();
         world.trigger(ShowFloatingText {
             text: "-1".to_owned(),
-            agent_id: Some(SPEAKER),
+            speaker: Some(SPEAKER.to_owned()),
             position: speaker_tile(),
             text_type: FloatingTextType::HitPoints,
             color: None,
@@ -1327,7 +1323,7 @@ mod tests {
         // A short line, then a long one that outlives it.
         world.trigger(ShowFloatingText {
             text: "hi".to_owned(),
-            agent_id: Some(SPEAKER),
+            speaker: Some(SPEAKER.to_owned()),
             position: speaker_tile(),
             text_type: FloatingTextType::PlayerMessage,
             color: None,
@@ -1335,7 +1331,7 @@ mod tests {
         world.flush();
         world.trigger(ShowFloatingText {
             text: "x".repeat(200),
-            agent_id: Some(SPEAKER),
+            speaker: Some(SPEAKER.to_owned()),
             position: speaker_tile(),
             text_type: FloatingTextType::PlayerMessage,
             color: None,
@@ -1360,7 +1356,7 @@ mod tests {
         let hit = |world: &mut World| {
             world.trigger(ShowFloatingText {
                 text: "-1".to_owned(),
-                agent_id: Some(SPEAKER),
+                speaker: Some(SPEAKER.to_owned()),
                 position: speaker_tile(),
                 text_type: FloatingTextType::HitPoints,
                 color: Some((255, 255, 255)),
@@ -1387,7 +1383,7 @@ mod tests {
         let mut world = observer_world();
         world.trigger(ShowFloatingText {
             text: "hi".to_owned(),
-            agent_id: Some(SPEAKER),
+            speaker: Some(SPEAKER.to_owned()),
             position: speaker_tile(),
             text_type: FloatingTextType::PlayerMessage,
             color: None,
@@ -1408,7 +1404,7 @@ mod tests {
         let mut world = observer_world();
         world.trigger(ShowFloatingText {
             text: "hi".to_owned(),
-            agent_id: Some(SPEAKER),
+            speaker: Some(SPEAKER.to_owned()),
             position: speaker_tile(),
             text_type: FloatingTextType::PlayerMessage,
             color: None,
@@ -1558,7 +1554,9 @@ mod tests {
             GlobalTransform::from_translation(tile_centre(anchor).extend(0.0)),
         ));
         world.spawn((
-            Player { agent_id: 1 },
+            Player {
+                agent_id: AgentId(1),
+            },
             Position::new(anchor.x, anchor.y, player_z),
         ));
 
@@ -1584,7 +1582,7 @@ mod tests {
             .spawn((
                 FloatingText {
                     kind: FloatingTextType::HitPoints,
-                    speaker: Some(SPEAKER),
+                    speaker: Some(SPEAKER.to_owned()),
                     anchor: anchor.clone(),
                     spawned_at: Duration::ZERO,
                     offset_y: 0.0,
@@ -1654,7 +1652,7 @@ mod tests {
                 .spawn((
                     FloatingText {
                         kind: FloatingTextType::HitPoints,
-                        speaker: Some(SPEAKER),
+                        speaker: Some(SPEAKER.to_owned()),
                         anchor: anchor.clone(),
                         spawned_at: Duration::ZERO,
                         offset_y: 0.0,
@@ -1712,7 +1710,7 @@ mod tests {
             .spawn((
                 FloatingText {
                     kind: FloatingTextType::HitPoints,
-                    speaker: Some(SPEAKER),
+                    speaker: Some(SPEAKER.to_owned()),
                     anchor: anchor.clone(),
                     spawned_at: Duration::ZERO,
                     offset_y: 0.0,
@@ -1758,7 +1756,7 @@ mod tests {
             .spawn((
                 FloatingText {
                     kind: FloatingTextType::HitPoints,
-                    speaker: Some(SPEAKER),
+                    speaker: Some(SPEAKER.to_owned()),
                     anchor: anchor.clone(),
                     spawned_at: Duration::ZERO,
                     offset_y: 0.0,
@@ -1785,7 +1783,7 @@ mod tests {
             .spawn((
                 FloatingText {
                     kind: FloatingTextType::HitPoints,
-                    speaker: Some(SPEAKER),
+                    speaker: Some(SPEAKER.to_owned()),
                     anchor: anchor.clone(),
                     spawned_at: Duration::ZERO,
                     offset_y: 0.0,
@@ -1832,7 +1830,7 @@ mod tests {
                 .spawn((
                     FloatingText {
                         kind: FloatingTextType::HitPoints,
-                        speaker: Some(SPEAKER),
+                        speaker: Some(SPEAKER.to_owned()),
                         anchor: anchor.clone(),
                         spawned_at: Duration::ZERO,
                         offset_y,

@@ -3,10 +3,10 @@ use bevy::prelude::*;
 use crate::conf::ui::chat as conf;
 use crate::core::{ChatMessageType, FloatingTextType};
 use crate::game_ui::chat::events::{AppendChatMessage, CloseChannel, OpenChannel};
-use crate::game_ui::chat::routing::{channel_for, resolve_author};
+use crate::game_ui::chat::routing::channel_for;
 use crate::game_ui::chat::state::{ChannelConfig, ChannelId, ChatMessage, ChatState};
 use crate::network::events::{
-    ChannelListReceived, ChatMessageReceived, PlayerIntroduced, ShowFloatingText,
+    ChannelListReceived, ChatMessageReceived, PrivateChatOpened, ShowFloatingText,
 };
 use crate::network::{ClientMessage, SendMessage};
 
@@ -28,47 +28,38 @@ pub fn on_channel_list_received(event: On<ChannelListReceived>, mut state: ResMu
         .collect();
 }
 
-/// Records the name only. It must NOT open a tab: the server also sends this ahead of
-/// local and channel messages from unknown authors, so opening here would spawn a
-/// private tab for anyone who speaks near you.
-pub fn on_player_introduced(
-    event: On<PlayerIntroduced>,
+/// Opens the tab the player asked for. Unlike the introduction it replaces, this
+/// message answers `CLI_OPEN_PM_CHAT` and nothing else, so it can open a tab outright
+/// without mistaking a stranger's first message for a request.
+pub fn on_private_chat_opened(
+    event: On<PrivateChatOpened>,
     mut state: ResMut<ChatState>,
     mut commands: Commands,
 ) {
-    state
-        .player_names
-        .insert(event.local_id, event.name.clone());
-
-    if state.pending_pm_open.as_deref() == Some(event.name.as_str()) {
-        state.pending_pm_open = None;
-        commands.trigger(OpenChannel {
-            config: ChannelConfig {
-                id: ChannelId::Private(event.local_id),
-                name: event.name.clone(),
-                closeable: true,
-                text_color: Color::Srgba(conf::LOCAL_CHANNEL_COLOR),
-            },
-        });
-    }
+    let id = state.pm_tab(&event.name);
+    commands.trigger(OpenChannel {
+        config: ChannelConfig {
+            id,
+            name: event.name.clone(),
+            closeable: true,
+            text_color: Color::Srgba(conf::LOCAL_CHANNEL_COLOR),
+        },
+    });
 }
 
 pub fn on_chat_message_received(
     event: On<ChatMessageReceived>,
-    state: Res<ChatState>,
+    mut state: ResMut<ChatState>,
     mut commands: Commands,
 ) {
-    let channel_id = channel_for(event.message_type, event.channel, event.author);
+    let channel_id = channel_for(&mut state, event.message_type, event.channel, &event.author);
 
-    let author = resolve_author(&state.player_names, event.author);
-
-    // A private message from someone we have no tab for opens one. The name is known
-    // because the server always introduces an author before their first message.
+    // A private message from someone we have no tab for opens one.
     if matches!(channel_id, ChannelId::Private(_)) && !state.is_open(channel_id) {
         commands.trigger(OpenChannel {
             config: ChannelConfig {
                 id: channel_id,
-                name: author.clone(),
+                name: event.author.clone(),
                 closeable: true,
                 text_color: Color::Srgba(conf::LOCAL_CHANNEL_COLOR),
             },
@@ -82,14 +73,12 @@ pub fn on_chat_message_received(
     if matches!(event.message_type, ChatMessageType::Local)
         && let Some(position) = event.position.clone()
     {
-        // can't derive position here because event.author is in a different
-        // id space than the agent ids used by map
         commands.trigger(ShowFloatingText {
             text: event.text.clone(),
             position,
             text_type: FloatingTextType::PlayerMessage,
             color: None,
-            agent_id: Some(event.author),
+            speaker: Some(event.author.clone()),
         });
     }
 
@@ -97,7 +86,7 @@ pub fn on_chat_message_received(
         message: ChatMessage {
             text: event.text.clone(),
             channel_id: Some(channel_id),
-            author: Some(author),
+            author: Some(event.author.clone()),
         },
     });
 }

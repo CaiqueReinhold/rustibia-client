@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::collections::VecDeque;
 
 use bevy::color::Color;
@@ -18,7 +17,8 @@ pub enum ChannelId {
     Local,
     /// A server channel, keyed by the id from `MSG_CHANNEL_LIST`.
     Server(u16),
-    /// A private conversation, keyed by the other party's `player_pms` id.
+    /// A private conversation, keyed by an index this client mints into `pm_names`.
+    /// The server never sees it — it addresses everyone by character name.
     Private(u16),
 }
 
@@ -72,14 +72,14 @@ pub struct ChatState {
     pub active: ChannelId,
     pub history_cap: usize,
     pub available: Vec<ChannelConfig>,
-    /// `player_pms` id → display name, learned from `MSG_INTRODUCE_PLAYER`. Never
-    /// pruned: the server guarantees one introduction per author per session, so an
-    /// entry dropped here could never be relearned.
-    pub player_names: HashMap<u16, String>,
-    /// Set when `CLI_OPEN_PM_CHAT` is sent, cleared by the matching introduction.
-    /// `MSG_INTRODUCE_PLAYER` answers that request *and* precedes a first message
-    /// from an unknown author, and nothing in the message distinguishes the two.
-    pub pending_pm_open: Option<String>,
+    /// Correspondent names, in the order first heard from. A private tab's
+    /// `ChannelId::Private(i)` is an index into this — an id this client mints for
+    /// itself, never seen by the server, which addresses everyone by name.
+    ///
+    /// Append-only, because the index is the tab's identity: removing an entry would
+    /// renumber every tab after it. It is bounded by how many people one session ever
+    /// converses with.
+    pm_names: Vec<String>,
 }
 
 impl Default for ChatState {
@@ -89,8 +89,7 @@ impl Default for ChatState {
             active: ChannelId::Local,
             history_cap: conf::HISTORY_CAP_DEFAULT,
             available: Vec::new(),
-            player_names: HashMap::new(),
-            pending_pm_open: None,
+            pm_names: Vec::new(),
         }
     }
 }
@@ -106,6 +105,29 @@ impl ChatState {
 
     pub fn is_open(&self, id: ChannelId) -> bool {
         self.channels.iter().any(|c| c.config.id == id)
+    }
+
+    /// The private tab id for `name`, minting one if this is the first we have heard
+    /// of them. Matched case-insensitively, so a name typed in lower case and the same
+    /// name as the server spells it share one tab.
+    pub fn pm_tab(&mut self, name: &str) -> ChannelId {
+        let existing = self
+            .pm_names
+            .iter()
+            .position(|known| known.eq_ignore_ascii_case(name));
+
+        let index = existing.unwrap_or_else(|| {
+            self.pm_names.push(name.to_owned());
+            self.pm_names.len() - 1
+        });
+        ChannelId::Private(index as u16)
+    }
+
+    pub fn pm_name(&self, id: ChannelId) -> Option<&str> {
+        match id {
+            ChannelId::Private(index) => self.pm_names.get(index as usize).map(String::as_str),
+            _ => None,
+        }
     }
 }
 

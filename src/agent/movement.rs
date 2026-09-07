@@ -259,6 +259,7 @@ pub fn sync_agent_draw_order(
 mod tests {
     use super::*;
     use crate::agent::FacingDirection;
+    use crate::items::ItemId;
     use crate::items::{Item, ItemConfig, ItemFlag};
     use crate::map::DrawRank;
     use bevy::ecs::system::RunSystemOnce;
@@ -272,7 +273,7 @@ mod tests {
     /// any step has the friction it needs.
     fn walkable_world() -> (World, Entity) {
         let ground = Arc::new(ItemConfig {
-            id: 1,
+            id: ItemId(1),
             flags: vec![ItemFlag::Ground],
             friction: Some(150),
             slot: None,
@@ -290,7 +291,7 @@ mod tests {
         let entity = world
             .spawn((
                 Agent {
-                    agent_id: 1,
+                    agent_id: AgentId(1),
                     speed: 120,
                     ..Default::default()
                 },
@@ -299,7 +300,7 @@ mod tests {
                 Transform::default(),
             ))
             .id();
-        map.add_agent(1, entity);
+        map.add_agent(AgentId(1), entity);
         world.insert_resource(map);
         world.insert_resource(Time::<()>::default());
         (world, entity)
@@ -315,7 +316,7 @@ mod tests {
         let entity = world
             .spawn((
                 Agent {
-                    agent_id: 1,
+                    agent_id: AgentId(1),
                     speed: 120,
                     ..Default::default()
                 },
@@ -324,13 +325,13 @@ mod tests {
                 Transform::default(),
             ))
             .id();
-        map.add_agent(1, entity);
+        map.add_agent(AgentId(1), entity);
         // No tile is inserted anywhere, so the destination has no friction.
         world.insert_resource(map);
         world.add_observer(on_start_agent_move);
 
         world.trigger(StartAgentMove {
-            agent_id: 1,
+            agent_id: AgentId(1),
             direction: WalkingDirection::East,
         });
         world.flush();
@@ -361,7 +362,7 @@ mod tests {
         world.add_observer(on_start_agent_move);
 
         world.trigger(StartAgentMove {
-            agent_id: 1,
+            agent_id: AgentId(1),
             direction: WalkingDirection::South,
         });
         world.flush();
@@ -518,7 +519,7 @@ mod tests {
     #[test]
     fn finishing_a_step_leaves_the_draw_key_alone() {
         let ground = Arc::new(ItemConfig {
-            id: 1,
+            id: ItemId(1),
             flags: vec![ItemFlag::Ground],
             friction: Some(150),
             slot: None,
@@ -537,7 +538,7 @@ mod tests {
         let entity = world
             .spawn((
                 Agent {
-                    agent_id: 1,
+                    agent_id: AgentId(1),
                     speed: 120,
                     ..Default::default()
                 },
@@ -575,7 +576,7 @@ mod tests {
     #[test]
     fn a_diagonal_is_drawn_at_cardinal_speed() {
         let ground = Arc::new(ItemConfig {
-            id: 1,
+            id: ItemId(1),
             flags: vec![ItemFlag::Ground],
             friction: Some(150),
             slot: None,
@@ -590,7 +591,7 @@ mod tests {
         let entity = world
             .spawn((
                 Agent {
-                    agent_id: 1,
+                    agent_id: AgentId(1),
                     speed: 120,
                     ..Default::default()
                 },
@@ -599,12 +600,12 @@ mod tests {
                 Transform::default(),
             ))
             .id();
-        map.add_agent(1, entity);
+        map.add_agent(AgentId(1), entity);
         world.insert_resource(map);
         world.add_observer(on_start_agent_move);
 
         world.trigger(StartAgentMove {
-            agent_id: 1,
+            agent_id: AgentId(1),
             direction: WalkingDirection::SouthEast,
         });
         world.flush();
@@ -612,7 +613,7 @@ mod tests {
         let diagonal = world.get::<Moving>(entity).unwrap().timer.duration();
 
         world.trigger(StartAgentMove {
-            agent_id: 1,
+            agent_id: AgentId(1),
             direction: WalkingDirection::East,
         });
         world.flush();

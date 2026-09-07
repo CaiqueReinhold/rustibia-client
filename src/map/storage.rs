@@ -240,8 +240,8 @@ mod tests {
         let mut map = Map::default();
         map.replace_tile(
             vec![
-                item(100, vec![ItemFlag::Ground], Some(150)),
-                item(200, Vec::new(), None),
+                item(ItemId(100), vec![ItemFlag::Ground], Some(150)),
+                item(ItemId(200), Vec::new(), None),
             ],
             &at(10, 10),
         );
@@ -255,7 +255,7 @@ mod tests {
     fn friction_above_255_survives() {
         let mut map = Map::default();
         map.replace_tile(
-            vec![item(21718, vec![ItemFlag::Ground], Some(260))],
+            vec![item(ItemId(21718), vec![ItemFlag::Ground], Some(260))],
             &at(10, 10),
         );
 
@@ -269,8 +269,8 @@ mod tests {
         let mut map = Map::default();
         map.replace_tile(
             vec![
-                item(100, vec![ItemFlag::Ground], Some(150)),
-                item(200, vec![ItemFlag::Unpass], None),
+                item(ItemId(100), vec![ItemFlag::Ground], Some(150)),
+                item(ItemId(200), vec![ItemFlag::Unpass], None),
             ],
             &at(10, 10),
         );
@@ -292,11 +292,14 @@ mod tests {
     #[test]
     fn replace_tile_preserves_agents_standing_there() {
         let mut map = Map::default();
-        map.index_agent(5, &at(10, 10));
+        map.index_agent(AgentId(5), &at(10, 10));
 
-        map.replace_tile(vec![item(100, vec![ItemFlag::Ground], None)], &at(10, 10));
+        map.replace_tile(
+            vec![item(ItemId(100), vec![ItemFlag::Ground], None)],
+            &at(10, 10),
+        );
 
-        assert_eq!(map.agents_on(&at(10, 10)), &[5]);
+        assert_eq!(map.agents_on(&at(10, 10)), &[AgentId(5)]);
     }
 
     /// `sync_tile_agents` calls `index_agent` on every `Changed<Position>`,
@@ -307,11 +310,11 @@ mod tests {
     #[test]
     fn indexing_an_agent_at_its_current_tile_is_a_no_op() {
         let mut map = Map::default();
-        map.index_agent(1, &at(10, 10));
-        map.index_agent(2, &at(10, 10));
+        map.index_agent(AgentId(1), &at(10, 10));
+        map.index_agent(AgentId(2), &at(10, 10));
 
-        map.index_agent(1, &at(10, 10));
+        map.index_agent(AgentId(1), &at(10, 10));
 
-        assert_eq!(map.agents_on(&at(10, 10)), &[1, 2]);
+        assert_eq!(map.agents_on(&at(10, 10)), &[AgentId(1), AgentId(2)]);
     }
 }

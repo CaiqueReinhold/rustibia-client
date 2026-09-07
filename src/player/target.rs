@@ -159,21 +159,21 @@ mod tests {
     #[test]
     fn next_for_click_toggles_the_current_target_off() {
         let mut target = CombatTarget::default();
-        target.apply_click(7);
-        assert_eq!(target.next_for_click(7), None);
+        target.apply_click(AgentId(7));
+        assert_eq!(target.next_for_click(AgentId(7)), None);
     }
 
     #[test]
     fn next_for_click_switches_to_a_different_agent() {
         let mut target = CombatTarget::default();
-        target.apply_click(7);
-        assert_eq!(target.next_for_click(9), Some(9));
+        target.apply_click(AgentId(7));
+        assert_eq!(target.next_for_click(AgentId(9)), Some(AgentId(9)));
     }
 
     #[test]
     fn next_for_click_sets_when_nothing_is_targeted() {
         let target = CombatTarget::default();
-        assert_eq!(target.next_for_click(7), Some(7));
+        assert_eq!(target.next_for_click(AgentId(7)), Some(AgentId(7)));
     }
 
     /// The optimistic apply is the point: `apply_click` cannot hand you something
@@ -183,12 +183,16 @@ mod tests {
     #[test]
     fn apply_click_applies_before_returning_what_to_send() {
         let mut target = CombatTarget::default();
-        let (to_send, seq) = target.apply_click(7);
-        assert_eq!(to_send, Some(7));
+        let (to_send, seq) = target.apply_click(AgentId(7));
+        assert_eq!(to_send, Some(AgentId(7)));
         assert_eq!(seq, 1);
-        assert_eq!(target.target, Some(7), "applied before the caller can send");
+        assert_eq!(
+            target.target,
+            Some(AgentId(7)),
+            "applied before the caller can send"
+        );
 
-        let (to_send, seq) = target.apply_click(7);
+        let (to_send, seq) = target.apply_click(AgentId(7));
         assert_eq!(to_send, None);
         assert_eq!(seq, 2);
         assert_eq!(target.target, None);
@@ -214,7 +218,7 @@ mod tests {
     #[test]
     fn clear_locally_mints_a_seq_too() {
         let mut target = CombatTarget::default();
-        target.apply_click(7);
+        target.apply_click(AgentId(7));
 
         assert_eq!(target.clear_locally(), 2);
         assert_eq!(target.target, None);
@@ -223,7 +227,10 @@ mod tests {
     #[test]
     fn a_loss_for_the_current_seq_clears_the_target() {
         let mut world = world_with_observer();
-        let seq = world.resource_mut::<CombatTarget>().apply_click(7).1;
+        let seq = world
+            .resource_mut::<CombatTarget>()
+            .apply_click(AgentId(7))
+            .1;
 
         world.trigger(TargetLost { seq });
         world.flush();
@@ -236,13 +243,16 @@ mod tests {
     #[test]
     fn a_loss_for_a_stale_seq_is_ignored() {
         let mut world = world_with_observer();
-        let stale = world.resource_mut::<CombatTarget>().apply_click(7).1;
-        world.resource_mut::<CombatTarget>().apply_click(9);
+        let stale = world
+            .resource_mut::<CombatTarget>()
+            .apply_click(AgentId(7))
+            .1;
+        world.resource_mut::<CombatTarget>().apply_click(AgentId(9));
 
         world.trigger(TargetLost { seq: stale });
         world.flush();
 
-        assert_eq!(world.resource::<CombatTarget>().target, Some(9));
+        assert_eq!(world.resource::<CombatTarget>().target, Some(AgentId(9)));
     }
 
     #[test]
@@ -297,10 +307,10 @@ mod tests {
         world.init_resource::<CombatTarget>();
         let mut map = Map::default();
         let agent_entity = world.spawn(Transform::from_xyz(0.0, 0.0, agent_z)).id();
-        map.add_agent(7, agent_entity);
+        map.add_agent(AgentId(7), agent_entity);
         world.insert_resource(map);
 
-        world.resource_mut::<CombatTarget>().apply_click(7);
+        world.resource_mut::<CombatTarget>().apply_click(AgentId(7));
         world.run_system_once(refresh_square_system).unwrap();
         world.flush();
 
@@ -335,14 +345,14 @@ mod tests {
         let mut map = Map::default();
         let first_agent = world.spawn(Transform::from_xyz(0.0, 0.0, 0.0)).id();
         let second_agent = world.spawn(Transform::from_xyz(32.0, 0.0, 0.0)).id();
-        map.add_agent(7, first_agent);
-        map.add_agent(9, second_agent);
+        map.add_agent(AgentId(7), first_agent);
+        map.add_agent(AgentId(9), second_agent);
         world.insert_resource(map);
 
-        world.resource_mut::<CombatTarget>().apply_click(7);
+        world.resource_mut::<CombatTarget>().apply_click(AgentId(7));
         world.run_system_once(refresh_square_system).unwrap();
         world.flush();
-        world.resource_mut::<CombatTarget>().apply_click(9);
+        world.resource_mut::<CombatTarget>().apply_click(AgentId(9));
         world.run_system_once(refresh_square_system).unwrap();
         world.flush();
 

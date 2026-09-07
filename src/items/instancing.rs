@@ -272,11 +272,12 @@ pub fn upload_instance_buffer(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::items::ItemId;
     use crate::map::{DrawOrder, DrawOrigin, Position};
 
     fn config(flags: Vec<ItemFlag>) -> ItemConfig {
         ItemConfig {
-            id: 1,
+            id: ItemId(1),
             flags,
             friction: None,
             slot: None,
