@@ -7,6 +7,7 @@ mod keyboard;
 pub mod movement;
 pub mod pathfinding;
 mod session;
+pub mod spells;
 pub mod target;
 pub use interaction::{ContainerNavTarget, InteractionIntent, InteractionMode, MouseHoverState};
 
@@ -83,6 +84,8 @@ impl Plugin for PlayerPlugin {
             .add_observer(interaction::on_targeting_container_updated)
             .add_observer(interaction::on_targeting_container_closed)
             .add_observer(interaction::on_targeting_inventory_updated)
-            .add_observer(target::on_target_lost);
+            .add_observer(target::on_target_lost)
+            .add_observer(spells::on_cast_spell_requested)
+            .add_observer(spells::on_spell_cast);
     }
 }

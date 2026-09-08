@@ -207,14 +207,10 @@ pub fn on_show_effect(
 /// Every tile the message paints. The wire carries no floor per tile, so an
 /// area effect is flat by construction.
 fn effect_tiles(base: &Position, delta: &[(i8, i8)]) -> Vec<Position> {
-    let mut tiles = Vec::with_capacity(delta.len() + 1);
-    tiles.push(base.clone());
-    tiles.extend(
-        delta
-            .iter()
-            .map(|(dx, dy)| base.delta(*dx as i32, *dy as i32)),
-    );
-    tiles
+    delta
+        .iter()
+        .map(|(dx, dy)| base.delta(*dx as i32, *dy as i32))
+        .collect()
 }
 
 /// The pattern a tile draws, taken from its own absolute coordinates — which is
@@ -341,6 +337,50 @@ mod tests {
     use bevy::ecs::system::RunSystemOnce;
     use std::time::Duration;
 
+    fn at(x: u16, y: u16) -> Position {
+        Position { x, y, z: 7 }
+    }
+
+    /// The wave bug: `areas.yaml`'s `small_wave` marks its origin `0`, so the caster's own
+    /// tile is not part of the shape and the server leaves `(0, 0)` out of the delta. The
+    /// anchor must not be drawn back in.
+    #[test]
+    fn the_anchor_is_not_drawn_unless_a_delta_names_it() {
+        let anchor = at(100, 100);
+        // Two tiles north of the caster, the way a wave's body sits ahead of it.
+        let tiles = effect_tiles(&anchor, &[(0, -1), (0, -2)]);
+
+        assert_eq!(tiles, vec![at(100, 99), at(100, 98)]);
+        assert!(
+            !tiles.contains(&anchor),
+            "the caster is not standing in their own wave"
+        );
+    }
+
+    /// The other half of the same rule, and what every non-area effect relies on: a hit
+    /// splash, a puff, a potion. The server spells these `vec![(0, 0)]`.
+    #[test]
+    fn a_single_tile_effect_draws_the_tile_its_delta_names() {
+        assert_eq!(effect_tiles(&at(100, 100), &[(0, 0)]), vec![at(100, 100)]);
+    }
+
+    /// An area that names nothing draws nothing, rather than falling back to the anchor.
+    /// This is the failure mode if the server ever regresses to sending an empty delta,
+    /// and it must be visible rather than silently correct.
+    #[test]
+    fn an_empty_delta_draws_nothing() {
+        assert!(effect_tiles(&at(100, 100), &[]).is_empty());
+    }
+
+    /// `@` in a mask: the origin *is* part of the shape, so it arrives among the deltas
+    /// and draws like any other tile.
+    #[test]
+    fn an_origin_inside_the_shape_draws_with_the_rest() {
+        let tiles = effect_tiles(&at(100, 100), &[(0, 0), (1, 0), (-1, 0)]);
+
+        assert_eq!(tiles, vec![at(100, 100), at(101, 100), at(99, 100)]);
+    }
+
     fn config(pattern_x: u32, pattern_y: u32) -> SpriteConfig {
         SpriteConfig {
             id: 1,
@@ -356,20 +396,14 @@ mod tests {
         }
     }
 
-    /// An empty delta is what the server sends today, and it must mean "just
-    /// this tile" rather than "no tiles".
+    /// Deltas are relative to the anchor. The wire carries no floor per tile, so an area
+    /// effect is flat.
     #[test]
-    fn an_empty_delta_paints_only_the_base_tile() {
-        let tiles = effect_tiles(&Position::new(100, 200, 7), &[]);
-
-        assert_eq!(tiles, vec![Position::new(100, 200, 7)]);
-    }
-
-    /// Deltas are relative to the base tile, and the base tile plays too. The
-    /// wire carries no floor per tile, so an area effect is flat.
-    #[test]
-    fn deltas_paint_extra_tiles_around_the_base() {
-        let tiles = effect_tiles(&Position::new(100, 200, 7), &[(1, 0), (0, -1), (-1, -1)]);
+    fn deltas_paint_the_tiles_around_the_anchor() {
+        let tiles = effect_tiles(
+            &Position::new(100, 200, 7),
+            &[(0, 0), (1, 0), (0, -1), (-1, -1)],
+        );
 
         assert_eq!(
             tiles,

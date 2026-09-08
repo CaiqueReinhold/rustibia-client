@@ -4,7 +4,7 @@ use crate::{
     agent::{AgentId, FacingDirection, Health, Mana, WalkingDirection},
     conf::map::{TILES_X, TILES_Y},
     core::{
-        ChatMessageType, EffectId, FloatingTextType, MissileId, OutfitColors, OutfitId,
+        ChatMessageType, EffectId, FloatingTextType, MissileId, OutfitColors, OutfitId, SpellId,
         TextMessageType,
     },
     game_ui::{SkillProgress, SkillType},
@@ -228,6 +228,15 @@ pub struct SkillChanged {
 #[derive(Event, Debug)]
 pub struct ExperienceChanged {
     pub experience: u64,
+}
+
+/// The server accepted a cast and started both cooldowns. Durations, never an
+/// absolute tick: the client has no clock synced to the server's.
+#[derive(Event, Debug)]
+pub struct SpellCast {
+    pub spell_id: SpellId,
+    pub spell_cooldown_ms: u32,
+    pub group_cooldown_ms: u32,
 }
 
 pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
@@ -469,6 +478,17 @@ pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
         }
         ServerMessage::ExperienceChanged { experience } => {
             commands.trigger(ExperienceChanged { experience });
+        }
+        ServerMessage::SpellCast {
+            spell_id,
+            spell_cooldown_ms,
+            group_cooldown_ms,
+        } => {
+            commands.trigger(SpellCast {
+                spell_id,
+                spell_cooldown_ms,
+                group_cooldown_ms,
+            });
         }
     }
 }

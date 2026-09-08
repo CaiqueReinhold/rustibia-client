@@ -180,14 +180,8 @@ pub fn spawn_agent(
         commands.entity(entity).insert(mana.clone());
     }
 
-    let mut world_y_offset =
+    let world_y_offset =
         outfit.still_sprite.boxes[0].max.y / 2.0 + outfit.still_sprite.shift.y + 5.0;
-    if health.is_some() {
-        world_y_offset += HUD_BAR_HEIGHT;
-    }
-    if mana.is_some() {
-        world_y_offset += HUD_BAR_HEIGHT;
-    }
     let mut display_name_entity = None;
     let mut health_bar_entity = None;
     let mut mana_bar_entity = None;

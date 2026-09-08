@@ -8,10 +8,14 @@ use bevy::prelude::*;
 ///
 /// # Example
 /// ```
-/// commands.spawn((
-///     Text2d::new("Hello!"),
-///     TextOutline { width: 2.0, color: Color::BLACK },
-/// ));
+/// # use bevy::prelude::*;
+/// # use bevy_text_outline::TextOutline;
+/// fn spawn_outlined_label(mut commands: Commands) {
+///     commands.spawn((
+///         Text2d::new("Hello!"),
+///         TextOutline { width: 2.0, color: Color::BLACK },
+///     ));
+/// }
 /// ```
 #[derive(Component, Clone, Debug, Reflect)]
 #[reflect(Component, Default, Debug, Clone)]

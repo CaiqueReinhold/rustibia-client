@@ -4,10 +4,12 @@ use bevy::prelude::*;
 
 use crate::{
     agent::{FacingDirection, WalkingDirection},
+    core::SpellId,
     game_ui::EnterChatMode,
     map::Map,
     player::interaction::InteractionIntent,
     player::movement::{ChangePlayerDirection, MovePlayer},
+    player::spells::CastSpellRequested,
     player::target::{CombatTarget, TargetSquare, refresh_target_square},
 };
 
@@ -16,6 +18,7 @@ pub enum PlayerAction {
     Move(WalkingDirection),
     ChangeDirection(FacingDirection),
     EnterChatMode,
+    CastSpell(SpellId),
 }
 
 #[derive(Clone, Debug)]
@@ -110,6 +113,11 @@ impl Default for Keybinds {
                     PlayerAction::Move(WalkingDirection::SouthEast),
                 ),
                 (KeyCombo::single(Enter), PlayerAction::EnterChatMode),
+                // Debug binding until the hotkey surface lands: Energy Strike,
+                // which needs a combat target set.
+                (KeyCombo::single(F1), PlayerAction::CastSpell(SpellId(3))),
+                (KeyCombo::single(F2), PlayerAction::CastSpell(SpellId(1))),
+                (KeyCombo::single(F3), PlayerAction::CastSpell(SpellId(2))),
             ],
         }
     }
@@ -200,6 +208,11 @@ fn route_action(action: &PlayerAction, commands: &mut Commands) {
         }
         PlayerAction::EnterChatMode => {
             commands.trigger(EnterChatMode);
+        }
+        PlayerAction::CastSpell(spell_id) => {
+            commands.trigger(CastSpellRequested {
+                spell_id: *spell_id,
+            });
         }
     }
 }

@@ -10,7 +10,7 @@ use crate::{
     conf::map::{STACK_MAX_VISIBLE_ITEMS, TILES_X, TILES_Y},
     core::{
         ChatMessageType, EffectId, FloatingTextType, MissileId, OutfitColors, OutfitId, SayTarget,
-        TextMessageType,
+        SpellId, SpellTarget, TextMessageType,
     },
     game_ui::{SkillProgress, SkillType},
     items::{ContainerId, InventorySlot, ItemId},
@@ -38,6 +38,7 @@ const CLI_OPEN_CHANNEL: u8 = 14;
 const CLI_CLOSE_CHANNEL: u8 = 15;
 const CLI_OPEN_PM_CHAT: u8 = 16;
 const CLI_SET_TARGET: u8 = 17;
+const CLI_CAST_SPELL: u8 = 18;
 
 #[derive(Clone, Debug)]
 pub enum ClientMessage {
@@ -101,6 +102,10 @@ pub enum ClientMessage {
         agent_id: Option<AgentId>,
         seq: u32,
     },
+    CastSpell {
+        spell_id: SpellId,
+        target: SpellTarget,
+    },
 }
 
 // server
@@ -135,6 +140,7 @@ const SRV_AGENT_MANA_CHANGED: u8 = 27;
 const SRV_PLAYER_SKILLS: u8 = 28;
 const SRV_SKILL_CHANGED: u8 = 29;
 const SRV_EXPERIENCE_CHANGED: u8 = 30;
+const SRV_SPELL_CAST: u8 = 31;
 
 #[derive(Clone, Debug)]
 pub enum ServerMessage {
@@ -281,6 +287,11 @@ pub enum ServerMessage {
         from: Position,
         to: Position,
         missile_id: MissileId,
+    },
+    SpellCast {
+        spell_id: SpellId,
+        spell_cooldown_ms: u32,
+        group_cooldown_ms: u32,
     },
 }
 
@@ -716,6 +727,11 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
                 delta,
             })
         }
+        SRV_SPELL_CAST => Ok(ServerMessage::SpellCast {
+            spell_id: SpellId(buf.read_u16_le()?),
+            spell_cooldown_ms: buf.read_u32_le()?,
+            group_cooldown_ms: buf.read_u32_le()?,
+        }),
         SRV_LAUNCH_MISSILE => {
             let from = decode_position(buf)?;
             let to = decode_position(buf)?;
@@ -991,12 +1007,31 @@ impl Encoder for GameMessageCodec {
                 dst.put_u8(CLI_OPEN_PM_CHAT);
                 dst.put_slice(name.as_bytes());
             }
+            ClientMessage::CastSpell { spell_id, target } => {
+                dst.put_u8(CLI_CAST_SPELL);
+                dst.put_u16_le(spell_id.0);
+                encode_spell_target(target, dst);
+            }
         }
 
         let payload_len = (dst.len() - len_offset - 2) as u16;
         dst[len_offset..len_offset + 2].copy_from_slice(&payload_len.to_le_bytes());
 
         Ok(())
+    }
+}
+
+fn encode_spell_target(target: SpellTarget, dst: &mut BytesMut) {
+    match target {
+        SpellTarget::None => dst.put_u8(0x00),
+        SpellTarget::Agent(agent_id) => {
+            dst.put_u8(0x01);
+            dst.put_u16_le(agent_id.0);
+        }
+        SpellTarget::Position(position) => {
+            dst.put_u8(0x02);
+            encode_position(position, dst);
+        }
     }
 }
 
@@ -1056,6 +1091,77 @@ mod tests {
             "length prefix must cover the payload"
         );
         buf[2..].to_vec()
+    }
+
+    /// The three `SpellTarget` variants, as literal bytes. The server's
+    /// `decode_spell_target` reads exactly this frame; nothing else pins the
+    /// opcode or the variant tags on either side.
+    #[test]
+    fn cast_spell_encodes_each_target_variant() {
+        assert_eq!(
+            payload_of(ClientMessage::CastSpell {
+                spell_id: SpellId(4),
+                target: SpellTarget::None,
+            }),
+            vec![CLI_CAST_SPELL, 0x04, 0x00, 0x00],
+        );
+        assert_eq!(
+            payload_of(ClientMessage::CastSpell {
+                spell_id: SpellId(4),
+                target: SpellTarget::Agent(AgentId(7)),
+            }),
+            vec![CLI_CAST_SPELL, 0x04, 0x00, 0x01, 0x07, 0x00],
+        );
+        assert_eq!(
+            payload_of(ClientMessage::CastSpell {
+                spell_id: SpellId(4),
+                target: SpellTarget::Position(Position::new(1000, 1001, 7)),
+            }),
+            vec![
+                CLI_CAST_SPELL,
+                0x04,
+                0x00,
+                0x02,
+                0xE8,
+                0x03,
+                0xE9,
+                0x03,
+                0x07
+            ],
+        );
+    }
+
+    #[test]
+    fn spell_cast_decodes_both_cooldowns() {
+        let mut buf = BytesMut::new();
+        buf.extend_from_slice(&[
+            11,
+            0,
+            SRV_SPELL_CAST,
+            0x04,
+            0x00,
+            0xD0,
+            0x07,
+            0x00,
+            0x00,
+            0xA0,
+            0x0F,
+            0x00,
+            0x00,
+        ]);
+
+        match (GameMessageCodec {}).decode(&mut buf).unwrap().unwrap() {
+            ServerMessage::SpellCast {
+                spell_id,
+                spell_cooldown_ms,
+                group_cooldown_ms,
+            } => {
+                assert_eq!(spell_id, SpellId(4));
+                assert_eq!(spell_cooldown_ms, 2000);
+                assert_eq!(group_cooldown_ms, 4000);
+            }
+            other => panic!("expected SpellCast, got {other:?}"),
+        }
     }
 
     #[test]
