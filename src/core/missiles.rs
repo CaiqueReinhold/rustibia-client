@@ -191,8 +191,12 @@ pub fn fly_missiles(
         }
 
         let fraction = missile.elapsed.as_secs_f32() / missile.duration.as_secs_f32();
-        transform.translation =
-            missile_position(&missile.from, &missile.to, fraction, missile.sprite_size);
+        // Assigning the whole translation would zero the draw key, which
+        // `apply_draw_order` only rewrites for entities whose `DrawOrder`
+        // changed -- and a frame spent within one tile does not change it.
+        let world = missile_position(&missile.from, &missile.to, fraction, missile.sprite_size);
+        transform.translation.x = world.x;
+        transform.translation.y = world.y;
         DrawOrder::move_to(
             &mut order,
             &missile_tile(&missile.from, &missile.to, fraction),
@@ -276,6 +280,46 @@ mod tests {
         assert_eq!(end.x, 3344.0);
         assert_eq!(end.y, -3216.0);
         assert_eq!(start.z, 0.0, "placement carries no draw order");
+    }
+
+    /// The z on a flying missile belongs to `map::draw_order` and to nothing
+    /// else. `apply_draw_order` only rewrites entities whose `DrawOrder`
+    /// changed, so a flight frame that zeroes the key leaves the missile under
+    /// the ground until it crosses into the next tile.
+    #[test]
+    fn a_flight_frame_leaves_the_draw_key_alone() {
+        use bevy::ecs::system::RunSystemOnce;
+
+        let from = Position::new(100, 100, 7);
+        let to = Position::new(108, 100, 7);
+
+        let mut world = World::new();
+        world.insert_resource(Time::<()>::default());
+        let entity = world
+            .spawn((
+                Missile {
+                    from: from.clone(),
+                    to: to.clone(),
+                    sprite_size: Vec2::splat(32.0),
+                    elapsed: Duration::ZERO,
+                    duration: flight_duration(&from, &to),
+                },
+                Transform::from_xyz(0.0, 0.0, 1234.0),
+                DrawOrder::new(from, DrawRank::Standing, DrawLayer::Missile, 0),
+            ))
+            .id();
+
+        // Well inside the first tile of a 424 ms flight, so `move_to` leaves the
+        // `DrawOrder` clean and nothing would put a lost key back.
+        world
+            .resource_mut::<Time<()>>()
+            .advance_by(Duration::from_millis(10));
+        world.run_system_once(fly_missiles).unwrap();
+        world.flush();
+
+        let transform = world.get::<Transform>(entity).unwrap();
+        assert_eq!(transform.translation.z, 1234.0, "the flight rewrote the z");
+        assert!(transform.translation.x > 0.0, "and it did move");
     }
 
     /// A missile takes the key of the tile it is over, not a value interpolated
