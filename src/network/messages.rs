@@ -10,7 +10,7 @@ use crate::{
     conf::map::{STACK_MAX_VISIBLE_ITEMS, TILES_X, TILES_Y},
     core::{
         ChatMessageType, EffectId, FloatingTextType, MissileId, OutfitColors, OutfitId, SayTarget,
-        SpellId, SpellTarget, TextMessageType,
+        SpellId, SpellInfo, SpellTarget, TextMessageType,
     },
     game_ui::{SkillProgress, SkillType},
     items::{ContainerId, InventorySlot, ItemId},
@@ -141,6 +141,7 @@ const SRV_PLAYER_SKILLS: u8 = 28;
 const SRV_SKILL_CHANGED: u8 = 29;
 const SRV_EXPERIENCE_CHANGED: u8 = 30;
 const SRV_SPELL_CAST: u8 = 31;
+const SRV_SPELL_LIST: u8 = 32;
 
 #[derive(Clone, Debug)]
 pub enum ServerMessage {
@@ -292,6 +293,9 @@ pub enum ServerMessage {
         spell_id: SpellId,
         spell_cooldown_ms: u32,
         group_cooldown_ms: u32,
+    },
+    SpellList {
+        spells: Vec<SpellInfo>,
     },
 }
 
@@ -732,6 +736,33 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
             spell_cooldown_ms: buf.read_u32_le()?,
             group_cooldown_ms: buf.read_u32_le()?,
         }),
+        SRV_SPELL_LIST => {
+            let count = buf.read_u16_le()?;
+            let mut spells = Vec::with_capacity(count as usize);
+            for _ in 0..count {
+                let id = SpellId(buf.read_u16_le()?);
+                let name_len = buf.read_u16_le()? as usize;
+                let name = buf.read_string(name_len)?;
+                let words_len = buf.read_u16_le()? as usize;
+                let words = buf.read_string(words_len)?;
+                let level = buf.read_u16_le()?;
+                let icon = buf.read_u16_le()?;
+                let aimable = match buf.read_u8()? {
+                    0 => false,
+                    1 => true,
+                    _ => return Err(MessageDecodeError::WrongSequence),
+                };
+                spells.push(SpellInfo {
+                    id,
+                    name,
+                    words,
+                    level,
+                    icon,
+                    aimable,
+                });
+            }
+            Ok(ServerMessage::SpellList { spells })
+        }
         SRV_LAUNCH_MISSILE => {
             let from = decode_position(buf)?;
             let to = decode_position(buf)?;
@@ -1788,5 +1819,59 @@ mod tests {
             }
             other => panic!("expected PlayerSkills, got {other:?}"),
         }
+    }
+
+    const SPELL_LIST_FRAME: [u8; 20] = [
+        18,
+        0,
+        SRV_SPELL_LIST,
+        1,
+        0,
+        4,
+        0,
+        2,
+        0,
+        b'A',
+        b'b',
+        2,
+        0,
+        b'c',
+        b'd',
+        12,
+        0,
+        29,
+        0,
+        1,
+    ];
+
+    #[test]
+    fn spell_list_decodes_every_field() {
+        let mut buf = BytesMut::new();
+        buf.extend_from_slice(&SPELL_LIST_FRAME);
+
+        match (GameMessageCodec {}).decode(&mut buf).unwrap().unwrap() {
+            ServerMessage::SpellList { spells } => assert_eq!(
+                spells,
+                vec![SpellInfo {
+                    id: SpellId(4),
+                    name: "Ab".to_owned(),
+                    words: "cd".to_owned(),
+                    level: 12,
+                    icon: 29,
+                    aimable: true,
+                }]
+            ),
+            other => panic!("expected SpellList, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn an_aim_flag_other_than_zero_or_one_is_refused() {
+        let mut frame = SPELL_LIST_FRAME;
+        frame[19] = 2;
+        let mut buf = BytesMut::new();
+        buf.extend_from_slice(&frame);
+
+        assert!((GameMessageCodec {}).decode(&mut buf).is_err());
     }
 }

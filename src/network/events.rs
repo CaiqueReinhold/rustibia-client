@@ -5,7 +5,7 @@ use crate::{
     conf::map::{TILES_X, TILES_Y},
     core::{
         ChatMessageType, EffectId, FloatingTextType, MissileId, OutfitColors, OutfitId, SpellId,
-        TextMessageType,
+        SpellInfo, TextMessageType,
     },
     game_ui::{SkillProgress, SkillType},
     items::{ContainerId, InventorySlot, ItemId},
@@ -237,6 +237,12 @@ pub struct SpellCast {
     pub spell_id: SpellId,
     pub spell_cooldown_ms: u32,
     pub group_cooldown_ms: u32,
+}
+
+/// Sent once at login: every spell of the character's vocation.
+#[derive(Event, Debug)]
+pub struct SpellListReceived {
+    pub spells: Vec<SpellInfo>,
 }
 
 pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
@@ -489,6 +495,9 @@ pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
                 spell_cooldown_ms,
                 group_cooldown_ms,
             });
+        }
+        ServerMessage::SpellList { spells } => {
+            commands.trigger(SpellListReceived { spells });
         }
     }
 }

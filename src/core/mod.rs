@@ -20,7 +20,7 @@ pub use floating_text::FloatingTextType;
 pub use instances::*;
 pub use items::ItemConfigs;
 pub use session::{EndGameSession, SessionCleanup, SessionEndReason, SessionEnding};
-pub use spells::{SpellId, SpellTarget};
+pub use spells::{SpellBook, SpellId, SpellInfo, SpellTarget};
 pub use sprite::*;
 pub use systems::PingState;
 pub use text::{ChatMessageType, SayTarget, TextMessageType};
@@ -41,6 +41,8 @@ impl Plugin for CorePlugin {
         app.add_plugins(Material2dPlugin::<effects::EffectMaterial>::default())
             .init_resource::<systems::PingState>()
             .init_resource::<systems::PingTimer>()
+            .init_resource::<spells::SpellBook>()
+            .add_observer(spells::on_spell_list)
             .init_resource::<InstanceManager<effects::EffectInstance>>()
             .add_systems(
                 Startup,
