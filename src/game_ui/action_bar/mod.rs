@@ -2,9 +2,11 @@ use bevy::prelude::*;
 
 use crate::core::{GameState, SessionCleanup};
 
+mod activation;
 mod persistence;
 mod state;
 
+pub use activation::ActionSlotActivated;
 pub use state::{ActionBar, ActionSlot, Aim, SlotAction};
 
 pub struct ActionBarPlugin;
@@ -25,7 +27,8 @@ impl Plugin for ActionBarPlugin {
             .add_systems(
                 OnExit(GameState::InGame),
                 cleanup_session.in_set(SessionCleanup),
-            );
+            )
+            .add_observer(activation::on_action_slot_activated);
     }
 }
 

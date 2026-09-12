@@ -22,7 +22,7 @@ mod skills;
 mod toppanel;
 mod window;
 
-pub use action_bar::ActionBar;
+pub use action_bar::{ActionBar, ActionSlotActivated};
 pub use assets::GameUiAssets;
 pub use chat::{ChatMode, events::EnterChatMode};
 pub use context_menu::{ContextMenu, ContextMenuEntry, ContextMenuPicked, ContextMenuRoot};
