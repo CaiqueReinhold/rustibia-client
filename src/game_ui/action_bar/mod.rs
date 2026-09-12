@@ -6,6 +6,7 @@ mod activation;
 mod bar;
 mod persistence;
 mod state;
+mod target_dialog;
 
 pub use activation::ActionSlotActivated;
 pub use bar::spawn_action_bar;
@@ -38,7 +39,13 @@ impl Plugin for ActionBarPlugin {
                 OnExit(GameState::InGame),
                 cleanup_session.in_set(SessionCleanup),
             )
-            .add_observer(activation::on_action_slot_activated);
+            .add_observer(activation::on_action_slot_activated)
+            .add_systems(
+                Update,
+                target_dialog::update_aim_options.run_if(in_state(GameState::InGame)),
+            )
+            .add_observer(target_dialog::on_open_target_dialog)
+            .add_observer(target_dialog::on_target_dialog_button);
     }
 }
 
