@@ -1,0 +1,22 @@
+use bevy::prelude::*;
+
+use crate::core::{GameState, SessionCleanup};
+
+mod state;
+
+pub use state::{ActionBar, ActionSlot, Aim, SlotAction};
+
+pub struct ActionBarPlugin;
+
+impl Plugin for ActionBarPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<ActionBar>().add_systems(
+            OnExit(GameState::InGame),
+            cleanup_session.in_set(SessionCleanup),
+        );
+    }
+}
+
+fn cleanup_session(mut commands: Commands) {
+    commands.insert_resource(ActionBar::default());
+}

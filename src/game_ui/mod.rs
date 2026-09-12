@@ -3,6 +3,7 @@ use std::time::Duration;
 use bevy::prelude::*;
 use bevy::{camera::visibility::RenderLayers, time::common_conditions::on_timer};
 
+mod action_bar;
 mod assets;
 pub mod button;
 mod button_row;
@@ -21,6 +22,7 @@ mod skills;
 mod toppanel;
 mod window;
 
+pub use action_bar::ActionBar;
 pub use assets::GameUiAssets;
 pub use chat::{ChatMode, events::EnterChatMode};
 pub use context_menu::{ContextMenu, ContextMenuEntry, ContextMenuPicked, ContextMenuRoot};
@@ -55,6 +57,7 @@ impl Plugin for GameUiPlugin {
                 chat::ChatPlugin,
                 login::LoginPlugin,
                 skills::SkillsPlugin,
+                action_bar::ActionBarPlugin,
             ))
             .add_systems(OnEnter(GameState::InGame), spawn_main_ui)
             .add_systems(
