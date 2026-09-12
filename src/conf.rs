@@ -114,6 +114,7 @@ pub mod ui {
         pub const Z_WINDOW: i32 = 11;
         pub const Z_DRAGGING_WINDOW: i32 = 20;
         pub const DRAGGED_ITEM_UI_Z: i32 = 100;
+        pub const Z_CONTEXT_MENU: i32 = 99;
     }
 
     pub mod ui_colors {
@@ -182,6 +183,20 @@ pub mod ui {
         pub const BUTTON_HOVER_COLOR: Srgba = Srgba::new(0.42, 0.42, 0.42, 1.0);
         pub const FIELD_BG_COLOR: Srgba = Srgba::new(0.098, 0.102, 0.106, 1.0);
         pub const ROW_SELECTED_COLOR: Srgba = Srgba::new(0.25, 0.32, 0.45, 1.0);
+
+        pub const HOTKEY_DIALOG_WIDTH: f32 = 400.0;
+        pub const WARNING_COLOR: Srgba = Srgba::new(0.95, 0.30, 0.30, 1.0);
+    }
+
+    pub mod context_menu {
+        use bevy::color::Srgba;
+
+        pub const MIN_WIDTH: f32 = 120.0;
+        pub const PADDING: f32 = 2.0;
+        pub const ROW_PADDING_X: f32 = 6.0;
+        pub const ROW_PADDING_Y: f32 = 3.0;
+        pub const HOVER_COLOR: Srgba = Srgba::new(0.25, 0.32, 0.45, 1.0);
+        pub const DISABLED_COLOR: Srgba = Srgba::new(0.45, 0.45, 0.45, 1.0);
     }
 
     pub mod login {

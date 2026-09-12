@@ -60,6 +60,21 @@ pub struct ModalDialogRoot {
     has_cancel: bool,
 }
 
+impl ModalDialogRoot {
+    pub fn order(&self) -> u64 {
+        self.order
+    }
+
+    #[cfg(test)]
+    pub fn for_test() -> Self {
+        Self {
+            order: 0,
+            default_button: None,
+            has_cancel: false,
+        }
+    }
+}
+
 /// Marker for the content container callers fill with children.
 #[derive(Component)]
 pub struct ModalContent;
@@ -92,8 +107,6 @@ impl ModalDialog {
         }
     }
 
-    /// Builder affordance for future dialogs; current callers use the default.
-    #[allow(dead_code)]
     pub fn with_width(mut self, width: Val) -> Self {
         self.width = width;
         self

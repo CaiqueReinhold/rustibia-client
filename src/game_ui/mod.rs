@@ -7,6 +7,7 @@ mod assets;
 pub mod button;
 mod button_row;
 mod chat;
+pub mod context_menu;
 mod disconnect;
 mod game_overlay;
 mod leftpanel;
@@ -22,9 +23,12 @@ mod window;
 
 pub use assets::GameUiAssets;
 pub use chat::{ChatMode, events::EnterChatMode};
+pub use context_menu::{ContextMenu, ContextMenuEntry, ContextMenuPicked, ContextMenuRoot};
 pub use game_overlay::GameViewport;
 pub use login::{LoginPhase, PendingLoginError};
-pub use modal::{DialogButton, DialogButtonId, DialogButtonPressed, ModalDialog, ModalOrder};
+pub use modal::{
+    DialogButton, DialogButtonId, DialogButtonPressed, ModalDialog, ModalDialogRoot, ModalOrder,
+};
 pub use rightpanel::RightPanelDock;
 pub use skills::{SkillProgress, SkillType};
 pub use window::{
@@ -69,6 +73,15 @@ impl Plugin for GameUiPlugin {
             .add_systems(Update, update_ping.run_if(on_timer(Duration::from_secs(1))))
             .init_resource::<modal::ModalOrder>()
             .add_systems(Update, (modal::modal_keyboard, button::panel_button_hover))
+            .add_observer(context_menu::close_other_context_menus)
+            .add_systems(
+                Update,
+                (
+                    context_menu::close_context_menus_on_escape,
+                    context_menu::keep_context_menus_on_screen,
+                )
+                    .run_if(in_state(GameState::InGame)),
+            )
             .add_systems(
                 OnExit(GameState::InGame),
                 session::cleanup_session.in_set(SessionCleanup),

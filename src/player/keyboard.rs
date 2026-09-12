@@ -4,7 +4,7 @@ use bevy::prelude::*;
 
 use crate::{
     agent::{FacingDirection, WalkingDirection},
-    game_ui::EnterChatMode,
+    game_ui::{ContextMenuRoot, EnterChatMode, ModalDialogRoot},
     map::Map,
     player::Hotkey,
     player::interaction::InteractionIntent,
@@ -233,8 +233,10 @@ pub fn cancel_targeting_on_escape(
     map: Res<Map>,
     square_q: Query<Entity, With<TargetSquare>>,
     keyboard: Res<ButtonInput<KeyCode>>,
+    modals: Query<(), With<ModalDialogRoot>>,
+    menus: Query<(), With<ContextMenuRoot>>,
 ) {
-    if !keyboard.just_pressed(KeyCode::Escape) {
+    if !keyboard.just_pressed(KeyCode::Escape) || !modals.is_empty() || !menus.is_empty() {
         return;
     }
 
@@ -346,6 +348,32 @@ mod tests {
                 *world.resource::<InteractionMode>(),
                 InteractionMode::Idle
             ));
+        }
+    }
+
+    #[test]
+    fn escape_leaves_the_target_alone_while_a_modal_or_menu_is_open() {
+        use crate::game_ui::{ContextMenuRoot, ModalDialogRoot};
+
+        let overlays: [fn(&mut World); 2] = [
+            |world| {
+                world.spawn(ModalDialogRoot::for_test());
+            },
+            |world| {
+                world.spawn(ContextMenuRoot);
+            },
+        ];
+        for spawn_overlay in overlays {
+            let mut world = seeded_world();
+            let mut target = CombatTarget::default();
+            target.apply_click(AgentId(7));
+            world.insert_resource(target);
+            spawn_overlay(&mut world);
+            press_escape(&mut world);
+
+            world.run_system_once(cancel_targeting_on_escape).unwrap();
+
+            assert_eq!(world.resource::<CombatTarget>().target, Some(AgentId(7)));
         }
     }
 }
