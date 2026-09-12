@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use crate::core::{ActiveCharacter, GameState, SessionCleanup, SpellBook};
 
 mod activation;
+mod assign_item;
 mod bar;
 mod persistence;
 mod state;
@@ -45,7 +46,8 @@ impl Plugin for ActionBarPlugin {
                 target_dialog::update_aim_options.run_if(in_state(GameState::InGame)),
             )
             .add_observer(target_dialog::on_open_target_dialog)
-            .add_observer(target_dialog::on_target_dialog_button);
+            .add_observer(target_dialog::on_target_dialog_button)
+            .add_observer(assign_item::on_object_picked);
     }
 }
 
