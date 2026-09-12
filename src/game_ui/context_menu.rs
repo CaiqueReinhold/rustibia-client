@@ -173,7 +173,7 @@ fn spawn_row(
     row
 }
 
-pub fn close_other_context_menus(
+pub(super) fn close_other_context_menus(
     event: On<Add, ContextMenuRoot>,
     roots: Query<Entity, With<ContextMenuRoot>>,
     mut commands: Commands,
@@ -185,7 +185,7 @@ pub fn close_other_context_menus(
     }
 }
 
-pub fn close_context_menus_on_escape(
+pub(super) fn close_context_menus_on_escape(
     keyboard: Res<ButtonInput<KeyCode>>,
     roots: Query<Entity, With<ContextMenuRoot>>,
     mut commands: Commands,
@@ -202,7 +202,7 @@ fn clamp_to_window(at: Vec2, size: Vec2, window: Vec2) -> Vec2 {
     at.min(window - size).max(Vec2::ZERO)
 }
 
-pub fn keep_context_menus_on_screen(
+pub(super) fn keep_context_menus_on_screen(
     window: Single<&Window>,
     mut panels: Query<(&mut Node, &ComputedNode), (With<ContextMenuPanel>, Changed<ComputedNode>)>,
 ) {
