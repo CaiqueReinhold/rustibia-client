@@ -6,6 +6,7 @@ mod activation;
 mod assign_item;
 mod bar;
 mod persistence;
+mod spell_dialog;
 mod state;
 mod target_dialog;
 
@@ -47,7 +48,13 @@ impl Plugin for ActionBarPlugin {
             )
             .add_observer(target_dialog::on_open_target_dialog)
             .add_observer(target_dialog::on_target_dialog_button)
-            .add_observer(assign_item::on_object_picked);
+            .add_observer(assign_item::on_object_picked)
+            .add_systems(
+                Update,
+                spell_dialog::update_spell_row_highlight.run_if(in_state(GameState::InGame)),
+            )
+            .add_observer(spell_dialog::on_open_assign_spell_dialog)
+            .add_observer(spell_dialog::on_assign_spell_button);
     }
 }
 
