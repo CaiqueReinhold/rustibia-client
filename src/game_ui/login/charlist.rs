@@ -3,6 +3,7 @@ use bevy::input::keyboard::KeyCode;
 use bevy::prelude::*;
 
 use crate::conf::ui::{dialog as conf, ui_colors};
+use crate::core::ActiveCharacter;
 use crate::game_ui::login::LoginPhase;
 use crate::game_ui::{
     DialogButton, DialogButtonId, DialogButtonPressed, GameUiAssets, ModalDialog, ModalOrder,
@@ -219,6 +220,7 @@ pub(super) fn on_confirm_character(
     let Some(char) = char else {
         return;
     };
+    commands.insert_resource(ActiveCharacter { id: char.id });
     commands.trigger(GenerateLoginToken {
         character_id: char.id,
     });

@@ -19,7 +19,9 @@ pub use assets::*;
 pub use floating_text::FloatingTextType;
 pub use instances::*;
 pub use items::ItemConfigs;
-pub use session::{EndGameSession, SessionCleanup, SessionEndReason, SessionEnding};
+pub use session::{
+    ActiveCharacter, EndGameSession, SessionCleanup, SessionEndReason, SessionEnding,
+};
 pub use spells::{SpellBook, SpellId, SpellInfo, SpellTarget};
 pub use sprite::*;
 pub use systems::PingState;

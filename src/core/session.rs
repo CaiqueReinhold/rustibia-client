@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 
+use crate::core::spells::SpellBook;
 use crate::core::systems::{PingState, PingTimer};
 
 /// Every system that tears down a game session runs here, on
@@ -42,9 +43,17 @@ pub struct EndGameSession {
 #[derive(Resource, Debug)]
 pub struct SessionEnding;
 
+/// The character chosen on the character list. `id` is the site's character id, not an `AgentId`.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ActiveCharacter {
+    pub id: u32,
+}
+
 pub(super) fn cleanup_session(mut commands: Commands, ping: Res<PingState>) {
     ping.reset();
     commands.insert_resource(PingTimer::default());
+    commands.insert_resource(SpellBook::default());
+    commands.remove_resource::<ActiveCharacter>();
 }
 
 #[cfg(test)]
@@ -72,5 +81,28 @@ mod tests {
             Duration::ZERO,
             "the stale reading must not survive into the next session"
         );
+    }
+
+    #[test]
+    fn cleanup_forgets_the_character_and_its_spells() {
+        use crate::core::spells::{SpellBook, SpellId, SpellInfo};
+
+        let mut world = World::new();
+        world.init_resource::<PingState>();
+        world.init_resource::<PingTimer>();
+        world.insert_resource(ActiveCharacter { id: 7 });
+        world.insert_resource(SpellBook::new(vec![SpellInfo {
+            id: SpellId(1),
+            name: "Light Healing".to_owned(),
+            words: "exura".to_owned(),
+            level: 8,
+            icon: 6,
+            aimable: false,
+        }]));
+
+        world.run_system_once(cleanup_session).unwrap();
+
+        assert!(world.get_resource::<ActiveCharacter>().is_none());
+        assert!(world.resource::<SpellBook>().spells().is_none());
     }
 }
