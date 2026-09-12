@@ -6,6 +6,7 @@ mod activation;
 mod assign_item;
 mod bar;
 mod hotkey_dialog;
+mod menu;
 mod persistence;
 mod spell_dialog;
 mod state;
@@ -66,7 +67,9 @@ impl Plugin for ActionBarPlugin {
                     .run_if(in_state(GameState::InGame)),
             )
             .add_observer(hotkey_dialog::on_open_hotkey_dialog)
-            .add_observer(hotkey_dialog::on_hotkey_dialog_button);
+            .add_observer(hotkey_dialog::on_hotkey_dialog_button)
+            .add_observer(menu::on_open_slot_menu)
+            .add_observer(menu::on_slot_menu_picked);
     }
 }
 

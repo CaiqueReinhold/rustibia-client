@@ -13,6 +13,7 @@ use crate::items::{Item, ItemId};
 use crate::player::Hotkey;
 
 use super::activation::ActionSlotActivated;
+use super::menu::OpenSlotMenu;
 use super::state::{ActionBar, SlotAction};
 
 #[derive(Resource)]
@@ -140,8 +141,13 @@ fn spawn_cell(commands: &mut Commands, index: u16) -> Entity {
         .observe(
             move |mut click: On<Pointer<Click>>, mut commands: Commands| {
                 click.propagate(false);
-                if click.button == PointerButton::Primary {
-                    commands.trigger(ActionSlotActivated { slot: index });
+                match click.button {
+                    PointerButton::Primary => commands.trigger(ActionSlotActivated { slot: index }),
+                    PointerButton::Secondary => commands.trigger(OpenSlotMenu {
+                        slot: index,
+                        at: click.pointer_location.position,
+                    }),
+                    PointerButton::Middle => {}
                 }
             },
         )
