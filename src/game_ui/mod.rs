@@ -132,10 +132,11 @@ pub(crate) fn spawn_main_ui(
 
     let top_panel = toppanel::spawn_top_panel(&mut commands, &ui_assets);
     let gameview = game_overlay::spawn_gameviewport(&mut commands, &render_texture, &ui_assets);
+    let action_bar = action_bar::spawn_action_bar(&mut commands, &ui_assets);
     let chat = chat::spawn_chat_root(&mut commands, &chat_state, &ui_assets);
     commands
         .entity(middle_container)
-        .add_children(&[top_panel, gameview, chat]);
+        .add_children(&[top_panel, gameview, action_bar, chat]);
 
     let ping_view = commands
         .spawn((

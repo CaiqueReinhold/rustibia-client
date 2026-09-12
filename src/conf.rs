@@ -199,6 +199,20 @@ pub mod ui {
         pub const DISABLED_COLOR: Srgba = Srgba::new(0.45, 0.45, 0.45, 1.0);
     }
 
+    pub mod action_bar {
+        pub const SLOT_SIZE: f32 = 34.0;
+        pub const SLOT_GAP: f32 = 2.0;
+        pub const PADDING: f32 = 3.0;
+        pub const BORDER: f32 = 1.0;
+        pub const HEIGHT: f32 = SLOT_SIZE + 2.0 * (PADDING + BORDER);
+        pub const HOTKEY_FONT_SIZE: f32 = 9.0;
+        pub const SPELL_ICON_SIZE: u32 = 32;
+        pub const SPELL_ICON_COLUMNS: u32 = 12;
+        pub const SPELL_ICON_ROWS: u32 = 11;
+        pub const SPELL_LIST_MAX_HEIGHT: f32 = 220.0;
+        pub const SPELL_ROW_HEIGHT: f32 = 36.0;
+    }
+
     pub mod login {
         use bevy::color::Srgba;
 
