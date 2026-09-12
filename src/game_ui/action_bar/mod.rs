@@ -5,6 +5,7 @@ use crate::core::{ActiveCharacter, GameState, SessionCleanup, SpellBook};
 mod activation;
 mod assign_item;
 mod bar;
+mod hotkey_dialog;
 mod persistence;
 mod spell_dialog;
 mod state;
@@ -54,7 +55,18 @@ impl Plugin for ActionBarPlugin {
                 spell_dialog::update_spell_row_highlight.run_if(in_state(GameState::InGame)),
             )
             .add_observer(spell_dialog::on_open_assign_spell_dialog)
-            .add_observer(spell_dialog::on_assign_spell_button);
+            .add_observer(spell_dialog::on_assign_spell_button)
+            .add_systems(
+                Update,
+                (
+                    hotkey_dialog::capture_hotkey,
+                    hotkey_dialog::refresh_hotkey_dialog,
+                )
+                    .chain()
+                    .run_if(in_state(GameState::InGame)),
+            )
+            .add_observer(hotkey_dialog::on_open_hotkey_dialog)
+            .add_observer(hotkey_dialog::on_hotkey_dialog_button);
     }
 }
 
