@@ -68,9 +68,9 @@ pub(super) fn on_slot_menu_picked(
 
 #[cfg(test)]
 mod tests {
+    use super::super::state::SlotAction;
     use super::*;
     use crate::core::SpellId;
-    use crate::game_ui::action_bar::SlotAction;
     use crate::player::Hotkey;
 
     fn enabled(slot: &ActionSlot) -> Vec<bool> {

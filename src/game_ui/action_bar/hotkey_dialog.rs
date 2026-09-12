@@ -227,9 +227,9 @@ pub(super) fn on_hotkey_dialog_button(
 
 #[cfg(test)]
 mod tests {
+    use super::super::state::SlotAction;
     use super::*;
     use crate::core::SpellId;
-    use crate::game_ui::action_bar::SlotAction;
     use bevy::ecs::system::RunSystemOnce;
 
     const F1: Hotkey = Hotkey {

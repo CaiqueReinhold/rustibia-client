@@ -14,7 +14,7 @@ mod target_dialog;
 
 pub use activation::ActionSlotActivated;
 pub use bar::spawn_action_bar;
-pub use state::{ActionBar, ActionSlot, Aim, SlotAction};
+pub use state::ActionBar;
 
 pub struct ActionBarPlugin;
 

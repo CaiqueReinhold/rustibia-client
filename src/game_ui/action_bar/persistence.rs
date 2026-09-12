@@ -143,9 +143,9 @@ pub(super) fn save_action_bar(mut bar: ResMut<ActionBar>, character: Option<Res<
 
 #[cfg(test)]
 mod tests {
+    use super::super::state::Aim;
     use super::*;
     use crate::core::{SpellId, SpellInfo};
-    use crate::game_ui::action_bar::Aim;
     use crate::items::ItemId;
     use crate::player::Hotkey;
     use bevy::ecs::system::RunSystemOnce;
