@@ -2,7 +2,7 @@ use bevy::input::mouse::MouseScrollUnit;
 use bevy::picking::events::Scroll;
 use bevy::prelude::*;
 
-use crate::conf::ui::{action_bar as bar_conf, dialog, ui_colors};
+use crate::conf::ui::{UI_ITEM_SIZE, action_bar as bar_conf, dialog, ui_colors};
 use crate::core::{SpellBook, SpellId, SpellInfo};
 use crate::game_ui::{
     DialogButton, DialogButtonId, DialogButtonPressed, GameUiAssets, ModalDialog, ModalOrder,
@@ -146,8 +146,8 @@ fn spawn_spell_row(
         None => commands
             .spawn((
                 Node {
-                    width: Val::Px(32.0),
-                    height: Val::Px(32.0),
+                    width: Val::Px(UI_ITEM_SIZE),
+                    height: Val::Px(UI_ITEM_SIZE),
                     ..default()
                 },
                 Pickable::IGNORE,
@@ -365,6 +365,33 @@ mod tests {
         world.flush();
 
         assert!(world.resource::<ActionBar>().slot(2).action.is_some());
+        assert!(world.get_entity(dialog).is_err());
+    }
+
+    /// An aimable spell assigns nothing here: it hands the choice to the aim modal, which assigns
+    /// once an aim is picked.
+    #[test]
+    fn ok_on_an_aimable_spell_hands_off_to_the_aim_modal() {
+        #[derive(Resource, Default)]
+        struct Seen(Vec<PendingAssignment>);
+
+        let (mut world, dialog) = a_world_with_an_open_dialog(Some(SpellId(7)));
+        world.init_resource::<Seen>();
+        world.add_observer(|event: On<OpenTargetDialog>, mut seen: ResMut<Seen>| {
+            seen.0.push(event.pending)
+        });
+
+        world.trigger(DialogButtonPressed {
+            dialog,
+            button: DialogButtonId::Ok,
+        });
+        world.flush();
+
+        assert_eq!(
+            world.resource::<Seen>().0,
+            vec![PendingAssignment::Spell(SpellId(7))]
+        );
+        assert!(world.resource::<ActionBar>().slot(2).action.is_none());
         assert!(world.get_entity(dialog).is_err());
     }
 }
