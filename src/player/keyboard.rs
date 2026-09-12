@@ -258,6 +258,7 @@ mod tests {
     use crate::items::ItemId;
     use crate::items::{InventorySlot, ItemPlacement};
     use crate::player::InteractionMode;
+    use crate::player::TargetingSource;
     use bevy::ecs::system::RunSystemOnce;
 
     fn seeded_world() -> World {
@@ -282,12 +283,13 @@ mod tests {
         let mut target = CombatTarget::default();
         target.apply_click(AgentId(7));
         world.insert_resource(target);
-        *world.resource_mut::<InteractionMode>() = InteractionMode::Targeting {
-            source: ItemPlacement::Inventory {
-                slot: InventorySlot::Head,
-            },
-            source_item_id: ItemId(1),
-        };
+        *world.resource_mut::<InteractionMode>() =
+            InteractionMode::Targeting(TargetingSource::Item {
+                placement: ItemPlacement::Inventory {
+                    slot: InventorySlot::Head,
+                },
+                item_id: ItemId(1),
+            });
         press_escape(&mut world);
 
         world.run_system_once(cancel_targeting_on_escape).unwrap();
@@ -324,5 +326,26 @@ mod tests {
         assert!(!binds.reserves(&Hotkey::new(KeyCode::KeyW, true, false, false)));
         assert!(!binds.reserves(&Hotkey::plain(KeyCode::F1)));
         assert!(!binds.reserves(&Hotkey::plain(KeyCode::KeyX)));
+    }
+
+    #[test]
+    fn escape_cancels_every_kind_of_crosshair() {
+        use crate::core::SpellId;
+
+        for source in [
+            TargetingSource::Spell(SpellId(4)),
+            TargetingSource::AssignObject { slot: 2 },
+        ] {
+            let mut world = seeded_world();
+            *world.resource_mut::<InteractionMode>() = InteractionMode::Targeting(source);
+            press_escape(&mut world);
+
+            world.run_system_once(cancel_targeting_on_escape).unwrap();
+
+            assert!(matches!(
+                *world.resource::<InteractionMode>(),
+                InteractionMode::Idle
+            ));
+        }
     }
 }

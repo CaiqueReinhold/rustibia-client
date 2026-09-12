@@ -4,10 +4,30 @@ use bevy::prelude::*;
 use bevy::window::CursorIcon;
 
 use crate::{
+    core::SpellId,
     game_ui::WindowId,
     items::{Item, ItemId, ItemPlacement},
     network::events::{ContainerClosed, IventorySlotUpdated, TileChanged, UpdateContainer},
 };
+
+#[derive(Debug, Clone)]
+pub enum TargetingSource {
+    Item {
+        placement: ItemPlacement,
+        item_id: ItemId,
+    },
+    Spell(SpellId),
+    AssignObject {
+        slot: u16,
+    },
+}
+
+/// A crosshair click that picked an object for action-bar slot `slot`.
+#[derive(Event, Debug)]
+pub struct ObjectPicked {
+    pub slot: u16,
+    pub item: Arc<Item>,
+}
 
 #[derive(Resource, Debug, Default)]
 pub enum InteractionMode {
@@ -18,10 +38,7 @@ pub enum InteractionMode {
         origin: ItemPlacement,
         crossed_threshold: bool,
     },
-    Targeting {
-        source: ItemPlacement,
-        source_item_id: ItemId,
-    },
+    Targeting(TargetingSource),
 }
 
 impl InteractionMode {
@@ -36,15 +53,12 @@ impl InteractionMode {
     }
 
     pub fn is_targeting(&self) -> bool {
-        matches!(self, InteractionMode::Targeting { .. })
+        matches!(self, InteractionMode::Targeting(_))
     }
 
     fn clear_targeting_if_gone(&mut self, gone: impl FnOnce(&ItemPlacement, ItemId) -> bool) {
-        if let InteractionMode::Targeting {
-            source,
-            source_item_id,
-        } = &*self
-            && gone(source, *source_item_id)
+        if let InteractionMode::Targeting(TargetingSource::Item { placement, item_id }) = &*self
+            && gone(placement, *item_id)
         {
             *self = InteractionMode::Idle;
         }

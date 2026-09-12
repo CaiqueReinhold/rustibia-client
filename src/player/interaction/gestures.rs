@@ -3,18 +3,20 @@ use bevy::prelude::*;
 use crate::{
     agent::AgentId,
     conf::ui::MIN_DRAG_THRESHOLD,
+    core::{SpellId, SpellTarget},
     game_ui::{MainUI, UiWindowRef},
     items::{
         ItemDragEnded, ItemDragStarted, ItemFlag, ItemPlacement, LootContainerUI, OpenSplitDialog,
     },
     map::{Map, Position},
     player::components::{Player, PlayerInventory},
+    player::spells::CastSpellRequested,
     player::target::{CombatTarget, TargetSquare, refresh_target_square},
 };
 
 use super::hover::{MapPick, MouseHoverState, cursor_target, valid_drop_target};
 use super::intent::InteractionIntent;
-use super::mode::InteractionMode;
+use super::mode::{InteractionMode, ObjectPicked, TargetingSource};
 
 pub fn attach_observers(event: On<Add, MainUI>, mut commands: Commands) {
     commands
@@ -151,6 +153,13 @@ fn agent_to_use_on(map: &Map, tile: &Position) -> Option<AgentId> {
     map.agents_on(tile).last().copied()
 }
 
+fn crosshair_cast(spell_id: SpellId, tile: Option<&Position>) -> Option<CastSpellRequested> {
+    Some(CastSpellRequested {
+        spell_id,
+        target: SpellTarget::Position(tile?.clone()),
+    })
+}
+
 fn on_click(
     event: On<Pointer<Click>>,
     mut commands: Commands,
@@ -166,40 +175,52 @@ fn on_click(
 ) {
     let player_agent_id = player_q.single().ok().map(|p| p.agent_id);
 
-    // Targeting owns the click: resolve UseItemWith on primary, cancel on
-    // secondary.
-    if let InteractionMode::Targeting {
-        source,
-        source_item_id,
-    } = &*mode
-    {
-        let (source, source_item_id) = (source.clone(), *source_item_id);
+    if let InteractionMode::Targeting(source) = &*mode {
+        let source = source.clone();
         *mode = InteractionMode::Idle;
 
         if event.button != PointerButton::Primary {
             return;
         }
 
-        let Some(target) = cursor_target(
-            &hover_state,
-            &map,
-            &container_q,
-            &inventory,
-            MapPick::PreferForceUse,
-        ) else {
-            return;
-        };
-
-        commands.trigger(InteractionIntent::UseItemWith {
-            source,
-            source_item_id,
-            target: target.placement,
-            target_item_id: target.item.config.id,
-            target_agent: hover_state
-                .tile_position
-                .as_ref()
-                .and_then(|tile| agent_to_use_on(&map, tile)),
-        });
+        match source {
+            TargetingSource::Item { placement, item_id } => {
+                let Some(target) = cursor_target(
+                    &hover_state,
+                    &map,
+                    &container_q,
+                    &inventory,
+                    MapPick::PreferForceUse,
+                ) else {
+                    return;
+                };
+                commands.trigger(InteractionIntent::UseItemWith {
+                    source: placement,
+                    source_item_id: item_id,
+                    target: target.placement,
+                    target_item_id: target.item.config.id,
+                    target_agent: hover_state
+                        .tile_position
+                        .as_ref()
+                        .and_then(|tile| agent_to_use_on(&map, tile)),
+                });
+            }
+            TargetingSource::Spell(spell_id) => {
+                if let Some(cast) = crosshair_cast(spell_id, hover_state.tile_position.as_ref()) {
+                    commands.trigger(cast);
+                }
+            }
+            TargetingSource::AssignObject { slot } => {
+                if let Some(target) =
+                    cursor_target(&hover_state, &map, &container_q, &inventory, MapPick::Top)
+                {
+                    commands.trigger(ObjectPicked {
+                        slot,
+                        item: target.item,
+                    });
+                }
+            }
+        }
         return;
     }
 
@@ -252,10 +273,10 @@ fn on_click(
         };
 
         if target.item.config.has_flag(ItemFlag::MultiUse) {
-            *mode = InteractionMode::Targeting {
-                source: target.placement.clone(),
-                source_item_id: target.item.config.id,
-            };
+            *mode = InteractionMode::Targeting(TargetingSource::Item {
+                placement: target.placement.clone(),
+                item_id: target.item.config.id,
+            });
             return;
         }
 
@@ -345,5 +366,20 @@ mod tests {
         let tile = Position { x: 10, y: 10, z: 7 };
 
         assert_eq!(agent_to_use_on(&map, &tile), None);
+    }
+
+    #[test]
+    fn a_spell_crosshair_casts_at_the_clicked_tile() {
+        let tile = Position { x: 10, y: 10, z: 7 };
+
+        let cast = crosshair_cast(SpellId(4), Some(&tile)).unwrap();
+
+        assert_eq!(cast.spell_id, SpellId(4));
+        assert_eq!(cast.target, SpellTarget::Position(tile));
+    }
+
+    #[test]
+    fn a_spell_crosshair_off_the_map_casts_nothing() {
+        assert!(crosshair_cast(SpellId(4), None).is_none());
     }
 }

@@ -34,6 +34,7 @@ mod tests {
     use crate::items::ItemId;
     use crate::items::{InventorySlot, ItemPlacement};
     use crate::map::Position;
+    use crate::player::TargetingSource;
     use bevy::ecs::system::RunSystemOnce;
 
     fn seeded_world() -> World {
@@ -71,12 +72,13 @@ mod tests {
     #[test]
     fn cleanup_returns_the_interaction_mode_to_idle() {
         let mut world = seeded_world();
-        *world.resource_mut::<InteractionMode>() = InteractionMode::Targeting {
-            source: ItemPlacement::Inventory {
-                slot: InventorySlot::Head,
-            },
-            source_item_id: ItemId(1),
-        };
+        *world.resource_mut::<InteractionMode>() =
+            InteractionMode::Targeting(TargetingSource::Item {
+                placement: ItemPlacement::Inventory {
+                    slot: InventorySlot::Head,
+                },
+                item_id: ItemId(1),
+            });
 
         world.run_system_once(cleanup_session).unwrap();
 
