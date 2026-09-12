@@ -12,6 +12,7 @@ pub mod spells;
 pub mod target;
 pub use hotkey::Hotkey;
 pub use interaction::{ContainerNavTarget, InteractionIntent, InteractionMode, MouseHoverState};
+pub use keyboard::Keybinds;
 
 use crate::core::{GameState, SessionCleanup, SessionEnding};
 

@@ -6,6 +6,7 @@ use crate::{
     agent::{FacingDirection, WalkingDirection},
     game_ui::EnterChatMode,
     map::Map,
+    player::Hotkey,
     player::interaction::InteractionIntent,
     player::movement::{ChangePlayerDirection, MovePlayer},
     player::target::{CombatTarget, TargetSquare, refresh_target_square},
@@ -48,11 +49,32 @@ impl KeyCombo {
     pub fn matches(&self, key: &KeyCode, modifiers: &Vec<&KeyCode>) -> bool {
         self.modifiers.iter().all(|m| modifiers.contains(&m)) && self.keys.contains(key)
     }
+
+    fn modifier_flags(&self) -> (bool, bool, bool) {
+        let held = |left: KeyCode, right: KeyCode| {
+            self.modifiers
+                .iter()
+                .any(|modifier| *modifier == left || *modifier == right)
+        };
+        (
+            held(KeyCode::ControlLeft, KeyCode::ControlRight),
+            held(KeyCode::ShiftLeft, KeyCode::ShiftRight),
+            held(KeyCode::AltLeft, KeyCode::AltRight),
+        )
+    }
 }
 
 #[derive(Resource)]
 pub struct Keybinds {
     pub binds: Vec<(KeyCombo, PlayerAction)>,
+}
+
+impl Keybinds {
+    pub fn reserves(&self, hotkey: &Hotkey) -> bool {
+        self.binds.iter().any(|(combo, _)| {
+            combo.keys.contains(&hotkey.key) && combo.modifier_flags() == hotkey.modifiers()
+        })
+    }
 }
 
 impl Default for Keybinds {
@@ -288,5 +310,19 @@ mod tests {
         world.run_system_once(cancel_targeting_on_escape).unwrap();
 
         assert_eq!(world.resource::<CombatTarget>().target, None);
+    }
+
+    #[test]
+    fn a_built_in_combo_is_reserved_and_a_modified_one_is_not() {
+        use crate::player::Hotkey;
+
+        let binds = Keybinds::default();
+
+        assert!(binds.reserves(&Hotkey::plain(KeyCode::KeyW)));
+        assert!(binds.reserves(&Hotkey::new(KeyCode::KeyW, false, true, false)));
+        assert!(binds.reserves(&Hotkey::plain(KeyCode::KeyC)));
+        assert!(!binds.reserves(&Hotkey::new(KeyCode::KeyW, true, false, false)));
+        assert!(!binds.reserves(&Hotkey::plain(KeyCode::F1)));
+        assert!(!binds.reserves(&Hotkey::plain(KeyCode::KeyX)));
     }
 }
