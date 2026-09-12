@@ -365,7 +365,7 @@ mod tests {
 
         let overlays: [fn(&mut World); 2] = [
             |world| {
-                world.spawn(ModalDialogRoot::for_test());
+                world.spawn(ModalDialogRoot::for_test(0));
             },
             |world| {
                 world.spawn(ContextMenuRoot);
@@ -473,7 +473,7 @@ mod tests {
         use crate::game_ui::ModalDialogRoot;
 
         let mut open = input_world(&[KeyCode::KeyW]);
-        open.spawn(ModalDialogRoot::for_test());
+        open.spawn(ModalDialogRoot::for_test(0));
         open.run_system_once(read_player_input).unwrap();
         assert_eq!(open.resource::<Fired>().walks, 0);
 

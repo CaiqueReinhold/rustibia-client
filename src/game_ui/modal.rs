@@ -66,9 +66,9 @@ impl ModalDialogRoot {
     }
 
     #[cfg(test)]
-    pub fn for_test() -> Self {
+    pub fn for_test(order: u64) -> Self {
         Self {
-            order: 0,
+            order,
             default_button: None,
             has_cancel: false,
         }

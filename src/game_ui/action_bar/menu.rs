@@ -140,4 +140,55 @@ mod tests {
 
         assert!(world.resource::<ActionBar>().slot(5).is_empty());
     }
+
+    /// The consts index into what `slot_menu_entries` returns, and nothing but this ties the two
+    /// orderings together — reorder one and a click routes to the wrong action, silently.
+    #[test]
+    fn every_entry_sits_at_the_index_its_const_names() {
+        let entries = slot_menu_entries(&ActionSlot::default());
+
+        assert_eq!(entries[ASSIGN_SPELL].label, "Assign Spell");
+        assert_eq!(entries[ASSIGN_ITEM].label, "Assign Item");
+        assert_eq!(entries[ASSIGN_HOTKEY].label, "Assign Hotkey");
+        assert_eq!(entries[CLEAR].label, "Clear");
+    }
+
+    #[derive(Resource, Default)]
+    struct Opened {
+        spell: Vec<u16>,
+        hotkey: Vec<u16>,
+    }
+
+    fn pick(index: usize) -> World {
+        let (mut world, menu) = a_world_with_a_slot_menu();
+        world.init_resource::<Opened>();
+        world.add_observer(
+            |event: On<OpenAssignSpellDialog>, mut opened: ResMut<Opened>| {
+                opened.spell.push(event.slot)
+            },
+        );
+        world.add_observer(|event: On<OpenHotkeyDialog>, mut opened: ResMut<Opened>| {
+            opened.hotkey.push(event.slot)
+        });
+
+        world.trigger(ContextMenuPicked { menu, index });
+        world.flush();
+        world
+    }
+
+    #[test]
+    fn assign_spell_opens_the_spell_modal_for_this_slot() {
+        let world = pick(ASSIGN_SPELL);
+
+        assert_eq!(world.resource::<Opened>().spell, vec![5]);
+        assert!(world.resource::<Opened>().hotkey.is_empty());
+    }
+
+    #[test]
+    fn assign_hotkey_opens_the_hotkey_modal_for_this_slot() {
+        let world = pick(ASSIGN_HOTKEY);
+
+        assert_eq!(world.resource::<Opened>().hotkey, vec![5]);
+        assert!(world.resource::<Opened>().spell.is_empty());
+    }
 }

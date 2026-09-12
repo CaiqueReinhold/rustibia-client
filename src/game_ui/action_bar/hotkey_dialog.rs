@@ -325,7 +325,7 @@ mod tests {
         world.insert_resource(keyboard);
         let dialog = world
             .spawn((
-                ModalDialogRoot::for_test(),
+                ModalDialogRoot::for_test(0),
                 HotkeyDialog {
                     slot: 0,
                     captured: None,
@@ -339,5 +339,28 @@ mod tests {
             world.get::<HotkeyDialog>(dialog).unwrap().captured,
             Some(Hotkey::new(KeyCode::F5, false, false, true))
         );
+    }
+
+    /// What the topmost rule is for: a modal opened over this one takes the keyboard with it.
+    #[test]
+    fn a_key_is_ignored_while_another_modal_sits_on_top() {
+        let mut world = World::new();
+        let mut keyboard = ButtonInput::<KeyCode>::default();
+        keyboard.press(KeyCode::F5);
+        world.insert_resource(keyboard);
+        let dialog = world
+            .spawn((
+                ModalDialogRoot::for_test(0),
+                HotkeyDialog {
+                    slot: 0,
+                    captured: None,
+                },
+            ))
+            .id();
+        world.spawn(ModalDialogRoot::for_test(1));
+
+        world.run_system_once(capture_hotkey).unwrap();
+
+        assert_eq!(world.get::<HotkeyDialog>(dialog).unwrap().captured, None);
     }
 }
