@@ -2,6 +2,7 @@ use bevy::prelude::*;
 
 pub mod components;
 mod events;
+mod hotkey;
 mod interaction;
 mod keyboard;
 pub mod movement;
@@ -9,6 +10,7 @@ pub mod pathfinding;
 mod session;
 pub mod spells;
 pub mod target;
+pub use hotkey::Hotkey;
 pub use interaction::{ContainerNavTarget, InteractionIntent, InteractionMode, MouseHoverState};
 
 use crate::core::{GameState, SessionCleanup, SessionEnding};
