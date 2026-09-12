@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::core::spells::SpellBook;
+use crate::core::SpellBook;
 use crate::core::systems::{PingState, PingTimer};
 
 /// Every system that tears down a game session runs here, on
