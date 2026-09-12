@@ -250,4 +250,17 @@ mod tests {
             "must equal chat.max_message_length in the server's game_conf.yaml"
         );
     }
+
+    /// The pin. Its twin is `the_carried_search_flag_matches_the_client` in the server's
+    /// `constants::items`. If these two disagree, the server reads an action-bar item use as an
+    /// ordinary stale coordinate and drops it in silence — nothing fails to compile, nothing
+    /// errors at runtime, and no refusal reaches the player.
+    #[test]
+    fn carried_search_flag_matches_the_server() {
+        assert_eq!(
+            map::CARRIED_SEARCH_FLAG,
+            0xFFFF,
+            "must equal constants::items::CARRIED_SEARCH_FLAG in the server"
+        );
+    }
 }
