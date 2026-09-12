@@ -4,7 +4,7 @@ use bevy::prelude::*;
 
 use crate::{
     agent::{FacingDirection, WalkingDirection},
-    game_ui::{ContextMenuRoot, EnterChatMode, ModalDialogRoot},
+    game_ui::{ActionBar, ActionSlotActivated, ContextMenuRoot, EnterChatMode, ModalDialogRoot},
     map::Map,
     player::Hotkey,
     player::interaction::InteractionIntent,
@@ -158,11 +158,13 @@ pub fn read_player_input(
     time: Res<Time>,
     chat_mode: Res<crate::game_ui::ChatMode>,
     input_focus: Res<bevy::input_focus::InputFocus>,
+    bar: Res<ActionBar>,
+    modals: Query<(), With<ModalDialogRoot>>,
 ) {
     // `chat_mode` covers the chat bar; `input_focus` covers every other text field,
     // such as the channels dialog's player-name entry. Without the second check,
     // typing a name there would also walk the character and fire keybinds.
-    if chat_mode.active || input_focus.0.is_some() {
+    if chat_mode.active || input_focus.0.is_some() || !modals.is_empty() {
         // Reset key-repeat so movement doesn't auto-resume when typing ends.
         key_repeat.pressed_key = None;
         key_repeat.timer.reset();
@@ -204,6 +206,12 @@ pub fn read_player_input(
     }
 
     if let Some(key) = pressed {
+        if let Some(hotkey) = Hotkey::from_input(key, &keyboard)
+            && let Some(slot) = bar.slot_with_hotkey(&hotkey)
+        {
+            commands.trigger(ActionSlotActivated { slot });
+            return;
+        }
         let modifiers: Vec<&KeyCode> = keyboard.get_pressed().filter(is_modifier).collect();
         for (combo, action) in &keybinds.binds {
             if combo.matches(&key, &modifiers) {
@@ -375,5 +383,102 @@ mod tests {
 
             assert_eq!(world.resource::<CombatTarget>().target, Some(AgentId(7)));
         }
+    }
+
+    #[derive(Resource, Default)]
+    struct Fired {
+        walks: usize,
+        slots: Vec<u16>,
+    }
+
+    fn input_world(pressed: &[KeyCode]) -> World {
+        use crate::game_ui::{ActionBar, ActionSlotActivated};
+
+        let mut world = World::new();
+        let mut keyboard = ButtonInput::<KeyCode>::default();
+        for key in pressed {
+            keyboard.press(*key);
+        }
+        world.insert_resource(keyboard);
+        world.init_resource::<Keybinds>();
+        world.init_resource::<Time>();
+        world.init_resource::<crate::game_ui::ChatMode>();
+        world.init_resource::<bevy::input_focus::InputFocus>();
+        world.init_resource::<ActionBar>();
+        world.init_resource::<Fired>();
+        world.run_system_once(init_repeat_state).unwrap();
+        world.add_observer(|_: On<MovePlayer>, mut fired: ResMut<Fired>| fired.walks += 1);
+        world.add_observer(|event: On<ActionSlotActivated>, mut fired: ResMut<Fired>| {
+            fired.slots.push(event.slot)
+        });
+        world
+    }
+
+    #[test]
+    fn a_hotkey_fires_its_slot() {
+        use crate::game_ui::ActionBar;
+        use crate::player::Hotkey;
+
+        let mut world = input_world(&[KeyCode::F1]);
+        world
+            .resource_mut::<ActionBar>()
+            .set_hotkey(3, Hotkey::plain(KeyCode::F1));
+
+        world.run_system_once(read_player_input).unwrap();
+
+        assert_eq!(world.resource::<Fired>().slots, vec![3]);
+    }
+
+    #[test]
+    fn a_hotkey_needs_exactly_its_modifiers() {
+        use crate::game_ui::ActionBar;
+        use crate::player::Hotkey;
+
+        let mut world = input_world(&[KeyCode::ControlLeft, KeyCode::F1]);
+        world
+            .resource_mut::<ActionBar>()
+            .set_hotkey(3, Hotkey::plain(KeyCode::F1));
+
+        world.run_system_once(read_player_input).unwrap();
+
+        assert!(world.resource::<Fired>().slots.is_empty());
+    }
+
+    /// The precedence that makes `Keybinds::reserves` safe to compare exactly. `KeyCombo::matches`
+    /// is subset-based, so the bare `KeyW` bind would fire with Ctrl held; the bar's exact match
+    /// runs first and returns, so a modified hotkey replaces the built-in rather than joining it.
+    /// Reorder the two and Ctrl+W both casts and walks.
+    #[test]
+    fn a_modified_hotkey_wins_over_the_bare_built_in_it_shadows() {
+        use crate::game_ui::ActionBar;
+        use crate::player::Hotkey;
+
+        let mut world = input_world(&[KeyCode::ControlLeft, KeyCode::KeyW]);
+        world
+            .resource_mut::<ActionBar>()
+            .set_hotkey(2, Hotkey::new(KeyCode::KeyW, true, false, false));
+
+        world.run_system_once(read_player_input).unwrap();
+
+        let fired = world.resource::<Fired>();
+        assert_eq!(fired.slots, vec![2]);
+        assert_eq!(
+            fired.walks, 0,
+            "the built-in must not fire alongside the hotkey"
+        );
+    }
+
+    #[test]
+    fn no_key_does_anything_while_a_modal_is_open() {
+        use crate::game_ui::ModalDialogRoot;
+
+        let mut open = input_world(&[KeyCode::KeyW]);
+        open.spawn(ModalDialogRoot::for_test());
+        open.run_system_once(read_player_input).unwrap();
+        assert_eq!(open.resource::<Fired>().walks, 0);
+
+        let mut closed = input_world(&[KeyCode::KeyW]);
+        closed.run_system_once(read_player_input).unwrap();
+        assert_eq!(closed.resource::<Fired>().walks, 1);
     }
 }
