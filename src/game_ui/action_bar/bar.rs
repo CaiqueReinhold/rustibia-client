@@ -299,6 +299,32 @@ fn static_item_image(
 mod tests {
     use super::*;
 
+    /// The cache is what keeps a redraw from adding a layout per slot, and nothing else says so.
+    #[test]
+    fn a_sheet_is_laid_out_once_and_reused() {
+        let mut layouts = Assets::<TextureAtlasLayout>::default();
+        let mut assets = ActionBarAssets {
+            spells: Handle::default(),
+            spell_layout: Handle::default(),
+            item_layouts: HashMap::new(),
+        };
+        let items =
+            SpriteSheet::for_test("item-32-32-0.png", Vec2::new(12.0, 12.0), Vec2::splat(32.0));
+        let outfits = SpriteSheet::for_test(
+            "outfit-4-3-2-2-2-1.png",
+            Vec2::new(8.0, 8.0),
+            Vec2::splat(64.0),
+        );
+
+        let first = assets.item_layout(&items, &mut layouts);
+        let again = assets.item_layout(&items, &mut layouts);
+        let other = assets.item_layout(&outfits, &mut layouts);
+
+        assert_eq!(first, again, "the same sheet must reuse its layout");
+        assert_ne!(first, other, "a different sheet must get its own");
+        assert_eq!(layouts.len(), 2);
+    }
+
     #[test]
     fn as_many_slots_as_fit_are_shown() {
         assert_eq!(visible_slot_count(358.0), 10);

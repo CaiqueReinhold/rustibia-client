@@ -92,6 +92,8 @@ pub fn activation_for(action: Option<SlotAction>, ctx: &ActivationContext) -> Ac
 }
 
 fn use_with(item_id: ItemId, agent: AgentId, tile: &Position, map: &Map) -> Activation {
+    // No item carries id 0, so an empty tile fails the id check in the server's `retrieve_item`
+    // rather than matching whatever it may hold that this client has not seen.
     let (target_item_id, index) = map
         .peek_item(tile)
         .map(|(item, index)| (item.config.id, index))

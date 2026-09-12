@@ -140,6 +140,17 @@ impl SpriteSheet {
             .get()
             .expect("sprite sheet texture not initialized — access via Appearances::get_sheet")
     }
+
+    /// A sheet with no texture loaded, for tests that only read its name or its grid.
+    #[cfg(test)]
+    pub fn for_test(sheet_name: &str, grid_size: Vec2, sprite_size: Vec2) -> Self {
+        Self {
+            sheet_name: sheet_name.to_string(),
+            grid_size,
+            sprite_size,
+            texture: OnceLock::new(),
+        }
+    }
 }
 
 /// What happens when an animation runs off its last phase.
