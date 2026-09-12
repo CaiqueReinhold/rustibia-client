@@ -7,6 +7,9 @@ pub mod map {
     pub const STACK_MAX_VISIBLE_ITEMS: usize = 8;
     pub const CONTAINER_COORD_FLAG: u16 = 0xFFFF;
     pub const INVENTORY_COORD_FLAG: u16 = 0xFFFE;
+    /// In `y` beside `INVENTORY_COORD_FLAG`. The server's `constants::items::CARRIED_SEARCH_FLAG`
+    /// must equal it.
+    pub const CARRIED_SEARCH_FLAG: u16 = 0xFFFF;
     pub const MIN_FLOOR: u8 = 0;
     pub const MAX_FLOOR: u8 = 15;
     pub const BASE_FLOOR: u8 = 7;

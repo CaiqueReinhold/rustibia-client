@@ -1,14 +1,16 @@
 use std::sync::Arc;
 
 use crate::{
-    conf::map::{CONTAINER_COORD_FLAG, INVENTORY_COORD_FLAG},
+    conf::map::{CARRIED_SEARCH_FLAG, CONTAINER_COORD_FLAG, INVENTORY_COORD_FLAG},
     core::SpriteConfig,
     items::{ContainerId, fluid_cell},
     map::Position,
 };
 
 /// An item's identity in the catalogue shipped with the client. Global and stable.
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord, serde::Deserialize)]
+#[derive(
+    Copy, Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[repr(transparent)]
 pub struct ItemId(pub u16);
 
@@ -75,6 +77,8 @@ pub enum ItemPlacement {
     Inventory {
         slot: InventorySlot,
     },
+    /// Whichever carried item of the used id the server finds first.
+    Carried,
 }
 
 impl ItemPlacement {
@@ -89,6 +93,11 @@ impl ItemPlacement {
             ItemPlacement::Inventory { slot } => Position {
                 x: INVENTORY_COORD_FLAG,
                 y: slot.as_id(),
+                z: 0,
+            },
+            ItemPlacement::Carried => Position {
+                x: INVENTORY_COORD_FLAG,
+                y: CARRIED_SEARCH_FLAG,
                 z: 0,
             },
         }
@@ -391,6 +400,20 @@ mod tests {
             Position {
                 x: INVENTORY_COORD_FLAG,
                 y: InventorySlot::Head.as_id(),
+                z: 0
+            }
+        );
+        assert_eq!(p.wire_stack_index(), 0);
+    }
+
+    #[test]
+    fn a_carried_placement_encodes_the_search_coordinate() {
+        let p = ItemPlacement::Carried;
+        assert_eq!(
+            p.to_wire_position(),
+            Position {
+                x: 0xFFFE,
+                y: 0xFFFF,
                 z: 0
             }
         );

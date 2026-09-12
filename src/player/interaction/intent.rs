@@ -216,3 +216,62 @@ pub fn on_interaction_intent(
         None => show_no_way(&mut commands),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent::AgentId;
+
+    #[test]
+    fn a_carried_use_sends_the_search_coordinate() {
+        let intent = InteractionIntent::UseItem {
+            target: ItemPlacement::Carried,
+            item_id: ItemId(266),
+            window_id: None,
+        };
+
+        assert!(matches!(
+            intent.to_message(),
+            Some(ClientMessage::UseItem {
+                position: Position {
+                    x: 0xFFFE,
+                    y: 0xFFFF,
+                    z: 0
+                },
+                item_id: ItemId(266),
+                stack_index: 0,
+            })
+        ));
+        assert!(intent.required_map_positions().is_empty());
+    }
+
+    #[test]
+    fn a_carried_use_with_walks_only_to_its_target() {
+        let target = Position::new(101, 100, 7);
+        let intent = InteractionIntent::UseItemWith {
+            source: ItemPlacement::Carried,
+            source_item_id: ItemId(266),
+            target: ItemPlacement::Map {
+                position: target.clone(),
+                index: 0,
+            },
+            target_item_id: ItemId(100),
+            target_agent: Some(AgentId(3)),
+        };
+
+        assert!(matches!(
+            intent.to_message(),
+            Some(ClientMessage::UseItemWith {
+                source: Position {
+                    x: 0xFFFE,
+                    y: 0xFFFF,
+                    z: 0
+                },
+                source_index: 0,
+                target_agent: Some(AgentId(3)),
+                ..
+            })
+        ));
+        assert_eq!(intent.required_map_positions(), vec![target]);
+    }
+}
