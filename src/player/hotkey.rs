@@ -94,6 +94,10 @@ fn key_from_name(name: &str) -> Option<KeyCode> {
 
 impl Hotkey {
     pub fn new(key: KeyCode, ctrl: bool, shift: bool, alt: bool) -> Self {
+        debug_assert!(
+            key_name(key).is_some(),
+            "{key:?} is not in KEY_NAMES, so this hotkey would store as \"?\" and fail to parse back"
+        );
         Self {
             key,
             ctrl,
