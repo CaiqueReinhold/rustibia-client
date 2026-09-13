@@ -22,7 +22,9 @@ pub use items::ItemConfigs;
 pub use session::{
     ActiveCharacter, EndGameSession, SessionCleanup, SessionEndReason, SessionEnding,
 };
-pub use spells::{SpellBook, SpellGroup, SpellId, SpellInfo, SpellTarget};
+pub use spells::{
+    CooldownState, SpellBook, SpellCooldowns, SpellGroup, SpellId, SpellInfo, SpellTarget,
+};
 pub use sprite::*;
 pub use systems::PingState;
 pub use text::{ChatMessageType, SayTarget, TextMessageType};
@@ -44,6 +46,7 @@ impl Plugin for CorePlugin {
             .init_resource::<systems::PingState>()
             .init_resource::<systems::PingTimer>()
             .init_resource::<spells::SpellBook>()
+            .init_resource::<spells::SpellCooldowns>()
             .add_observer(spells::on_spell_list)
             .init_resource::<InstanceManager<effects::EffectInstance>>()
             .add_systems(
