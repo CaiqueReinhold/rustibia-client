@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::core::SpellBook;
+use crate::core::spells::{SpellBook, SpellCooldowns};
 use crate::core::systems::{PingState, PingTimer};
 
 /// Every system that tears down a game session runs here, on
@@ -53,6 +53,7 @@ pub(super) fn cleanup_session(mut commands: Commands, ping: Res<PingState>) {
     ping.reset();
     commands.insert_resource(PingTimer::default());
     commands.insert_resource(SpellBook::default());
+    commands.insert_resource(SpellCooldowns::default());
     commands.remove_resource::<ActiveCharacter>();
 }
 
@@ -85,7 +86,7 @@ mod tests {
 
     #[test]
     fn cleanup_forgets_the_character_and_its_spells() {
-        use crate::core::spells::{SpellBook, SpellGroup, SpellId, SpellInfo};
+        use crate::core::spells::{SpellBook, SpellCooldowns, SpellGroup, SpellId, SpellInfo};
 
         let mut world = World::new();
         world.init_resource::<PingState>();
@@ -100,10 +101,19 @@ mod tests {
             aimable: false,
             group: SpellGroup::Healing,
         }]));
+        let mut cooldowns = SpellCooldowns::default();
+        cooldowns.start_group(SpellGroup::Healing, Duration::ZERO, Duration::from_secs(1));
+        world.insert_resource(cooldowns);
 
         world.run_system_once(cleanup_session).unwrap();
 
         assert!(world.get_resource::<ActiveCharacter>().is_none());
         assert!(world.resource::<SpellBook>().spells().is_none());
+        assert!(
+            world
+                .resource::<SpellCooldowns>()
+                .group(SpellGroup::Healing, Duration::ZERO)
+                .is_none()
+        );
     }
 }
