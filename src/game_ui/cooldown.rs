@@ -26,6 +26,45 @@ impl CooldownOverlay {
 #[derive(Component, Clone, Copy, Debug)]
 pub struct CooldownTimer(CooldownOverlay);
 
+#[derive(Resource)]
+pub struct CooldownAssets {
+    groups: Handle<Image>,
+    group_layout: Handle<TextureAtlasLayout>,
+}
+
+pub(super) fn setup_cooldown_assets(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut layouts: ResMut<Assets<TextureAtlasLayout>>,
+) {
+    let group_layout = layouts.add(TextureAtlasLayout::from_grid(
+        UVec2::splat(conf::GROUP_SHEET_CELL),
+        conf::GROUP_SHEET_COLUMNS,
+        conf::GROUP_SHEET_ROWS,
+        None,
+        None,
+    ));
+    commands.insert_resource(CooldownAssets {
+        groups: asset_server.load("ui/cooldowns.png"),
+        group_layout,
+    });
+}
+
+pub fn group_icon(assets: &CooldownAssets, group: SpellGroup) -> ImageNode {
+    ImageNode::from_atlas_image(
+        assets.groups.clone(),
+        TextureAtlas {
+            layout: assets.group_layout.clone(),
+            index: group_icon_index(group),
+        },
+    )
+}
+
+/// The sheet's second row holds the coloured icons.
+fn group_icon_index(group: SpellGroup) -> usize {
+    conf::GROUP_SHEET_COLUMNS as usize + group.index()
+}
+
 pub fn spawn_cooldown_overlay(
     commands: &mut Commands,
     tracks: CooldownOverlay,
@@ -182,6 +221,13 @@ mod tests {
             Some(&BackgroundGradient::default())
         );
         assert_eq!(world.get::<Text>(timer).unwrap().0, "");
+    }
+
+    #[test]
+    fn a_group_icon_is_its_cell_in_the_coloured_row() {
+        assert_eq!(group_icon_index(SpellGroup::Attack), 4);
+        assert_eq!(group_icon_index(SpellGroup::Healing), 5);
+        assert_eq!(group_icon_index(SpellGroup::Support), 6);
     }
 
     #[test]

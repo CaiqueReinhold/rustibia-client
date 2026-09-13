@@ -216,6 +216,11 @@ pub mod ui {
 
     pub mod cooldown {
         pub const FONT_SIZE: f32 = 10.0;
+        pub const ICON_SIZE: f32 = 20.0;
+        pub const ICON_GAP: f32 = 3.0;
+        pub const GROUP_SHEET_CELL: u32 = 20;
+        pub const GROUP_SHEET_COLUMNS: u32 = 4;
+        pub const GROUP_SHEET_ROWS: u32 = 2;
     }
 
     pub mod login {

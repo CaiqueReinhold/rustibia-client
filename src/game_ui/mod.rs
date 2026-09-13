@@ -66,6 +66,7 @@ impl Plugin for GameUiPlugin {
                 button_row::spawn_button_row.after(crate::items::inventory::spawn_inventory_ui),
             )
             .add_systems(Startup, assets::setup_game_ui_assets)
+            .add_systems(Startup, cooldown::setup_cooldown_assets)
             .add_systems(
                 Update,
                 toppanel::update_bar.run_if(in_state(GameState::InGame)),
@@ -107,6 +108,7 @@ pub(crate) fn spawn_main_ui(
     mut commands: Commands,
     render_texture: Res<GameRenderTexture>,
     ui_assets: Res<GameUiAssets>,
+    cooldown_assets: Res<cooldown::CooldownAssets>,
     chat_state: Res<chat::ChatState>,
 ) {
     let main_ui = commands
@@ -137,7 +139,7 @@ pub(crate) fn spawn_main_ui(
         .entity(main_ui)
         .add_children(&[left_panel, middle_container, right_panel]);
 
-    let top_panel = toppanel::spawn_top_panel(&mut commands, &ui_assets);
+    let top_panel = toppanel::spawn_top_panel(&mut commands, &ui_assets, &cooldown_assets);
     let gameview = game_overlay::spawn_gameviewport(&mut commands, &render_texture, &ui_assets);
     let action_bar = action_bar::spawn_action_bar(&mut commands, &ui_assets);
     let chat = chat::spawn_chat_root(&mut commands, &chat_state, &ui_assets);
