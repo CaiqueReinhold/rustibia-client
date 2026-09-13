@@ -8,6 +8,7 @@ use bevy_text_outline::TextOutline;
 use crate::conf::ui::{UI_ITEM_SIZE, action_bar as conf, dialog, ui_colors};
 use crate::core::{Appearances, ItemConfigs, SpellBook, SpriteAnimator, SpriteSheet};
 use crate::game_ui::GameUiAssets;
+use crate::game_ui::cooldown::{CooldownOverlay, spawn_cooldown_overlay};
 use crate::game_ui::scaling::logical_size;
 use crate::items::{Item, ItemId};
 use crate::player::Hotkey;
@@ -206,6 +207,16 @@ pub(super) fn redraw_slots(
         }) {
             children.push(commands.spawn(icon_bundle(image)).id());
         }
+        if let Some(tracks) = slot
+            .action
+            .and_then(|action| cooldown_overlay_for(action, &book))
+        {
+            children.push(spawn_cooldown_overlay(
+                &mut commands,
+                tracks,
+                Some(&ui_assets.font),
+            ));
+        }
         if let Some(hotkey) = slot.hotkey {
             children.push(commands.spawn(hotkey_label(&hotkey, &ui_assets)).id());
         }
@@ -262,6 +273,16 @@ pub(super) fn action_image(
         SlotAction::Item { item_id, .. } => {
             static_item_image(*item_id, items, appearances, assets, layouts)
         }
+    }
+}
+
+fn cooldown_overlay_for(action: SlotAction, book: &SpellBook) -> Option<CooldownOverlay> {
+    match action {
+        SlotAction::Spell { id, .. } => Some(CooldownOverlay::Spell {
+            id,
+            group: book.get(id)?.group,
+        }),
+        SlotAction::Item { .. } => None,
     }
 }
 
@@ -347,5 +368,54 @@ mod tests {
         assert_eq!(spell_icon_index(132), Some(131));
         assert_eq!(spell_icon_index(133), None);
         assert_eq!(spell_icon_index(0), None);
+    }
+
+    #[test]
+    fn only_a_spell_the_book_knows_is_overlaid() {
+        use crate::core::{SpellGroup, SpellId, SpellInfo};
+
+        let book = SpellBook::new(vec![SpellInfo {
+            id: SpellId(2),
+            name: "Fire Wave".to_owned(),
+            words: "exevo flam hur".to_owned(),
+            level: 18,
+            icon: 44,
+            aimable: false,
+            group: SpellGroup::Attack,
+        }]);
+
+        assert_eq!(
+            cooldown_overlay_for(
+                SlotAction::Spell {
+                    id: SpellId(2),
+                    aim: None
+                },
+                &book
+            ),
+            Some(CooldownOverlay::Spell {
+                id: SpellId(2),
+                group: SpellGroup::Attack
+            })
+        );
+        assert_eq!(
+            cooldown_overlay_for(
+                SlotAction::Spell {
+                    id: SpellId(9),
+                    aim: None
+                },
+                &book
+            ),
+            None
+        );
+        assert_eq!(
+            cooldown_overlay_for(
+                SlotAction::Item {
+                    item_id: ItemId(3031),
+                    aim: None
+                },
+                &book
+            ),
+            None
+        );
     }
 }
