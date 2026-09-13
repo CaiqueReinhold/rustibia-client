@@ -9,7 +9,7 @@ use crate::conf::ui::{cooldown as conf, ui_colors};
 use crate::core::{CooldownState, SpellCooldowns, SpellGroup, SpellId};
 
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CooldownOverlay {
+pub(super) enum CooldownOverlay {
     Spell { id: SpellId, group: SpellGroup },
     Group(SpellGroup),
 }
@@ -24,10 +24,10 @@ impl CooldownOverlay {
 }
 
 #[derive(Component, Clone, Copy, Debug)]
-pub struct CooldownTimer(CooldownOverlay);
+pub(super) struct CooldownTimer(CooldownOverlay);
 
 #[derive(Resource)]
-pub struct CooldownAssets {
+pub(crate) struct CooldownAssets {
     groups: Handle<Image>,
     group_layout: Handle<TextureAtlasLayout>,
 }
@@ -50,7 +50,7 @@ pub(super) fn setup_cooldown_assets(
     });
 }
 
-pub fn group_icon(assets: &CooldownAssets, group: SpellGroup) -> ImageNode {
+pub(super) fn group_icon(assets: &CooldownAssets, group: SpellGroup) -> ImageNode {
     ImageNode::from_atlas_image(
         assets.groups.clone(),
         TextureAtlas {
@@ -65,7 +65,7 @@ fn group_icon_index(group: SpellGroup) -> usize {
     conf::GROUP_SHEET_COLUMNS as usize + group.index()
 }
 
-pub fn spawn_cooldown_overlay(
+pub(super) fn spawn_cooldown_overlay(
     commands: &mut Commands,
     tracks: CooldownOverlay,
     timer_font: Option<&Handle<Font>>,
@@ -110,7 +110,7 @@ pub fn spawn_cooldown_overlay(
 }
 
 /// Rounded up to a tenth of a second.
-pub fn timer_label(remaining: Duration) -> String {
+fn timer_label(remaining: Duration) -> String {
     let tenths = remaining.as_nanos().div_ceil(100_000_000);
     format!("{}.{}", tenths / 10, tenths % 10)
 }

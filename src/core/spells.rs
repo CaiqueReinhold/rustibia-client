@@ -262,7 +262,8 @@ mod tests {
         }
     }
 
-    /// The server's `entities/spells.rs` pins the same numbers; nothing links the two.
+    /// Its twin is `the_group_wire_ids_are_pinned` in the server's `entities/spells.rs`. If the
+    /// two disagree, a cast shades the wrong group icon and slots, and nothing errors.
     #[test]
     fn group_ids_match_the_server() {
         assert_eq!(SpellGroup::from_id(0), Some(SpellGroup::Attack));
