@@ -24,7 +24,7 @@ impl CooldownOverlay {
 }
 
 #[derive(Component, Clone, Copy, Debug)]
-pub struct CooldownTimer(pub CooldownOverlay);
+pub struct CooldownTimer(CooldownOverlay);
 
 pub fn spawn_cooldown_overlay(
     commands: &mut Commands,
@@ -72,7 +72,7 @@ pub fn spawn_cooldown_overlay(
 
 /// Rounded up to a tenth of a second.
 pub fn timer_label(remaining: Duration) -> String {
-    let tenths = remaining.as_millis().div_ceil(100);
+    let tenths = remaining.as_nanos().div_ceil(100_000_000);
     format!("{}.{}", tenths / 10, tenths % 10)
 }
 
@@ -131,6 +131,8 @@ mod tests {
         assert_eq!(timer_label(ms(100)), "0.1");
         assert_eq!(timer_label(ms(10)), "0.1");
         assert_eq!(timer_label(ms(12_050)), "12.1");
+        assert_eq!(timer_label(Duration::from_micros(400)), "0.1");
+        assert_eq!(timer_label(Duration::from_micros(1_000_400)), "1.1");
     }
 
     #[test]
@@ -208,5 +210,14 @@ mod tests {
             .collect();
         assert_eq!(overlays, 2);
         assert_eq!(timers, [spell]);
+
+        let (_, child_of) = world
+            .query::<(&CooldownTimer, &ChildOf)>()
+            .single(&world)
+            .unwrap();
+        assert_eq!(
+            world.get::<CooldownOverlay>(child_of.parent()),
+            Some(&spell)
+        );
     }
 }

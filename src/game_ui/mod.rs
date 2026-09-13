@@ -73,7 +73,7 @@ impl Plugin for GameUiPlugin {
             .add_systems(
                 PostUpdate,
                 cooldown::update_cooldown_overlays
-                    .before(bevy::ui::UiSystems::Layout)
+                    .before(bevy::ui::UiSystems::Content)
                     .run_if(in_state(GameState::InGame)),
             )
             .add_systems(
