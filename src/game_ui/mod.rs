@@ -9,6 +9,7 @@ pub mod button;
 mod button_row;
 mod chat;
 pub mod context_menu;
+mod cooldown;
 mod disconnect;
 mod game_overlay;
 mod leftpanel;
@@ -68,6 +69,12 @@ impl Plugin for GameUiPlugin {
             .add_systems(
                 Update,
                 toppanel::update_bar.run_if(in_state(GameState::InGame)),
+            )
+            .add_systems(
+                PostUpdate,
+                cooldown::update_cooldown_overlays
+                    .before(bevy::ui::UiSystems::Layout)
+                    .run_if(in_state(GameState::InGame)),
             )
             .add_systems(
                 Update,

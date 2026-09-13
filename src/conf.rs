@@ -130,6 +130,7 @@ pub mod ui {
         pub const FONT_COLOR_LOOK_MSG: Srgba = Srgba::rgb(0.0, 0.7372549, 0.0);
 
         pub const MANA_BAR_COLOR: Srgba = Srgba::new(0.0, 0.0, 0.7, 1.0);
+        pub const COOLDOWN_SHADE: Srgba = Srgba::new(0.345098, 0.345098, 0.345098, 0.666667);
     }
 
     pub mod chat {
@@ -211,6 +212,10 @@ pub mod ui {
         pub const SPELL_ICON_ROWS: u32 = 11;
         pub const SPELL_LIST_MAX_HEIGHT: f32 = 220.0;
         pub const SPELL_ROW_HEIGHT: f32 = 36.0;
+    }
+
+    pub mod cooldown {
+        pub const FONT_SIZE: f32 = 10.0;
     }
 
     pub mod login {
