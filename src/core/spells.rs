@@ -101,7 +101,7 @@ impl Cooldown {
     }
 }
 
-/// Instants are `Time::elapsed()`.
+/// Instants are `Time<Real>::elapsed()`.
 #[derive(Resource, Debug, Default)]
 pub struct SpellCooldowns {
     spells: HashMap<SpellId, Cooldown>,

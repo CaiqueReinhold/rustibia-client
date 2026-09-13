@@ -22,7 +22,7 @@ pub fn on_cast_spell_requested(event: On<CastSpellRequested>, mut commands: Comm
 
 pub fn on_spell_cast(
     event: On<SpellCast>,
-    time: Res<Time>,
+    time: Res<Time<Real>>,
     book: Res<SpellBook>,
     mut cooldowns: ResMut<SpellCooldowns>,
 ) {
@@ -48,10 +48,8 @@ pub fn on_spell_cast(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::{SpellBook, SpellCooldowns, SpellGroup, SpellInfo};
+    use crate::core::{SpellGroup, SpellInfo};
     use crate::map::Position;
-    use crate::network::events::SpellCast;
-    use std::time::Duration;
 
     #[derive(Resource, Default)]
     struct Sent(Vec<ClientMessage>);
@@ -86,7 +84,7 @@ mod tests {
 
     fn a_world_knowing_spell_two() -> World {
         let mut world = World::new();
-        world.init_resource::<Time>();
+        world.init_resource::<Time<Real>>();
         world.init_resource::<SpellCooldowns>();
         world.insert_resource(SpellBook::new(vec![SpellInfo {
             id: SpellId(2),
@@ -99,7 +97,7 @@ mod tests {
         }]));
         world.add_observer(on_spell_cast);
         world
-            .resource_mut::<Time>()
+            .resource_mut::<Time<Real>>()
             .advance_by(Duration::from_secs(5));
         world
     }
