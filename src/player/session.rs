@@ -11,9 +11,9 @@ use crate::player::target::CombatTarget;
 /// Clears everything about the character that just left.
 ///
 /// The player entity itself is an `Agent` and is despawned by the agent cleanup.
-/// `Keybinds` is user configuration, not session state, and stays. `KeyRepeatState`
-/// is re-seeded by re-running `keyboard::init_repeat_state`, which is registered
-/// into the same set.
+/// `Keybinds` stays; the action bar's own cleanup removes the slot binds it loaded.
+/// `KeyRepeatState` is re-seeded by re-running `keyboard::init_repeat_state`, which is
+/// registered into the same set.
 pub(super) fn cleanup_session(mut commands: Commands) {
     commands.insert_resource(MovementQueue::default());
     commands.insert_resource(PlayerElevation::default());

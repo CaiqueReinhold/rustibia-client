@@ -366,7 +366,7 @@ mod tests {
         });
         world.flush();
 
-        assert!(world.resource::<ActionBar>().slot(2).action.is_some());
+        assert!(world.resource::<ActionBar>().action(2).is_some());
         assert!(world.get_entity(dialog).is_err());
     }
 
@@ -393,7 +393,7 @@ mod tests {
             world.resource::<Seen>().0,
             vec![PendingAssignment::Spell(SpellId(7))]
         );
-        assert!(world.resource::<ActionBar>().slot(2).action.is_none());
+        assert!(world.resource::<ActionBar>().action(2).is_none());
         assert!(world.get_entity(dialog).is_err());
     }
 }

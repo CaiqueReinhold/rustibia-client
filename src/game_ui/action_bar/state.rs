@@ -3,7 +3,11 @@ use std::collections::BTreeMap;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{core::SpellId, items::ItemId, player::Hotkey};
+use crate::{
+    core::SpellId,
+    items::ItemId,
+    player::{Hotkey, Keybinds},
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -36,82 +40,71 @@ impl ActionSlot {
     }
 }
 
-/// Slots by index, sparse. `dirty` means a change not yet written to disk.
+/// Each slot's action, sparse. A slot's hotkey is its bind in `Keybinds`.
 #[derive(Resource, Debug, Default)]
 pub struct ActionBar {
-    slots: BTreeMap<u16, ActionSlot>,
-    dirty: bool,
+    actions: BTreeMap<u16, SlotAction>,
     spells_checked: bool,
 }
 
 impl ActionBar {
-    pub fn from_slots(slots: BTreeMap<u16, ActionSlot>) -> Self {
-        Self { slots, ..default() }
+    pub fn from_actions(actions: BTreeMap<u16, SlotAction>) -> Self {
+        Self {
+            actions,
+            ..default()
+        }
     }
 
-    pub fn slots(&self) -> &BTreeMap<u16, ActionSlot> {
-        &self.slots
+    pub fn action(&self, index: u16) -> Option<SlotAction> {
+        self.actions.get(&index).copied()
     }
 
-    pub fn slot(&self, index: u16) -> ActionSlot {
-        self.slots.get(&index).copied().unwrap_or_default()
+    pub fn slot(&self, keybinds: &Keybinds, index: u16) -> ActionSlot {
+        ActionSlot {
+            action: self.action(index),
+            hotkey: keybinds.slot_hotkey(index),
+        }
     }
 
-    pub fn slot_with_hotkey(&self, hotkey: &Hotkey) -> Option<u16> {
-        self.slots
+    /// Every slot with an action or a hotkey.
+    pub fn slots(&self, keybinds: &Keybinds) -> BTreeMap<u16, ActionSlot> {
+        let mut slots: BTreeMap<u16, ActionSlot> = self
+            .actions
             .iter()
-            .find(|(_, slot)| slot.hotkey.as_ref() == Some(hotkey))
-            .map(|(index, _)| *index)
+            .map(|(index, action)| {
+                let slot = ActionSlot {
+                    action: Some(*action),
+                    hotkey: None,
+                };
+                (*index, slot)
+            })
+            .collect();
+        for (index, hotkey) in keybinds.slot_binds() {
+            slots.entry(index).or_default().hotkey = Some(hotkey);
+        }
+        slots
     }
 
     pub fn set_action(&mut self, index: u16, action: SlotAction) {
-        self.slots.entry(index).or_default().action = Some(action);
-        self.dirty = true;
+        self.actions.insert(index, action);
     }
 
-    pub fn set_hotkey(&mut self, index: u16, hotkey: Hotkey) {
-        for slot in self.slots.values_mut() {
-            if slot.hotkey == Some(hotkey) {
-                slot.hotkey = None;
-            }
-        }
-        self.slots.entry(index).or_default().hotkey = Some(hotkey);
-        self.slots.retain(|_, slot| !slot.is_empty());
-        self.dirty = true;
+    pub fn clear_action(&mut self, index: u16) {
+        self.actions.remove(&index);
     }
 
-    pub fn clear_hotkey(&mut self, index: u16) {
-        if let Some(slot) = self.slots.get_mut(&index) {
-            slot.hotkey = None;
-        }
-        self.slots.retain(|_, slot| !slot.is_empty());
-        self.dirty = true;
-    }
-
-    pub fn clear_slot(&mut self, index: u16) {
-        self.slots.remove(&index);
-        self.dirty = true;
-    }
-
-    /// Clears every slot, hotkey included, whose action `keep` rejects, and returns their indices.
+    /// Drops every action `keep` rejects and returns the slots it was in.
     pub fn retain_actions(&mut self, keep: impl Fn(&SlotAction) -> bool) -> Vec<u16> {
         let cleared: Vec<u16> = self
-            .slots
+            .actions
             .iter()
-            .filter(|(_, slot)| slot.action.as_ref().is_some_and(|action| !keep(action)))
+            .filter(|(_, action)| !keep(action))
             .map(|(index, _)| *index)
             .collect();
         for index in &cleared {
-            self.slots.remove(index);
-        }
-        if !cleared.is_empty() {
-            self.dirty = true;
+            self.actions.remove(index);
         }
         cleared
-    }
-
-    pub(super) fn take_dirty(&mut self) -> bool {
-        std::mem::take(&mut self.dirty)
     }
 
     pub(super) fn spells_checked(&self) -> bool {
@@ -133,74 +126,40 @@ mod tests {
     };
 
     #[test]
-    fn an_action_and_a_hotkey_are_set_independently() {
+    fn a_slot_is_its_action_and_its_bind() {
         let mut bar = ActionBar::default();
+        let mut keybinds = Keybinds::default();
 
         bar.set_action(3, HEAL);
-        bar.set_hotkey(3, Hotkey::plain(KeyCode::F1));
-        bar.set_action(
-            3,
-            SlotAction::Item {
-                item_id: ItemId(266),
-                aim: None,
-            },
+        keybinds.bind_slot(3, Hotkey::plain(KeyCode::F1));
+        keybinds.bind_slot(5, Hotkey::plain(KeyCode::F2));
+
+        assert_eq!(
+            bar.slots(&keybinds),
+            BTreeMap::from([
+                (
+                    3,
+                    ActionSlot {
+                        action: Some(HEAL),
+                        hotkey: Some(Hotkey::plain(KeyCode::F1)),
+                    }
+                ),
+                (
+                    5,
+                    ActionSlot {
+                        action: None,
+                        hotkey: Some(Hotkey::plain(KeyCode::F2)),
+                    }
+                ),
+            ])
         );
-
-        assert_eq!(bar.slot(3).hotkey, Some(Hotkey::plain(KeyCode::F1)));
-        assert!(matches!(bar.slot(3).action, Some(SlotAction::Item { .. })));
-        assert!(bar.take_dirty());
-        assert!(!bar.take_dirty());
+        assert!(bar.slot(&keybinds, 4).is_empty());
     }
 
     #[test]
-    fn a_hotkey_moves_rather_than_being_shared() {
+    fn a_rejected_action_is_dropped_and_its_slot_reported() {
         let mut bar = ActionBar::default();
         bar.set_action(0, HEAL);
-        bar.set_hotkey(0, Hotkey::plain(KeyCode::F1));
-
-        bar.set_hotkey(5, Hotkey::plain(KeyCode::F1));
-
-        assert_eq!(bar.slot(0).hotkey, None);
-        assert_eq!(bar.slot_with_hotkey(&Hotkey::plain(KeyCode::F1)), Some(5));
-    }
-
-    #[test]
-    fn a_slot_left_with_nothing_has_no_entry() {
-        let mut bar = ActionBar::default();
-        bar.set_hotkey(0, Hotkey::plain(KeyCode::F1));
-        bar.set_hotkey(1, Hotkey::plain(KeyCode::F1));
-        assert!(!bar.slots().contains_key(&0));
-
-        bar.clear_hotkey(1);
-        assert!(bar.slots().is_empty());
-    }
-
-    #[test]
-    fn a_hotkey_without_an_action_is_kept() {
-        let mut bar = ActionBar::default();
-
-        bar.set_hotkey(2, Hotkey::plain(KeyCode::F2));
-
-        assert_eq!(bar.slot(2).action, None);
-        assert!(bar.slots().contains_key(&2));
-    }
-
-    #[test]
-    fn clearing_a_slot_removes_its_action_and_hotkey() {
-        let mut bar = ActionBar::default();
-        bar.set_action(4, HEAL);
-        bar.set_hotkey(4, Hotkey::plain(KeyCode::F4));
-
-        bar.clear_slot(4);
-
-        assert!(bar.slot(4).is_empty());
-    }
-
-    #[test]
-    fn a_rejected_action_clears_its_whole_slot() {
-        let mut bar = ActionBar::default();
-        bar.set_action(0, HEAL);
-        bar.set_hotkey(0, Hotkey::plain(KeyCode::F1));
         bar.set_action(
             1,
             SlotAction::Item {
@@ -208,15 +167,11 @@ mod tests {
                 aim: None,
             },
         );
-        bar.set_hotkey(2, Hotkey::plain(KeyCode::F2));
-        bar.take_dirty();
 
         let cleared = bar.retain_actions(|action| matches!(action, SlotAction::Item { .. }));
 
         assert_eq!(cleared, vec![0]);
-        assert!(bar.slot(0).is_empty());
-        assert!(!bar.slot(1).is_empty());
-        assert!(!bar.slot(2).is_empty());
-        assert!(bar.take_dirty());
+        assert_eq!(bar.action(0), None);
+        assert!(bar.action(1).is_some());
     }
 }

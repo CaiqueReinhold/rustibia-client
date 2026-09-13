@@ -1,10 +1,11 @@
+use std::collections::HashMap;
 use std::time::Duration;
 
 use bevy::prelude::*;
 
 use crate::{
     agent::{FacingDirection, WalkingDirection},
-    game_ui::{ActionBar, ActionSlotActivated, ContextMenuRoot, EnterChatMode, ModalDialogRoot},
+    game_ui::{ActionSlotActivated, ContextMenuRoot, EnterChatMode, ModalDialogRoot},
     map::Map,
     player::Hotkey,
     player::interaction::InteractionIntent,
@@ -12,127 +13,90 @@ use crate::{
     player::target::{CombatTarget, TargetSquare, refresh_target_square},
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PlayerAction {
     Move(WalkingDirection),
     ChangeDirection(FacingDirection),
     EnterChatMode,
-}
-
-#[derive(Clone, Debug)]
-pub struct KeyCombo {
-    /// Any of these being just_pressed activates the combo
-    pub keys: Vec<KeyCode>,
-    /// All of these must be held (empty = no modifier required)
-    pub modifiers: Vec<KeyCode>,
-}
-
-impl KeyCombo {
-    pub fn single(key: KeyCode) -> Self {
-        Self {
-            keys: vec![key],
-            modifiers: vec![],
-        }
-    }
-    pub fn any(keys: Vec<KeyCode>) -> Self {
-        Self {
-            keys,
-            modifiers: vec![],
-        }
-    }
-    pub fn modified(modifier: KeyCode, key: KeyCode) -> Self {
-        Self {
-            keys: vec![key],
-            modifiers: vec![modifier],
-        }
-    }
-    pub fn matches(&self, key: &KeyCode, modifiers: &Vec<&KeyCode>) -> bool {
-        self.modifiers.iter().all(|m| modifiers.contains(&m)) && self.keys.contains(key)
-    }
-
-    fn modifier_flags(&self) -> (bool, bool, bool) {
-        let held = |left: KeyCode, right: KeyCode| {
-            self.modifiers
-                .iter()
-                .any(|modifier| *modifier == left || *modifier == right)
-        };
-        (
-            held(KeyCode::ControlLeft, KeyCode::ControlRight),
-            held(KeyCode::ShiftLeft, KeyCode::ShiftRight),
-            held(KeyCode::AltLeft, KeyCode::AltRight),
-        )
-    }
+    ActivateActionSlot(u16),
 }
 
 #[derive(Resource)]
 pub struct Keybinds {
-    pub binds: Vec<(KeyCombo, PlayerAction)>,
+    binds: HashMap<Hotkey, PlayerAction>,
 }
 
 impl Keybinds {
-    pub fn reserves(&self, hotkey: &Hotkey) -> bool {
-        self.binds.iter().any(|(combo, _)| {
-            combo.keys.contains(&hotkey.key) && combo.modifier_flags() == hotkey.modifiers()
-        })
+    pub fn action(&self, hotkey: &Hotkey) -> Option<PlayerAction> {
+        self.binds.get(hotkey).copied()
+    }
+
+    pub fn slot_hotkey(&self, slot: u16) -> Option<Hotkey> {
+        self.slot_binds()
+            .find(|(bound, _)| *bound == slot)
+            .map(|(_, hotkey)| hotkey)
+    }
+
+    pub fn slot_binds(&self) -> impl Iterator<Item = (u16, Hotkey)> + '_ {
+        self.binds
+            .iter()
+            .filter_map(|(hotkey, action)| match action {
+                PlayerAction::ActivateActionSlot(slot) => Some((*slot, *hotkey)),
+                _ => None,
+            })
+    }
+
+    /// Moves `hotkey` onto `slot`, replacing `slot`'s own hotkey and taking it from any other slot.
+    /// `false`, with nothing changed, when a bind other than a slot holds `hotkey`.
+    pub fn bind_slot(&mut self, slot: u16, hotkey: Hotkey) -> bool {
+        match self.action(&hotkey) {
+            None | Some(PlayerAction::ActivateActionSlot(_)) => {}
+            Some(_) => return false,
+        }
+        self.unbind_slot(slot);
+        self.binds
+            .insert(hotkey, PlayerAction::ActivateActionSlot(slot));
+        true
+    }
+
+    pub fn unbind_slot(&mut self, slot: u16) {
+        self.binds
+            .retain(|_, action| *action != PlayerAction::ActivateActionSlot(slot));
+    }
+
+    pub fn unbind_all_slots(&mut self) {
+        self.binds
+            .retain(|_, action| !matches!(action, PlayerAction::ActivateActionSlot(_)));
     }
 }
 
 impl Default for Keybinds {
     fn default() -> Self {
+        use FacingDirection as Face;
         use KeyCode::*;
+        use PlayerAction::{ChangeDirection, Move};
+        use WalkingDirection as Walk;
+        let shift = |key| Hotkey::new(key, false, true, false);
         Self {
-            binds: vec![
-                // Shift combos must come before bare keys
-                (
-                    KeyCombo::modified(ShiftLeft, KeyW),
-                    PlayerAction::ChangeDirection(FacingDirection::North),
-                ),
-                (
-                    KeyCombo::modified(ShiftLeft, KeyD),
-                    PlayerAction::ChangeDirection(FacingDirection::East),
-                ),
-                (
-                    KeyCombo::modified(ShiftLeft, KeyS),
-                    PlayerAction::ChangeDirection(FacingDirection::South),
-                ),
-                (
-                    KeyCombo::modified(ShiftLeft, KeyA),
-                    PlayerAction::ChangeDirection(FacingDirection::West),
-                ),
-                (
-                    KeyCombo::any(vec![KeyW, ArrowUp]),
-                    PlayerAction::Move(WalkingDirection::North),
-                ),
-                (
-                    KeyCombo::any(vec![KeyD, ArrowRight]),
-                    PlayerAction::Move(WalkingDirection::East),
-                ),
-                (
-                    KeyCombo::any(vec![KeyS, ArrowDown]),
-                    PlayerAction::Move(WalkingDirection::South),
-                ),
-                (
-                    KeyCombo::any(vec![KeyA, ArrowLeft]),
-                    PlayerAction::Move(WalkingDirection::West),
-                ),
-                (
-                    KeyCombo::single(KeyQ),
-                    PlayerAction::Move(WalkingDirection::NorthWest),
-                ),
-                (
-                    KeyCombo::single(KeyE),
-                    PlayerAction::Move(WalkingDirection::NorthEast),
-                ),
-                (
-                    KeyCombo::single(KeyZ),
-                    PlayerAction::Move(WalkingDirection::SouthWest),
-                ),
-                (
-                    KeyCombo::single(KeyC),
-                    PlayerAction::Move(WalkingDirection::SouthEast),
-                ),
-                (KeyCombo::single(Enter), PlayerAction::EnterChatMode),
-            ],
+            binds: HashMap::from([
+                (shift(KeyW), ChangeDirection(Face::North)),
+                (shift(KeyD), ChangeDirection(Face::East)),
+                (shift(KeyS), ChangeDirection(Face::South)),
+                (shift(KeyA), ChangeDirection(Face::West)),
+                (Hotkey::plain(KeyW), Move(Walk::North)),
+                (Hotkey::plain(ArrowUp), Move(Walk::North)),
+                (Hotkey::plain(KeyD), Move(Walk::East)),
+                (Hotkey::plain(ArrowRight), Move(Walk::East)),
+                (Hotkey::plain(KeyS), Move(Walk::South)),
+                (Hotkey::plain(ArrowDown), Move(Walk::South)),
+                (Hotkey::plain(KeyA), Move(Walk::West)),
+                (Hotkey::plain(ArrowLeft), Move(Walk::West)),
+                (Hotkey::plain(KeyQ), Move(Walk::NorthWest)),
+                (Hotkey::plain(KeyE), Move(Walk::NorthEast)),
+                (Hotkey::plain(KeyZ), Move(Walk::SouthWest)),
+                (Hotkey::plain(KeyC), Move(Walk::SouthEast)),
+                (Hotkey::plain(Enter), PlayerAction::EnterChatMode),
+            ]),
         }
     }
 }
@@ -158,7 +122,6 @@ pub fn read_player_input(
     time: Res<Time>,
     chat_mode: Res<crate::game_ui::ChatMode>,
     input_focus: Res<bevy::input_focus::InputFocus>,
-    bar: Res<ActionBar>,
     modals: Query<(), With<ModalDialogRoot>>,
 ) {
     // `chat_mode` covers the chat bar; `input_focus` covers every other text field,
@@ -205,32 +168,22 @@ pub fn read_player_input(
         key_repeat.timer.reset();
     }
 
-    if let Some(key) = pressed {
-        if let Some(hotkey) = Hotkey::from_input(key, &keyboard)
-            && let Some(slot) = bar.slot_with_hotkey(&hotkey)
-        {
-            commands.trigger(ActionSlotActivated { slot });
-            return;
-        }
-        let modifiers: Vec<&KeyCode> = keyboard.get_pressed().filter(is_modifier).collect();
-        for (combo, action) in &keybinds.binds {
-            if combo.matches(&key, &modifiers) {
-                route_action(action, &mut commands);
-                break;
-            }
-        }
+    if let Some(key) = pressed
+        && let Some(hotkey) = Hotkey::from_input(key, &keyboard)
+        && let Some(action) = keybinds.action(&hotkey)
+    {
+        route_action(action, &mut commands);
     }
 }
 
-fn route_action(action: &PlayerAction, commands: &mut Commands) {
+fn route_action(action: PlayerAction, commands: &mut Commands) {
     match action {
-        PlayerAction::Move(dir) => commands.trigger(MovePlayer { direction: *dir }),
-        PlayerAction::ChangeDirection(dir) => {
-            commands.trigger(ChangePlayerDirection { direction: *dir })
+        PlayerAction::Move(direction) => commands.trigger(MovePlayer { direction }),
+        PlayerAction::ChangeDirection(direction) => {
+            commands.trigger(ChangePlayerDirection { direction })
         }
-        PlayerAction::EnterChatMode => {
-            commands.trigger(EnterChatMode);
-        }
+        PlayerAction::EnterChatMode => commands.trigger(EnterChatMode),
+        PlayerAction::ActivateActionSlot(slot) => commands.trigger(ActionSlotActivated { slot }),
     }
 }
 
@@ -325,17 +278,22 @@ mod tests {
     }
 
     #[test]
-    fn a_built_in_combo_is_reserved_and_a_modified_one_is_not() {
-        use crate::player::Hotkey;
+    fn a_slot_takes_a_free_combo_but_never_a_built_in_one() {
+        let mut binds = Keybinds::default();
+        let ctrl_w = Hotkey::new(KeyCode::KeyW, true, false, false);
 
-        let binds = Keybinds::default();
+        assert!(!binds.bind_slot(0, Hotkey::plain(KeyCode::KeyW)));
+        assert!(binds.bind_slot(0, ctrl_w));
+        assert!(binds.bind_slot(0, Hotkey::plain(KeyCode::F1)));
+        assert!(binds.bind_slot(3, Hotkey::plain(KeyCode::F1)));
 
-        assert!(binds.reserves(&Hotkey::plain(KeyCode::KeyW)));
-        assert!(binds.reserves(&Hotkey::new(KeyCode::KeyW, false, true, false)));
-        assert!(binds.reserves(&Hotkey::plain(KeyCode::KeyC)));
-        assert!(!binds.reserves(&Hotkey::new(KeyCode::KeyW, true, false, false)));
-        assert!(!binds.reserves(&Hotkey::plain(KeyCode::F1)));
-        assert!(!binds.reserves(&Hotkey::plain(KeyCode::KeyX)));
+        assert_eq!(binds.slot_hotkey(0), None);
+        assert_eq!(binds.slot_hotkey(3), Some(Hotkey::plain(KeyCode::F1)));
+        assert_eq!(binds.action(&ctrl_w), None);
+        assert_eq!(
+            binds.action(&Hotkey::plain(KeyCode::KeyW)),
+            Some(PlayerAction::Move(WalkingDirection::North))
+        );
     }
 
     #[test]
@@ -392,8 +350,6 @@ mod tests {
     }
 
     fn input_world(pressed: &[KeyCode]) -> World {
-        use crate::game_ui::{ActionBar, ActionSlotActivated};
-
         let mut world = World::new();
         let mut keyboard = ButtonInput::<KeyCode>::default();
         for key in pressed {
@@ -404,7 +360,6 @@ mod tests {
         world.init_resource::<Time>();
         world.init_resource::<crate::game_ui::ChatMode>();
         world.init_resource::<bevy::input_focus::InputFocus>();
-        world.init_resource::<ActionBar>();
         world.init_resource::<Fired>();
         world.run_system_once(init_repeat_state).unwrap();
         world.add_observer(|_: On<MovePlayer>, mut fired: ResMut<Fired>| fired.walks += 1);
@@ -416,13 +371,10 @@ mod tests {
 
     #[test]
     fn a_hotkey_fires_its_slot() {
-        use crate::game_ui::ActionBar;
-        use crate::player::Hotkey;
-
         let mut world = input_world(&[KeyCode::F1]);
         world
-            .resource_mut::<ActionBar>()
-            .set_hotkey(3, Hotkey::plain(KeyCode::F1));
+            .resource_mut::<Keybinds>()
+            .bind_slot(3, Hotkey::plain(KeyCode::F1));
 
         world.run_system_once(read_player_input).unwrap();
 
@@ -430,43 +382,51 @@ mod tests {
     }
 
     #[test]
-    fn a_hotkey_needs_exactly_its_modifiers() {
-        use crate::game_ui::ActionBar;
-        use crate::player::Hotkey;
-
+    fn a_bind_needs_exactly_its_modifiers() {
         let mut world = input_world(&[KeyCode::ControlLeft, KeyCode::F1]);
         world
-            .resource_mut::<ActionBar>()
-            .set_hotkey(3, Hotkey::plain(KeyCode::F1));
-
+            .resource_mut::<Keybinds>()
+            .bind_slot(3, Hotkey::plain(KeyCode::F1));
         world.run_system_once(read_player_input).unwrap();
-
         assert!(world.resource::<Fired>().slots.is_empty());
-    }
-
-    /// The precedence that makes `Keybinds::reserves` safe to compare exactly. `KeyCombo::matches`
-    /// is subset-based, so the bare `KeyW` bind would fire with Ctrl held; the bar's exact match
-    /// runs first and returns, so a modified hotkey replaces the built-in rather than joining it.
-    /// Reorder the two and Ctrl+W both casts and walks.
-    #[test]
-    fn a_modified_hotkey_wins_over_the_bare_built_in_it_shadows() {
-        use crate::game_ui::ActionBar;
-        use crate::player::Hotkey;
 
         let mut world = input_world(&[KeyCode::ControlLeft, KeyCode::KeyW]);
+        world.run_system_once(read_player_input).unwrap();
+        assert_eq!(world.resource::<Fired>().walks, 0);
+    }
+
+    #[test]
+    fn a_modified_combo_fires_its_slot_and_not_the_bare_built_in() {
+        let mut world = input_world(&[KeyCode::ControlLeft, KeyCode::KeyW]);
         world
-            .resource_mut::<ActionBar>()
-            .set_hotkey(2, Hotkey::new(KeyCode::KeyW, true, false, false));
+            .resource_mut::<Keybinds>()
+            .bind_slot(2, Hotkey::new(KeyCode::KeyW, true, false, false));
 
         world.run_system_once(read_player_input).unwrap();
 
         let fired = world.resource::<Fired>();
         assert_eq!(fired.slots, vec![2]);
-        assert_eq!(
-            fired.walks, 0,
-            "the built-in must not fire alongside the hotkey"
-        );
+        assert_eq!(fired.walks, 0);
     }
+
+    #[test]
+    fn either_shift_turns_rather_than_walks() {
+        for shift in [KeyCode::ShiftLeft, KeyCode::ShiftRight] {
+            let mut world = input_world(&[shift, KeyCode::KeyW]);
+            world.init_resource::<Turned>();
+            world.add_observer(|_: On<ChangePlayerDirection>, mut turned: ResMut<Turned>| {
+                turned.0 += 1
+            });
+
+            world.run_system_once(read_player_input).unwrap();
+
+            assert_eq!(world.resource::<Fired>().walks, 0, "{shift:?}");
+            assert_eq!(world.resource::<Turned>().0, 1, "{shift:?}");
+        }
+    }
+
+    #[derive(Resource, Default)]
+    struct Turned(usize);
 
     #[test]
     fn no_key_does_anything_while_a_modal_is_open() {

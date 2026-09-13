@@ -76,6 +76,11 @@ const KEY_NAMES: &[(KeyCode, &str)] = &[
     (KeyCode::End, "End"),
     (KeyCode::PageUp, "PgUp"),
     (KeyCode::PageDown, "PgDn"),
+    (KeyCode::ArrowUp, "Up"),
+    (KeyCode::ArrowDown, "Down"),
+    (KeyCode::ArrowLeft, "Left"),
+    (KeyCode::ArrowRight, "Right"),
+    (KeyCode::Enter, "Enter"),
 ];
 
 fn key_name(key: KeyCode) -> Option<&'static str> {
@@ -110,7 +115,7 @@ impl Hotkey {
         Self::new(key, false, false, false)
     }
 
-    /// `key` with the modifiers `keyboard` holds now; `None` for a key no hotkey can use.
+    /// `key` with the modifiers `keyboard` holds now; `None` for a key no bind can name.
     pub fn from_input(key: KeyCode, keyboard: &ButtonInput<KeyCode>) -> Option<Self> {
         key_name(key)?;
         Some(Self::new(
@@ -229,15 +234,10 @@ mod tests {
     }
 
     #[test]
-    fn keys_the_modals_and_movement_own_cannot_be_captured() {
+    fn a_key_outside_the_table_has_no_hotkey() {
         let keyboard = ButtonInput::default();
 
-        for key in [
-            KeyCode::Escape,
-            KeyCode::Enter,
-            KeyCode::ShiftLeft,
-            KeyCode::ArrowUp,
-        ] {
+        for key in [KeyCode::Escape, KeyCode::ShiftLeft, KeyCode::Tab] {
             assert_eq!(Hotkey::from_input(key, &keyboard), None, "{key:?}");
         }
     }

@@ -11,7 +11,7 @@ use crate::game_ui::GameUiAssets;
 use crate::game_ui::cooldown::{CooldownOverlay, spawn_cooldown_overlay};
 use crate::game_ui::scaling::logical_size;
 use crate::items::{Item, ItemId};
-use crate::player::Hotkey;
+use crate::player::{Hotkey, Keybinds};
 
 use super::activation::ActionSlotActivated;
 use super::menu::OpenSlotMenu;
@@ -182,6 +182,7 @@ pub(super) fn update_slot_count(
 pub(super) fn redraw_slots(
     mut commands: Commands,
     bar: Res<ActionBar>,
+    keybinds: Res<Keybinds>,
     book: Res<SpellBook>,
     items: Res<ItemConfigs>,
     appearances: Res<Appearances>,
@@ -191,7 +192,7 @@ pub(super) fn redraw_slots(
     cells: Query<(Entity, &ActionSlotCell)>,
 ) {
     for (entity, cell) in &cells {
-        let slot = bar.slot(cell.0);
+        let slot = bar.slot(&keybinds, cell.0);
         commands.entity(entity).despawn_children();
 
         let mut children = Vec::new();

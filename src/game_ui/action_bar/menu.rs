@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use crate::game_ui::{ContextMenu, ContextMenuEntry, ContextMenuPicked, GameUiAssets};
-use crate::player::{InteractionMode, TargetingSource};
+use crate::player::{InteractionMode, Keybinds, TargetingSource};
 
 use super::hotkey_dialog::OpenHotkeyDialog;
 use super::spell_dialog::OpenAssignSpellDialog;
@@ -37,8 +37,9 @@ pub(super) fn on_open_slot_menu(
     mut commands: Commands,
     ui_assets: Res<GameUiAssets>,
     bar: Res<ActionBar>,
+    keybinds: Res<Keybinds>,
 ) {
-    let menu = ContextMenu::new(slot_menu_entries(&bar.slot(event.slot))).spawn(
+    let menu = ContextMenu::new(slot_menu_entries(&bar.slot(&keybinds, event.slot))).spawn(
         &mut commands,
         &ui_assets,
         event.at,
@@ -51,6 +52,7 @@ pub(super) fn on_slot_menu_picked(
     mut commands: Commands,
     menus: Query<&SlotMenu>,
     mut bar: ResMut<ActionBar>,
+    mut keybinds: ResMut<Keybinds>,
     mut mode: ResMut<InteractionMode>,
 ) {
     let Ok(menu) = menus.get(event.menu) else {
@@ -61,7 +63,10 @@ pub(super) fn on_slot_menu_picked(
         ASSIGN_SPELL => commands.trigger(OpenAssignSpellDialog { slot }),
         ASSIGN_ITEM => *mode = InteractionMode::Targeting(TargetingSource::AssignObject { slot }),
         ASSIGN_HOTKEY => commands.trigger(OpenHotkeyDialog { slot }),
-        CLEAR => bar.clear_slot(slot),
+        CLEAR => {
+            bar.clear_action(slot);
+            keybinds.unbind_slot(slot);
+        }
         _ => {}
     }
 }
@@ -109,6 +114,9 @@ mod tests {
             },
         );
         world.insert_resource(bar);
+        let mut keybinds = Keybinds::default();
+        keybinds.bind_slot(5, Hotkey::plain(KeyCode::F5));
+        world.insert_resource(keybinds);
         world.init_resource::<InteractionMode>();
         world.add_observer(on_slot_menu_picked);
         let menu = world.spawn(SlotMenu { slot: 5 }).id();
@@ -138,7 +146,8 @@ mod tests {
         world.trigger(ContextMenuPicked { menu, index: CLEAR });
         world.flush();
 
-        assert!(world.resource::<ActionBar>().slot(5).is_empty());
+        let keybinds = world.resource::<Keybinds>();
+        assert!(world.resource::<ActionBar>().slot(keybinds, 5).is_empty());
     }
 
     /// The consts index into what `slot_menu_entries` returns, and nothing but this ties the two

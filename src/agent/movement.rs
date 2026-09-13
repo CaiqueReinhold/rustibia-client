@@ -119,8 +119,8 @@ pub fn move_agent(
 
             commands
                 .entity(entity)
-                .insert(moving.end.clone())
-                .remove::<Moving>();
+                .try_insert(moving.end.clone())
+                .try_remove::<Moving>();
 
             let elevation = map.get_elevation(&moving.end);
             place(&mut transform, &moving.end, elevation);
@@ -201,14 +201,13 @@ pub fn teleport_agents(
             place(&mut transform, &teleport.position, elevation);
             commands
                 .entity(entity)
-                .insert(teleport.position.clone())
-                .remove::<ShouldTeleport>();
+                .try_insert(teleport.position.clone())
+                .try_remove::<ShouldTeleport>();
 
             if player.is_none() {
-                commands.entity(entity).detach_all_related::<ChildOf>();
                 commands
-                    .entity(floor_ents.floors[teleport.position.z as usize])
-                    .add_child(entity);
+                    .entity(entity)
+                    .try_insert(ChildOf(floor_ents.floors[teleport.position.z as usize]));
             }
         }
     }
@@ -225,7 +224,7 @@ pub fn process_agent_move_queues(
 
         if *position != move_from {
             if queue.0.is_empty() {
-                commands.entity(entity).insert(move_from);
+                commands.entity(entity).try_insert(move_from);
             } else {
                 continue;
             }
@@ -262,7 +261,8 @@ mod tests {
     use crate::items::ItemId;
     use crate::items::{Item, ItemConfig, ItemFlag};
     use crate::map::DrawRank;
-    use bevy::ecs::system::RunSystemOnce;
+    use bevy::ecs::schedule::{ExecutorKind, ScheduleBuildSettings};
+    use bevy::ecs::system::{RunSystemOnce, ScheduleSystem};
     use std::sync::Arc;
 
     fn at(x: u16, y: u16) -> Position {
@@ -568,6 +568,104 @@ mod tests {
             KEY,
             "arriving must not clear the draw key"
         );
+    }
+
+    /// Runs `system` in one frame with a despawn of `entity` whose buffer is
+    /// applied before the system's — what happens when `receive_messages`
+    /// removes or re-spawns a creature that an agent system also touched.
+    fn run_after_a_same_frame_despawn<M>(
+        world: &mut World,
+        entity: Entity,
+        system: impl IntoScheduleConfigs<ScheduleSystem, M>,
+    ) {
+        let mut schedule = Schedule::default();
+        schedule.set_executor_kind(ExecutorKind::SingleThreaded);
+        schedule.set_build_settings(ScheduleBuildSettings {
+            auto_insert_apply_deferred: false,
+            ..default()
+        });
+        schedule.add_systems(
+            (
+                move |mut commands: Commands| commands.entity(entity).despawn(),
+                system,
+            )
+                .chain(),
+        );
+        schedule.run(world);
+    }
+
+    #[test]
+    fn a_step_ending_on_a_despawned_agent_is_dropped() {
+        let (mut world, entity) = walkable_world();
+        world.entity_mut(entity).insert(Moving {
+            start: at(100, 100),
+            end: at(100, 101),
+            timer: Timer::new(Duration::from_millis(10), TimerMode::Once),
+        });
+        world
+            .resource_mut::<Time<()>>()
+            .advance_by(Duration::from_millis(20));
+
+        run_after_a_same_frame_despawn(&mut world, entity, move_agent);
+
+        assert!(world.get_entity(entity).is_err());
+    }
+
+    #[test]
+    fn a_queued_step_on_a_despawned_agent_is_dropped() {
+        let (mut world, entity) = walkable_world();
+        world.entity_mut(entity).insert(MoveQueue(VecDeque::from([(
+            at(99, 100),
+            WalkingDirection::East,
+        )])));
+
+        run_after_a_same_frame_despawn(&mut world, entity, process_agent_move_queues);
+
+        assert!(world.get_entity(entity).is_err());
+    }
+
+    #[test]
+    fn a_teleport_of_a_despawned_agent_is_dropped() {
+        let (mut world, entity) = walkable_world();
+        let floors = std::array::from_fn(|_| world.spawn_empty().id());
+        world.insert_resource(FloorEntities { floors });
+        world.entity_mut(entity).insert(ShouldTeleport {
+            position: Position {
+                x: 100,
+                y: 100,
+                z: 6,
+            },
+        });
+
+        run_after_a_same_frame_despawn(&mut world, entity, teleport_agents);
+
+        assert!(world.get_entity(entity).is_err());
+    }
+
+    #[test]
+    fn a_teleport_across_floors_moves_the_agent_and_keeps_its_children() {
+        let (mut world, entity) = walkable_world();
+        let floors: [Entity; _] = std::array::from_fn(|_| world.spawn_empty().id());
+        world.insert_resource(FloorEntities { floors });
+        world.entity_mut(floors[7]).add_child(entity);
+        let square = world.spawn(ChildOf(entity)).id();
+        world.entity_mut(entity).insert(ShouldTeleport {
+            position: Position {
+                x: 100,
+                y: 100,
+                z: 6,
+            },
+        });
+
+        world.run_system_once(teleport_agents).unwrap();
+
+        assert_eq!(world.get::<ChildOf>(entity).unwrap().parent(), floors[6]);
+        assert!(
+            world
+                .get::<Children>(floors[7])
+                .is_none_or(|c| c.is_empty())
+        );
+        assert_eq!(world.get::<ChildOf>(square).unwrap().parent(), entity);
     }
 
     /// OTClient's `updateWalk` drives the slide from `getStepDuration(true)` and only

@@ -8,6 +8,7 @@ use thiserror::Error;
 
 use crate::conf::paths::data_dir;
 use crate::core::{ActiveCharacter, ItemConfigs, SpellBook};
+use crate::player::Keybinds;
 
 use super::state::{ActionBar, ActionSlot, SlotAction};
 
@@ -18,6 +19,10 @@ struct ActionBarFile {
     version: u32,
     slots: BTreeMap<u16, ActionSlot>,
 }
+
+/// The file's contents as last read or written, so a save writes only what differs.
+#[derive(Resource, Debug, Default)]
+pub(super) struct WrittenActionBar(Option<String>);
 
 #[derive(Error, Debug)]
 pub enum LoadError {
@@ -69,22 +74,47 @@ pub(super) fn load_action_bar(
     mut commands: Commands,
     character: Option<Res<ActiveCharacter>>,
     items: Res<ItemConfigs>,
+    mut keybinds: ResMut<Keybinds>,
 ) {
     let slots = character
         .map(|character| read_slots(&file_path(character.id)))
         .unwrap_or_default();
-    let mut bar = ActionBar::from_slots(slots);
+    commands.insert_resource(WrittenActionBar(Some(serialize(&slots))));
+
+    keybinds.unbind_all_slots();
+    for (index, hotkey) in slots
+        .iter()
+        .filter_map(|(index, slot)| Some((*index, slot.hotkey?)))
+    {
+        if !keybinds.bind_slot(index, hotkey) {
+            info!(
+                "action bar: dropped {} from slot {index}, a built-in key holds it",
+                hotkey.long_label()
+            );
+        }
+    }
+    let mut bar = ActionBar::from_actions(
+        slots
+            .iter()
+            .filter_map(|(index, slot)| Some((*index, slot.action?)))
+            .collect(),
+    );
     let cleared = bar.retain_actions(|action| match action {
         SlotAction::Item { item_id, .. } => items.items.contains_key(item_id),
         SlotAction::Spell { .. } => true,
     });
     for index in cleared {
+        keybinds.unbind_slot(index);
         info!("action bar: cleared slot {index}, its item is not in the catalogue");
     }
     commands.insert_resource(bar);
 }
 
-pub(super) fn prune_unknown_spells(mut bar: ResMut<ActionBar>, book: Res<SpellBook>) {
+pub(super) fn prune_unknown_spells(
+    mut bar: ResMut<ActionBar>,
+    mut keybinds: ResMut<Keybinds>,
+    book: Res<SpellBook>,
+) {
     if bar.spells_checked() {
         return;
     }
@@ -101,6 +131,7 @@ pub(super) fn prune_unknown_spells(mut bar: ResMut<ActionBar>, book: Res<SpellBo
         return;
     }
     for index in cleared {
+        keybinds.unbind_slot(index);
         info!("action bar: cleared slot {index}, its spell is not in the spell list");
     }
     bar.set_changed();
@@ -125,20 +156,32 @@ fn write_slots(path: &Path, contents: &str) {
     }
 }
 
-/// Writes the bar if anything changed since the last write. Synchronous: two writes racing on a
+/// Writes the bar if it differs from what the file last held. Synchronous: two writes racing on a
 /// task pool could land in either order, leaving the older bar on disk.
-pub(super) fn flush_action_bar(bar: &mut ActionBar, character: Option<&ActiveCharacter>) {
+pub(super) fn flush_action_bar(
+    bar: &ActionBar,
+    keybinds: &Keybinds,
+    written: &mut WrittenActionBar,
+    character: Option<&ActiveCharacter>,
+) {
     let Some(character) = character else {
         return;
     };
-    if !bar.take_dirty() {
+    let contents = serialize(&bar.slots(keybinds));
+    if written.0.as_ref() == Some(&contents) {
         return;
     }
-    write_slots(&file_path(character.id), &serialize(bar.slots()));
+    write_slots(&file_path(character.id), &contents);
+    written.0 = Some(contents);
 }
 
-pub(super) fn save_action_bar(mut bar: ResMut<ActionBar>, character: Option<Res<ActiveCharacter>>) {
-    flush_action_bar(bar.bypass_change_detection(), character.as_deref());
+pub(super) fn save_action_bar(
+    bar: Res<ActionBar>,
+    keybinds: Res<Keybinds>,
+    mut written: ResMut<WrittenActionBar>,
+    character: Option<Res<ActiveCharacter>>,
+) {
+    flush_action_bar(&bar, &keybinds, &mut written, character.as_deref());
 }
 
 #[cfg(test)]
@@ -221,25 +264,31 @@ mod tests {
                 aim: None,
             },
         );
-        bar.take_dirty();
         bar
+    }
+
+    fn a_world_with_spell(id: u16) -> World {
+        let mut world = World::new();
+        world.insert_resource(a_bar_with_spell(id));
+        let mut keybinds = Keybinds::default();
+        keybinds.bind_slot(0, Hotkey::plain(KeyCode::F1));
+        world.insert_resource(keybinds);
+        world.init_resource::<SpellBook>();
+        world
     }
 
     #[test]
     fn a_spell_is_not_cleared_before_the_list_arrives() {
-        let mut world = World::new();
-        world.insert_resource(a_bar_with_spell(9));
-        world.init_resource::<SpellBook>();
+        let mut world = a_world_with_spell(9);
 
         world.run_system_once(prune_unknown_spells).unwrap();
 
-        assert!(!world.resource::<ActionBar>().slot(0).is_empty());
+        assert!(world.resource::<ActionBar>().action(0).is_some());
     }
 
     #[test]
-    fn a_spell_missing_from_the_list_is_cleared_once_it_arrives() {
-        let mut world = World::new();
-        world.insert_resource(a_bar_with_spell(9));
+    fn a_spell_missing_from_the_list_is_cleared_with_its_hotkey_once_it_arrives() {
+        let mut world = a_world_with_spell(9);
         world.insert_resource(SpellBook::new(vec![SpellInfo {
             id: SpellId(1),
             name: "Light Healing".to_owned(),
@@ -253,8 +302,9 @@ mod tests {
         world.run_system_once(prune_unknown_spells).unwrap();
 
         let bar = world.resource::<ActionBar>();
-        assert!(bar.slot(0).is_empty());
+        assert_eq!(bar.action(0), None);
         assert!(bar.spells_checked());
+        assert_eq!(world.resource::<Keybinds>().slot_hotkey(0), None);
     }
 
     #[test]
@@ -269,28 +319,26 @@ mod tests {
                 aim: None,
             },
         );
+        let mut keybinds = Keybinds::default();
+        keybinds.bind_slot(4, Hotkey::plain(KeyCode::F4));
+        let slots = bar.slots(&keybinds);
 
-        write_slots(&path, &serialize(bar.slots()));
+        write_slots(&path, &serialize(&slots));
 
-        assert_eq!(read_slots(&path), *bar.slots());
+        assert_eq!(read_slots(&path), slots);
         assert!(!path.with_extension("tmp").exists());
     }
 
     #[test]
     fn a_flush_without_a_character_keeps_the_change_pending() {
-        let mut bar = a_bar_with_spell(1);
-        bar.set_action(
-            2,
-            SlotAction::Spell {
-                id: SpellId(4),
-                aim: None,
-            },
-        );
+        let bar = a_bar_with_spell(1);
+        let mut written = WrittenActionBar(Some(serialize(&BTreeMap::new())));
 
-        flush_action_bar(&mut bar, None);
+        flush_action_bar(&bar, &Keybinds::default(), &mut written, None);
 
-        assert!(
-            bar.take_dirty(),
+        assert_eq!(
+            written.0,
+            Some(serialize(&BTreeMap::new())),
             "a change with nowhere to go is not a saved change"
         );
     }

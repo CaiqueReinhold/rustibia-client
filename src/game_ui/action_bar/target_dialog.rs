@@ -264,7 +264,7 @@ mod tests {
         world.flush();
 
         assert_eq!(
-            world.resource::<ActionBar>().slot(6).action,
+            world.resource::<ActionBar>().action(6),
             Some(SlotAction::Item {
                 item_id: ItemId(266),
                 aim: Some(Aim::Target)
@@ -283,7 +283,7 @@ mod tests {
         });
         world.flush();
 
-        assert!(world.resource::<ActionBar>().slot(6).is_empty());
+        assert!(world.resource::<ActionBar>().action(6).is_none());
         assert!(world.get_entity(dialog).is_err());
     }
 }

@@ -98,7 +98,7 @@ mod tests {
         let world = pick(vec![ItemFlag::Usable, ItemFlag::MultiUse]);
 
         assert_eq!(world.resource::<Seen>().aim_dialogs, 1);
-        assert!(world.resource::<ActionBar>().slot(1).is_empty());
+        assert!(world.resource::<ActionBar>().action(1).is_none());
     }
 
     #[test]
@@ -106,7 +106,7 @@ mod tests {
         let world = pick(vec![ItemFlag::Usable]);
 
         assert_eq!(
-            world.resource::<ActionBar>().slot(1).action,
+            world.resource::<ActionBar>().action(1),
             Some(SlotAction::Item {
                 item_id: ItemId(266),
                 aim: None
@@ -122,6 +122,6 @@ mod tests {
             world.resource::<Seen>().denials,
             vec![NOT_USABLE.to_string()]
         );
-        assert!(world.resource::<ActionBar>().slot(1).is_empty());
+        assert!(world.resource::<ActionBar>().action(1).is_none());
     }
 }

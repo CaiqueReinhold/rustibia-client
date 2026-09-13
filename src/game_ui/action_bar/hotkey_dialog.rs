@@ -5,9 +5,7 @@ use crate::game_ui::{
     DialogButton, DialogButtonId, DialogButtonPressed, GameUiAssets, ModalDialog, ModalDialogRoot,
     ModalOrder,
 };
-use crate::player::{Hotkey, Keybinds};
-
-use super::state::ActionBar;
+use crate::player::{Hotkey, Keybinds, PlayerAction};
 
 const CLEAR: &str = "clear";
 
@@ -47,21 +45,12 @@ impl HotkeyVerdict {
     }
 }
 
-pub fn verdict(
-    captured: Option<Hotkey>,
-    slot: u16,
-    bar: &ActionBar,
-    keybinds: &Keybinds,
-) -> HotkeyVerdict {
-    let Some(hotkey) = captured else {
-        return HotkeyVerdict::Free;
-    };
-    if keybinds.reserves(&hotkey) {
-        return HotkeyVerdict::Reserved;
-    }
-    match bar.slot_with_hotkey(&hotkey) {
-        Some(other) if other != slot => HotkeyVerdict::Overwrites(other),
-        _ => HotkeyVerdict::Free,
+pub fn verdict(captured: Option<Hotkey>, slot: u16, keybinds: &Keybinds) -> HotkeyVerdict {
+    match captured.and_then(|hotkey| keybinds.action(&hotkey)) {
+        None => HotkeyVerdict::Free,
+        Some(PlayerAction::ActivateActionSlot(other)) if other == slot => HotkeyVerdict::Free,
+        Some(PlayerAction::ActivateActionSlot(other)) => HotkeyVerdict::Overwrites(other),
+        Some(_) => HotkeyVerdict::Reserved,
     }
 }
 
@@ -75,7 +64,6 @@ pub(super) fn on_open_hotkey_dialog(
     ui_assets: Res<GameUiAssets>,
     mut order: ResMut<ModalOrder>,
     existing: Query<(), With<HotkeyDialog>>,
-    bar: Res<ActionBar>,
     keybinds: Res<Keybinds>,
 ) {
     if !existing.is_empty() {
@@ -84,7 +72,7 @@ pub(super) fn on_open_hotkey_dialog(
 
     let slot = event.slot;
     let button = slot + 1;
-    let captured = bar.slot(slot).hotkey;
+    let captured = keybinds.slot_hotkey(slot);
     let handle = ModalDialog::new(format!(
         "Edit Hotkey for \"Action Bar: Action Button {button}\""
     ))
@@ -143,7 +131,7 @@ pub(super) fn on_open_hotkey_dialog(
     let warning = commands
         .spawn((
             HotkeyWarningText,
-            Text::new(verdict(captured, slot, &bar, &keybinds).warning()),
+            Text::new(verdict(captured, slot, &keybinds).warning()),
             font(11.0),
             TextColor(dialog::WARNING_COLOR.into()),
             Node {
@@ -170,6 +158,7 @@ pub(super) fn capture_hotkey(
     };
     let Some(hotkey) = keyboard
         .get_just_pressed()
+        .filter(|key| **key != KeyCode::Enter)
         .find_map(|key| Hotkey::from_input(*key, &keyboard))
     else {
         return;
@@ -181,7 +170,6 @@ pub(super) fn capture_hotkey(
 
 pub(super) fn refresh_hotkey_dialog(
     dialogs: Query<&HotkeyDialog, Changed<HotkeyDialog>>,
-    bar: Res<ActionBar>,
     keybinds: Res<Keybinds>,
     mut field_q: Query<&mut Text, (With<HotkeyFieldText>, Without<HotkeyWarningText>)>,
     mut warning_q: Query<&mut Text, (With<HotkeyWarningText>, Without<HotkeyFieldText>)>,
@@ -193,7 +181,7 @@ pub(super) fn refresh_hotkey_dialog(
         text.0 = field_label(dialog.captured);
     }
     for mut text in &mut warning_q {
-        text.0 = verdict(dialog.captured, dialog.slot, &bar, &keybinds)
+        text.0 = verdict(dialog.captured, dialog.slot, &keybinds)
             .warning()
             .to_string();
     }
@@ -203,23 +191,21 @@ pub(super) fn on_hotkey_dialog_button(
     event: On<DialogButtonPressed>,
     mut commands: Commands,
     dialogs: Query<&HotkeyDialog>,
-    mut bar: ResMut<ActionBar>,
-    keybinds: Res<Keybinds>,
+    mut keybinds: ResMut<Keybinds>,
 ) {
     let Ok(dialog) = dialogs.get(event.dialog) else {
         return;
     };
     match event.button {
-        DialogButtonId::Ok => {
-            if verdict(dialog.captured, dialog.slot, &bar, &keybinds) == HotkeyVerdict::Reserved {
-                return;
+        DialogButtonId::Ok => match dialog.captured {
+            Some(hotkey) => {
+                if !keybinds.bind_slot(dialog.slot, hotkey) {
+                    return;
+                }
             }
-            match dialog.captured {
-                Some(hotkey) => bar.set_hotkey(dialog.slot, hotkey),
-                None => bar.clear_hotkey(dialog.slot),
-            }
-        }
-        DialogButtonId::Custom(CLEAR) => bar.clear_hotkey(dialog.slot),
+            None => keybinds.unbind_slot(dialog.slot),
+        },
+        DialogButtonId::Custom(CLEAR) => keybinds.unbind_slot(dialog.slot),
         _ => {}
     }
     commands.entity(event.dialog).despawn();
@@ -227,9 +213,7 @@ pub(super) fn on_hotkey_dialog_button(
 
 #[cfg(test)]
 mod tests {
-    use super::super::state::SlotAction;
     use super::*;
-    use crate::core::SpellId;
     use bevy::ecs::system::RunSystemOnce;
 
     const F1: Hotkey = Hotkey {
@@ -241,35 +225,34 @@ mod tests {
 
     #[test]
     fn a_verdict_names_what_the_captured_combo_collides_with() {
-        let keybinds = Keybinds::default();
-        let mut bar = ActionBar::default();
-        bar.set_hotkey(4, F1);
+        let mut keybinds = Keybinds::default();
+        keybinds.bind_slot(4, F1);
 
-        assert_eq!(verdict(None, 0, &bar, &keybinds), HotkeyVerdict::Free);
-        assert_eq!(verdict(Some(F1), 4, &bar, &keybinds), HotkeyVerdict::Free);
+        assert_eq!(verdict(None, 0, &keybinds), HotkeyVerdict::Free);
+        assert_eq!(verdict(Some(F1), 4, &keybinds), HotkeyVerdict::Free);
         assert_eq!(
-            verdict(Some(F1), 0, &bar, &keybinds),
+            verdict(Some(F1), 0, &keybinds),
             HotkeyVerdict::Overwrites(4)
         );
         assert_eq!(
-            verdict(Some(Hotkey::plain(KeyCode::KeyW)), 0, &bar, &keybinds),
+            verdict(Some(Hotkey::plain(KeyCode::KeyW)), 0, &keybinds),
             HotkeyVerdict::Reserved
+        );
+        assert_eq!(
+            verdict(
+                Some(Hotkey::new(KeyCode::KeyW, true, false, false)),
+                0,
+                &keybinds
+            ),
+            HotkeyVerdict::Free
         );
     }
 
     fn a_world_with_an_open_dialog(captured: Option<Hotkey>) -> (World, Entity) {
         let mut world = World::new();
-        let mut bar = ActionBar::default();
-        bar.set_action(
-            0,
-            SlotAction::Spell {
-                id: SpellId(1),
-                aim: None,
-            },
-        );
-        bar.set_hotkey(4, F1);
-        world.insert_resource(bar);
-        world.init_resource::<Keybinds>();
+        let mut keybinds = Keybinds::default();
+        keybinds.bind_slot(4, F1);
+        world.insert_resource(keybinds);
         world.add_observer(on_hotkey_dialog_button);
         let dialog = world.spawn(HotkeyDialog { slot: 0, captured }).id();
         (world, dialog)
@@ -286,9 +269,9 @@ mod tests {
 
         press(&mut world, dialog, DialogButtonId::Ok);
 
-        let bar = world.resource::<ActionBar>();
-        assert_eq!(bar.slot(0).hotkey, Some(F1));
-        assert_eq!(bar.slot(4).hotkey, None);
+        let keybinds = world.resource::<Keybinds>();
+        assert_eq!(keybinds.slot_hotkey(0), Some(F1));
+        assert_eq!(keybinds.slot_hotkey(4), None);
         assert!(world.get_entity(dialog).is_err());
     }
 
@@ -299,21 +282,21 @@ mod tests {
         press(&mut world, dialog, DialogButtonId::Ok);
 
         assert!(world.get_entity(dialog).is_ok());
-        assert_eq!(world.resource::<ActionBar>().slot(0).hotkey, None);
+        assert_eq!(world.resource::<Keybinds>().slot_hotkey(0), None);
     }
 
     #[test]
-    fn clear_removes_the_hotkey_and_keeps_the_action() {
+    fn clear_removes_only_this_slots_hotkey() {
         let (mut world, dialog) = a_world_with_an_open_dialog(Some(F1));
         world
-            .resource_mut::<ActionBar>()
-            .set_hotkey(0, Hotkey::plain(KeyCode::F2));
+            .resource_mut::<Keybinds>()
+            .bind_slot(0, Hotkey::plain(KeyCode::F2));
 
         press(&mut world, dialog, DialogButtonId::Custom(CLEAR));
 
-        let bar = world.resource::<ActionBar>();
-        assert_eq!(bar.slot(0).hotkey, None);
-        assert!(bar.slot(0).action.is_some());
+        let keybinds = world.resource::<Keybinds>();
+        assert_eq!(keybinds.slot_hotkey(0), None);
+        assert_eq!(keybinds.slot_hotkey(4), Some(F1));
     }
 
     #[test]
@@ -358,6 +341,27 @@ mod tests {
             ))
             .id();
         world.spawn(ModalDialogRoot::for_test(1));
+
+        world.run_system_once(capture_hotkey).unwrap();
+
+        assert_eq!(world.get::<HotkeyDialog>(dialog).unwrap().captured, None);
+    }
+
+    #[test]
+    fn enter_is_left_to_the_modal() {
+        let mut world = World::new();
+        let mut keyboard = ButtonInput::<KeyCode>::default();
+        keyboard.press(KeyCode::Enter);
+        world.insert_resource(keyboard);
+        let dialog = world
+            .spawn((
+                ModalDialogRoot::for_test(0),
+                HotkeyDialog {
+                    slot: 0,
+                    captured: None,
+                },
+            ))
+            .id();
 
         world.run_system_once(capture_hotkey).unwrap();
 

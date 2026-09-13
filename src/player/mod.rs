@@ -15,7 +15,7 @@ pub use interaction::{
     ContainerNavTarget, InteractionIntent, InteractionMode, MouseHoverState, ObjectPicked,
     TargetingSource,
 };
-pub use keyboard::Keybinds;
+pub use keyboard::{Keybinds, PlayerAction};
 
 use crate::core::{GameState, SessionCleanup, SessionEnding};
 

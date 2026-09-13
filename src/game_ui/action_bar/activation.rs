@@ -137,7 +137,7 @@ pub(super) fn on_action_slot_activated(
     if mode.is_targeting() {
         *mode = InteractionMode::Idle;
     }
-    match activation_for(bar.slot(event.slot).action, &ctx) {
+    match activation_for(bar.action(event.slot), &ctx) {
         Activation::Cast(cast) => commands.trigger(cast),
         Activation::Intent(intent) => commands.trigger(intent),
         Activation::Crosshair(source) => *mode = InteractionMode::Targeting(source),
