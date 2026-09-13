@@ -145,7 +145,7 @@ pub(super) fn save_action_bar(mut bar: ResMut<ActionBar>, character: Option<Res<
 mod tests {
     use super::super::state::Aim;
     use super::*;
-    use crate::core::{SpellId, SpellInfo};
+    use crate::core::{SpellGroup, SpellId, SpellInfo};
     use crate::items::ItemId;
     use crate::player::Hotkey;
     use bevy::ecs::system::RunSystemOnce;
@@ -247,6 +247,7 @@ mod tests {
             level: 8,
             icon: 6,
             aimable: false,
+            group: SpellGroup::Healing,
         }]));
 
         world.run_system_once(prune_unknown_spells).unwrap();

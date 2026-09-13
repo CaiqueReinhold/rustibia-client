@@ -85,7 +85,7 @@ mod tests {
 
     #[test]
     fn cleanup_forgets_the_character_and_its_spells() {
-        use crate::core::spells::{SpellBook, SpellId, SpellInfo};
+        use crate::core::spells::{SpellBook, SpellGroup, SpellId, SpellInfo};
 
         let mut world = World::new();
         world.init_resource::<PingState>();
@@ -98,6 +98,7 @@ mod tests {
             level: 8,
             icon: 6,
             aimable: false,
+            group: SpellGroup::Healing,
         }]));
 
         world.run_system_once(cleanup_session).unwrap();

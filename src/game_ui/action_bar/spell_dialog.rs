@@ -278,6 +278,7 @@ pub(super) fn on_assign_spell_button(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::SpellGroup;
 
     fn a_spell(id: u16, aimable: bool) -> SpellInfo {
         SpellInfo {
@@ -287,6 +288,7 @@ mod tests {
             level: 8,
             icon: 6,
             aimable,
+            group: SpellGroup::Healing,
         }
     }
 

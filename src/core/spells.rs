@@ -14,6 +14,32 @@ pub enum SpellTarget {
     Position(Position),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum SpellGroup {
+    Attack = 0,
+    Healing = 1,
+    Support = 2,
+}
+
+impl SpellGroup {
+    pub const COUNT: usize = 3;
+    pub const ALL: [SpellGroup; Self::COUNT] =
+        [SpellGroup::Attack, SpellGroup::Healing, SpellGroup::Support];
+
+    pub fn from_id(id: u8) -> Option<Self> {
+        match id {
+            0 => Some(SpellGroup::Attack),
+            1 => Some(SpellGroup::Healing),
+            2 => Some(SpellGroup::Support),
+            _ => None,
+        }
+    }
+
+    pub fn index(self) -> usize {
+        self as usize
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SpellInfo {
     pub id: SpellId,
@@ -23,6 +49,7 @@ pub struct SpellInfo {
     /// 1-based cell in `ui/spells.png`.
     pub icon: u16,
     pub aimable: bool,
+    pub group: SpellGroup,
 }
 
 /// `None` until the server's list arrives, which is not the same as an empty list.
@@ -59,7 +86,17 @@ mod tests {
             level: 8,
             icon: 6,
             aimable: false,
+            group: SpellGroup::Healing,
         }
+    }
+
+    /// The server's `entities/spells.rs` pins the same numbers; nothing links the two.
+    #[test]
+    fn group_ids_match_the_server() {
+        assert_eq!(SpellGroup::from_id(0), Some(SpellGroup::Attack));
+        assert_eq!(SpellGroup::from_id(1), Some(SpellGroup::Healing));
+        assert_eq!(SpellGroup::from_id(2), Some(SpellGroup::Support));
+        assert_eq!(SpellGroup::from_id(3), None);
     }
 
     #[test]

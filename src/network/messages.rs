@@ -10,7 +10,7 @@ use crate::{
     conf::map::{STACK_MAX_VISIBLE_ITEMS, TILES_X, TILES_Y},
     core::{
         ChatMessageType, EffectId, FloatingTextType, MissileId, OutfitColors, OutfitId, SayTarget,
-        SpellId, SpellInfo, SpellTarget, TextMessageType,
+        SpellGroup, SpellId, SpellInfo, SpellTarget, TextMessageType,
     },
     game_ui::{SkillProgress, SkillType},
     items::{ContainerId, InventorySlot, ItemId},
@@ -752,6 +752,8 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
                     1 => true,
                     _ => return Err(MessageDecodeError::WrongSequence),
                 };
+                let group =
+                    SpellGroup::from_id(buf.read_u8()?).ok_or(MessageDecodeError::WrongSequence)?;
                 spells.push(SpellInfo {
                     id,
                     name,
@@ -759,6 +761,7 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
                     level,
                     icon,
                     aimable,
+                    group,
                 });
             }
             Ok(ServerMessage::SpellList { spells })
@@ -1821,8 +1824,8 @@ mod tests {
         }
     }
 
-    const SPELL_LIST_FRAME: [u8; 20] = [
-        18,
+    const SPELL_LIST_FRAME: [u8; 21] = [
+        19,
         0,
         SRV_SPELL_LIST,
         1,
@@ -1842,6 +1845,7 @@ mod tests {
         29,
         0,
         1,
+        2,
     ];
 
     #[test]
@@ -1859,6 +1863,7 @@ mod tests {
                     level: 12,
                     icon: 29,
                     aimable: true,
+                    group: SpellGroup::Support,
                 }]
             ),
             other => panic!("expected SpellList, got {other:?}"),
@@ -1869,6 +1874,16 @@ mod tests {
     fn an_aim_flag_other_than_zero_or_one_is_refused() {
         let mut frame = SPELL_LIST_FRAME;
         frame[19] = 2;
+        let mut buf = BytesMut::new();
+        buf.extend_from_slice(&frame);
+
+        assert!((GameMessageCodec {}).decode(&mut buf).is_err());
+    }
+
+    #[test]
+    fn a_group_id_the_client_does_not_know_is_refused() {
+        let mut frame = SPELL_LIST_FRAME;
+        frame[20] = 3;
         let mut buf = BytesMut::new();
         buf.extend_from_slice(&frame);
 
