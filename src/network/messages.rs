@@ -112,7 +112,7 @@ pub enum ClientMessage {
 const SRV_PONG: u8 = 0;
 const SRV_LOGIN_ERROR: u8 = 1;
 const SRV_DESCRIBE_MAP: u8 = 2;
-const SRV_TILE_CHANGED: u8 = 3;
+const SRV_TILE_UPDATED: u8 = 3;
 const SRV_PLAYER_WALK_ACK: u8 = 4;
 const SRV_PLAYER_POS: u8 = 5;
 const SRV_DESCRIBE_PLAYER: u8 = 6;
@@ -136,12 +136,13 @@ const SRV_TARGET_LOST: u8 = 23;
 const SRV_AGENT_LIFE_UPDATED: u8 = 24;
 const SRV_SHOW_EFFECT: u8 = 25;
 const SRV_LAUNCH_MISSILE: u8 = 26;
-const SRV_AGENT_MANA_CHANGED: u8 = 27;
+const SRV_AGENT_MANA_UPDATED: u8 = 27;
 const SRV_PLAYER_SKILLS: u8 = 28;
-const SRV_SKILL_CHANGED: u8 = 29;
-const SRV_EXPERIENCE_CHANGED: u8 = 30;
+const SRV_SKILL_UPDATED: u8 = 29;
+const SRV_EXPERIENCE_UPDATED: u8 = 30;
 const SRV_SPELL_CAST: u8 = 31;
 const SRV_SPELL_LIST: u8 = 32;
+const SRV_AGENT_SPEED_UPDATED: u8 = 33;
 
 #[derive(Clone, Debug)]
 pub enum ServerMessage {
@@ -174,7 +175,7 @@ pub enum ServerMessage {
         floor: u8,
         center: Position,
     },
-    TileChanged {
+    TileUpdated {
         position: Position,
         items: Box<ItemStack>,
     },
@@ -263,12 +264,12 @@ pub enum ServerMessage {
         position: Position,
         delta: Vec<(i8, i8)>,
     },
-    AgentLifeChanged {
+    AgentLifeUpdated {
         agent_id: AgentId,
         current: u32,
         max: u32,
     },
-    AgentManaChanged {
+    AgentManaUpdated {
         agent_id: AgentId,
         current: u32,
         max: u32,
@@ -277,11 +278,11 @@ pub enum ServerMessage {
         experience: u64,
         skills: Vec<(SkillType, SkillProgress)>,
     },
-    SkillChanged {
+    SkillUpdated {
         skill: SkillType,
         progress: SkillProgress,
     },
-    ExperienceChanged {
+    ExperienceUpdated {
         experience: u64,
     },
     LaunchMissile {
@@ -296,6 +297,10 @@ pub enum ServerMessage {
     },
     SpellList {
         spells: Vec<SpellInfo>,
+    },
+    AgentSpeedUpdated {
+        agent_id: AgentId,
+        speed: u16,
     },
 }
 
@@ -313,8 +318,8 @@ impl Display for ServerMessage {
                     tiles.iter().map(|i| i.0).collect::<Vec<u8>>()
                 )
             }
-            ServerMessage::TileChanged { position, .. } => {
-                write!(f, "TileChanged {{ position: {} }}", position)
+            ServerMessage::TileUpdated { position, .. } => {
+                write!(f, "TileUpdated {{ position: {} }}", position)
             }
             ServerMessage::OpenContainer { container_id, .. } => {
                 write!(f, "OpenContainer {{ container_id: {container_id:?} }}")
@@ -509,10 +514,10 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
                 center,
             })
         }
-        SRV_TILE_CHANGED => {
+        SRV_TILE_UPDATED => {
             let position = decode_position(buf)?;
             let items = Box::new(decode_tile(buf)?);
-            Ok(ServerMessage::TileChanged { position, items })
+            Ok(ServerMessage::TileUpdated { position, items })
         }
         SRV_PLAYER_WALK_ACK => {
             let position = decode_position(buf)?;
@@ -675,17 +680,17 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
             let agent_id = AgentId(buf.read_u16_le()?);
             let current = buf.read_u32_le()?;
             let max = buf.read_u32_le()?;
-            Ok(ServerMessage::AgentLifeChanged {
+            Ok(ServerMessage::AgentLifeUpdated {
                 agent_id,
                 current,
                 max,
             })
         }
-        SRV_AGENT_MANA_CHANGED => {
+        SRV_AGENT_MANA_UPDATED => {
             let agent_id = AgentId(buf.read_u16_le()?);
             let current = buf.read_u32_le()?;
             let max = buf.read_u32_le()?;
-            Ok(ServerMessage::AgentManaChanged {
+            Ok(ServerMessage::AgentManaUpdated {
                 agent_id,
                 current,
                 max,
@@ -706,19 +711,19 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
             }
             Ok(ServerMessage::PlayerSkills { experience, skills })
         }
-        SRV_SKILL_CHANGED => {
+        SRV_SKILL_UPDATED => {
             let id = buf.read_u8()?;
             let level = buf.read_u16_le()?;
             let percent_bp = buf.read_u16_le()?;
             let Some(skill) = SkillType::from_id(id) else {
                 return Err(MessageDecodeError::WrongSequence);
             };
-            Ok(ServerMessage::SkillChanged {
+            Ok(ServerMessage::SkillUpdated {
                 skill,
                 progress: SkillProgress { level, percent_bp },
             })
         }
-        SRV_EXPERIENCE_CHANGED => Ok(ServerMessage::ExperienceChanged {
+        SRV_EXPERIENCE_UPDATED => Ok(ServerMessage::ExperienceUpdated {
             experience: buf.read_u64_le()?,
         }),
         SRV_SHOW_EFFECT => {
@@ -776,6 +781,10 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
                 missile_id,
             })
         }
+        SRV_AGENT_SPEED_UPDATED => Ok(ServerMessage::AgentSpeedUpdated {
+            agent_id: AgentId(buf.read_u16_le()?),
+            speed: buf.read_u16_le()?,
+        }),
         _ => Err(MessageDecodeError::WrongSequence),
     }
 }
@@ -1571,7 +1580,7 @@ mod tests {
     /// next frame's bytes; now it stops at the payload boundary.
     #[test]
     fn rejects_a_tile_with_no_terminator() {
-        let mut payload = vec![SRV_TILE_CHANGED];
+        let mut payload = vec![SRV_TILE_UPDATED];
         payload.extend_from_slice(&1u16.to_le_bytes()); // x
         payload.extend_from_slice(&2u16.to_le_bytes()); // y
         payload.push(7); // z
@@ -1762,26 +1771,26 @@ mod tests {
     #[test]
     fn skill_changed_decodes_the_servers_frame() {
         let mut buf = BytesMut::new();
-        buf.extend_from_slice(&[6, 0, SRV_SKILL_CHANGED, 3, 12, 0, 0x2D, 0x13]);
+        buf.extend_from_slice(&[6, 0, SRV_SKILL_UPDATED, 3, 12, 0, 0x2D, 0x13]);
 
         match (GameMessageCodec {}).decode(&mut buf).unwrap().unwrap() {
-            ServerMessage::SkillChanged { skill, progress } => {
+            ServerMessage::SkillUpdated { skill, progress } => {
                 assert_eq!(skill, SkillType::Sword);
                 assert_eq!(progress.level, 12);
                 assert_eq!(progress.percent_bp, 4909);
             }
-            other => panic!("expected SkillChanged, got {other:?}"),
+            other => panic!("expected SkillUpdated, got {other:?}"),
         }
     }
 
     #[test]
     fn experience_changed_decodes_the_servers_frame() {
         let mut buf = BytesMut::new();
-        buf.extend_from_slice(&[9, 0, SRV_EXPERIENCE_CHANGED, 0x87, 0x10, 0, 0, 0, 0, 0, 0]);
+        buf.extend_from_slice(&[9, 0, SRV_EXPERIENCE_UPDATED, 0x87, 0x10, 0, 0, 0, 0, 0, 0]);
 
         match (GameMessageCodec {}).decode(&mut buf).unwrap().unwrap() {
-            ServerMessage::ExperienceChanged { experience } => assert_eq!(experience, 4231),
-            other => panic!("expected ExperienceChanged, got {other:?}"),
+            ServerMessage::ExperienceUpdated { experience } => assert_eq!(experience, 4231),
+            other => panic!("expected ExperienceUpdated, got {other:?}"),
         }
     }
 

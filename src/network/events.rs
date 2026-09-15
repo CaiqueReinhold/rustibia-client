@@ -245,6 +245,12 @@ pub struct SpellListReceived {
     pub spells: Vec<SpellInfo>,
 }
 
+#[derive(Event, Debug)]
+pub struct AgentSpeedUpdated {
+    pub agent_id: AgentId,
+    pub speed: u16,
+}
+
 pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
     match msg {
         // Consumed by the IO task, which times the round trip and does not forward
@@ -310,7 +316,7 @@ pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
         ServerMessage::PlayerWalkAck { position, tiles } => {
             commands.trigger(PlayerWalk { position, tiles });
         }
-        ServerMessage::TileChanged { position, items } => {
+        ServerMessage::TileUpdated { position, items } => {
             commands.trigger(TileChanged { position, items });
         }
         ServerMessage::PlayerPosition { position } => {
@@ -432,7 +438,7 @@ pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
                 color,
             });
         }
-        ServerMessage::AgentLifeChanged {
+        ServerMessage::AgentLifeUpdated {
             agent_id,
             current,
             max,
@@ -443,7 +449,7 @@ pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
                 max,
             });
         }
-        ServerMessage::AgentManaChanged {
+        ServerMessage::AgentManaUpdated {
             agent_id,
             current,
             max,
@@ -479,10 +485,10 @@ pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
         ServerMessage::PlayerSkills { experience, skills } => {
             commands.trigger(PlayerSkills { experience, skills });
         }
-        ServerMessage::SkillChanged { skill, progress } => {
+        ServerMessage::SkillUpdated { skill, progress } => {
             commands.trigger(SkillChanged { skill, progress });
         }
-        ServerMessage::ExperienceChanged { experience } => {
+        ServerMessage::ExperienceUpdated { experience } => {
             commands.trigger(ExperienceChanged { experience });
         }
         ServerMessage::SpellCast {
@@ -498,6 +504,9 @@ pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
         }
         ServerMessage::SpellList { spells } => {
             commands.trigger(SpellListReceived { spells });
+        }
+        ServerMessage::AgentSpeedUpdated { agent_id, speed } => {
+            commands.trigger(AgentSpeedUpdated { agent_id, speed });
         }
     }
 }

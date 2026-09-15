@@ -10,7 +10,8 @@ use crate::{
     game_ui::GameUiAssets,
     map::{FloorEntities, Map, Position},
     network::events::{
-        AgentLifeChanged, AgentManaChanged, ClientOutdated, MoveAgent, RemoveAgent, SpawnAgent,
+        AgentLifeChanged, AgentManaChanged, AgentSpeedUpdated, ClientOutdated, MoveAgent,
+        RemoveAgent, SpawnAgent,
     },
 };
 
@@ -167,4 +168,18 @@ pub fn on_agent_mana_changed(
     };
     mana.current = event.current;
     mana.max = event.max;
+}
+
+pub fn on_agent_speed_updated(
+    event: On<AgentSpeedUpdated>,
+    mut agent_q: Query<&mut Agent>,
+    map: Res<Map>,
+) {
+    let Some(agent_entity) = map.get_agent(event.agent_id) else {
+        return;
+    };
+    let Ok(mut agent) = agent_q.get_mut(agent_entity) else {
+        return;
+    };
+    agent.speed = event.speed;
 }
