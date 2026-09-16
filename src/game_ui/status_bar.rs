@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use crate::conf::ui::{cooldown as cooldown_conf, status as conf, ui_colors};
-use crate::core::PlayerStatus;
+use crate::core::{PlayerStatus, PlayerStatuses};
 
 #[derive(Component, Clone, Copy, Debug)]
 pub(super) struct StatusIcon(PlayerStatus);
@@ -104,6 +104,22 @@ pub(super) fn spawn_status_bar(
         .id()
 }
 
+pub(super) fn update_status_icons(
+    statuses: Res<PlayerStatuses>,
+    mut icons: Query<(&StatusIcon, &mut Node)>,
+) {
+    for (icon, mut node) in &mut icons {
+        let display = if statuses.contains(icon.0) {
+            Display::Flex
+        } else {
+            Display::None
+        };
+        if node.display != display {
+            node.display = display;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,5 +174,41 @@ mod tests {
             icons,
             PlayerStatus::ALL.map(|status| (status, Display::None))
         );
+    }
+
+    #[test]
+    fn only_the_icons_whose_bits_are_set_are_shown() {
+        let mut world = World::new();
+        world.insert_resource(PlayerStatuses(
+            PlayerStatus::Hungry.bit() | PlayerStatus::Burning.bit(),
+        ));
+        let icons: Vec<_> = PlayerStatus::ALL
+            .into_iter()
+            .map(|status| {
+                world
+                    .spawn((
+                        StatusIcon(status),
+                        Node {
+                            display: Display::None,
+                            ..default()
+                        },
+                    ))
+                    .id()
+            })
+            .collect();
+        let shown = |world: &World| -> Vec<PlayerStatus> {
+            icons
+                .iter()
+                .filter(|icon| world.get::<Node>(**icon).unwrap().display == Display::Flex)
+                .map(|icon| world.get::<StatusIcon>(*icon).unwrap().0)
+                .collect()
+        };
+
+        world.run_system_once(update_status_icons).unwrap();
+        assert_eq!(shown(&world), [PlayerStatus::Hungry, PlayerStatus::Burning]);
+
+        world.insert_resource(PlayerStatuses::default());
+        world.run_system_once(update_status_icons).unwrap();
+        assert_eq!(shown(&world), []);
     }
 }
