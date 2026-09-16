@@ -9,6 +9,7 @@ use crate::game_ui::assets::GameUiAssets;
 use crate::game_ui::cooldown::{
     CooldownAssets, CooldownOverlay, group_icon, spawn_cooldown_overlay,
 };
+use crate::game_ui::status_bar::{StatusAssets, spawn_status_bar};
 use crate::player::components::Player;
 
 #[derive(Component)]
@@ -26,6 +27,7 @@ pub fn spawn_top_panel(
     commands: &mut Commands,
     ui_assets: &GameUiAssets,
     cooldown_assets: &CooldownAssets,
+    status_assets: &StatusAssets,
 ) -> Entity {
     let top_panel = commands
         .spawn((
@@ -123,6 +125,9 @@ pub fn spawn_top_panel(
             .id();
         commands.entity(group_row).add_child(icon);
     }
+
+    let status_bar = spawn_status_bar(commands, &ui_assets.background_dark, status_assets);
+    commands.entity(group_row).add_child(status_bar);
 
     top_panel
 }

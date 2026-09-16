@@ -68,6 +68,7 @@ impl Plugin for GameUiPlugin {
             )
             .add_systems(Startup, assets::setup_game_ui_assets)
             .add_systems(Startup, cooldown::setup_cooldown_assets)
+            .add_systems(Startup, status_bar::setup_status_assets)
             .add_systems(
                 Update,
                 toppanel::update_bar.run_if(in_state(GameState::InGame)),
@@ -76,6 +77,12 @@ impl Plugin for GameUiPlugin {
                 PostUpdate,
                 cooldown::update_cooldown_overlays
                     .before(bevy::ui::UiSystems::Content)
+                    .run_if(in_state(GameState::InGame)),
+            )
+            .add_systems(
+                PostUpdate,
+                status_bar::update_status_icons
+                    .before(bevy::ui::UiSystems::Layout)
                     .run_if(in_state(GameState::InGame)),
             )
             .add_systems(
@@ -110,6 +117,7 @@ pub(crate) fn spawn_main_ui(
     render_texture: Res<GameRenderTexture>,
     ui_assets: Res<GameUiAssets>,
     cooldown_assets: Res<cooldown::CooldownAssets>,
+    status_assets: Res<status_bar::StatusAssets>,
     chat_state: Res<chat::ChatState>,
 ) {
     let main_ui = commands
@@ -140,7 +148,8 @@ pub(crate) fn spawn_main_ui(
         .entity(main_ui)
         .add_children(&[left_panel, middle_container, right_panel]);
 
-    let top_panel = toppanel::spawn_top_panel(&mut commands, &ui_assets, &cooldown_assets);
+    let top_panel =
+        toppanel::spawn_top_panel(&mut commands, &ui_assets, &cooldown_assets, &status_assets);
     let gameview = game_overlay::spawn_gameviewport(&mut commands, &render_texture, &ui_assets);
     let action_bar = action_bar::spawn_action_bar(&mut commands, &ui_assets);
     let chat = chat::spawn_chat_root(&mut commands, &chat_state, &ui_assets);
