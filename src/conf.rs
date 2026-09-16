@@ -223,6 +223,15 @@ pub mod ui {
         pub const GROUP_SHEET_ROWS: u32 = 2;
     }
 
+    pub mod status {
+        pub const ICON_SIZE: f32 = 9.0;
+        pub const ICON_GAP: f32 = 1.0;
+        pub const PADDING: f32 = 2.0;
+        pub const BORDER: f32 = 1.0;
+        pub const SHEET_CELL: u32 = 9;
+        pub const SHEET_COLUMNS: u32 = 6;
+    }
+
     pub mod login {
         use bevy::color::Srgba;
 

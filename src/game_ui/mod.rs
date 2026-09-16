@@ -20,6 +20,7 @@ mod rightpanel;
 pub mod scaling;
 mod session;
 mod skills;
+mod status_bar;
 mod toppanel;
 mod window;
 
