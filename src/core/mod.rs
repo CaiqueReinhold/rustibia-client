@@ -11,6 +11,7 @@ mod missiles;
 mod session;
 mod spells;
 mod sprite;
+mod status;
 mod systems;
 mod text;
 
@@ -26,6 +27,7 @@ pub use spells::{
     CooldownState, SpellBook, SpellCooldowns, SpellGroup, SpellId, SpellInfo, SpellTarget,
 };
 pub use sprite::*;
+pub use status::{PlayerStatus, PlayerStatuses};
 pub use systems::PingState;
 pub use text::{ChatMessageType, SayTarget, TextMessageType};
 
@@ -48,6 +50,8 @@ impl Plugin for CorePlugin {
             .init_resource::<spells::SpellBook>()
             .init_resource::<spells::SpellCooldowns>()
             .add_observer(spells::on_spell_list)
+            .init_resource::<status::PlayerStatuses>()
+            .add_observer(status::on_player_status_updated)
             .init_resource::<InstanceManager<effects::EffectInstance>>()
             .add_systems(
                 Startup,
