@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 use crate::core::spells::{SpellBook, SpellCooldowns};
+use crate::core::status::PlayerStatuses;
 use crate::core::systems::{PingState, PingTimer};
 
 /// Every system that tears down a game session runs here, on
@@ -54,6 +55,7 @@ pub(super) fn cleanup_session(mut commands: Commands, ping: Res<PingState>) {
     commands.insert_resource(PingTimer::default());
     commands.insert_resource(SpellBook::default());
     commands.insert_resource(SpellCooldowns::default());
+    commands.insert_resource(PlayerStatuses::default());
     commands.remove_resource::<ActiveCharacter>();
 }
 
@@ -114,6 +116,23 @@ mod tests {
                 .resource::<SpellCooldowns>()
                 .group(SpellGroup::Healing, Duration::ZERO)
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn cleanup_forgets_the_statuses() {
+        use crate::core::status::PlayerStatus;
+
+        let mut world = World::new();
+        world.init_resource::<PingState>();
+        world.init_resource::<PingTimer>();
+        world.insert_resource(PlayerStatuses(PlayerStatus::Hungry.bit()));
+
+        world.run_system_once(cleanup_session).unwrap();
+
+        assert_eq!(
+            *world.resource::<PlayerStatuses>(),
+            PlayerStatuses::default()
         );
     }
 }
