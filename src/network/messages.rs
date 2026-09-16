@@ -143,6 +143,7 @@ const SRV_EXPERIENCE_UPDATED: u8 = 30;
 const SRV_SPELL_CAST: u8 = 31;
 const SRV_SPELL_LIST: u8 = 32;
 const SRV_AGENT_SPEED_UPDATED: u8 = 33;
+const SRV_PLAYER_STATUS: u8 = 34;
 
 #[derive(Clone, Debug)]
 pub enum ServerMessage {
@@ -301,6 +302,9 @@ pub enum ServerMessage {
     AgentSpeedUpdated {
         agent_id: AgentId,
         speed: u16,
+    },
+    PlayerStatus {
+        status: u32,
     },
 }
 
@@ -785,6 +789,9 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
             agent_id: AgentId(buf.read_u16_le()?),
             speed: buf.read_u16_le()?,
         }),
+        SRV_PLAYER_STATUS => Ok(ServerMessage::PlayerStatus {
+            status: buf.read_u32_le()?,
+        }),
         _ => Err(MessageDecodeError::WrongSequence),
     }
 }
@@ -1204,6 +1211,16 @@ mod tests {
                 assert_eq!(group_cooldown_ms, 4000);
             }
             other => panic!("expected SpellCast, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn player_status_decodes_its_bitmask_little_endian() {
+        let mut buf = frame(&[SRV_PLAYER_STATUS, 0x0A, 0x00, 0x00, 0x80]);
+
+        match (GameMessageCodec {}).decode(&mut buf).unwrap().unwrap() {
+            ServerMessage::PlayerStatus { status } => assert_eq!(status, 0x8000_000A),
+            other => panic!("expected PlayerStatus, got {other:?}"),
         }
     }
 

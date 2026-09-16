@@ -251,6 +251,11 @@ pub struct AgentSpeedUpdated {
     pub speed: u16,
 }
 
+#[derive(Event, Debug)]
+pub struct PlayerStatusUpdated {
+    pub status: u32,
+}
+
 pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
     match msg {
         // Consumed by the IO task, which times the round trip and does not forward
@@ -507,6 +512,9 @@ pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
         }
         ServerMessage::AgentSpeedUpdated { agent_id, speed } => {
             commands.trigger(AgentSpeedUpdated { agent_id, speed });
+        }
+        ServerMessage::PlayerStatus { status } => {
+            commands.trigger(PlayerStatusUpdated { status });
         }
     }
 }
