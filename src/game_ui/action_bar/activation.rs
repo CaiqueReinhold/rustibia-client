@@ -38,7 +38,13 @@ pub enum Activation {
 }
 
 pub fn activation_for(action: Option<SlotAction>, ctx: &ActivationContext) -> Activation {
-    let cast = |spell_id, target| Activation::Cast(CastSpellRequested { spell_id, target });
+    let cast = |spell_id, target| {
+        Activation::Cast(CastSpellRequested {
+            spell_id,
+            target,
+            param: None,
+        })
+    };
     match action {
         None => Activation::Nothing,
         Some(SlotAction::Spell { id, aim: None }) => cast(id, SpellTarget::None),
@@ -227,7 +233,8 @@ mod tests {
             activate(spell(None), foe.clone(), &map),
             Activation::Cast(CastSpellRequested {
                 spell_id: SpellId(4),
-                target: SpellTarget::None
+                target: SpellTarget::None,
+                ..
             })
         ));
         assert!(matches!(

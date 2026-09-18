@@ -2,9 +2,9 @@ use bevy::prelude::*;
 
 use crate::{
     agent::AgentId,
-    core::TextMessageType,
+    core::{ItemConfigs, TextMessageType},
     game_ui::WindowId,
-    items::{ItemDragEnded, ItemId, ItemPlacement},
+    items::{ItemDragEnded, ItemFlag, ItemId, ItemPlacement},
     map::{Position, minimap::MinimapData},
     network::{ClientMessage, SendMessage, events::ShowTextMessage},
     player::{
@@ -99,7 +99,9 @@ impl InteractionIntent {
 
     /// Map-floor tiles the player must stand on or next to before this
     /// intent may be sent. At most two entries (use-with source + target).
-    fn required_map_positions(&self) -> Vec<Position> {
+    /// `thrown` drops the target: a rune is used from where the player stands,
+    /// and the server limits it by line of sight rather than by adjacency.
+    fn required_map_positions(&self, thrown: bool) -> Vec<Position> {
         let mut positions = Vec::new();
         let mut push_if_map = |placement: &ItemPlacement| {
             if let ItemPlacement::Map { position, .. } = placement {
@@ -114,7 +116,9 @@ impl InteractionIntent {
             InteractionIntent::UseItem { target, .. } => push_if_map(target),
             InteractionIntent::UseItemWith { source, target, .. } => {
                 push_if_map(source);
-                push_if_map(target);
+                if !thrown {
+                    push_if_map(target);
+                }
             }
         }
         positions
@@ -168,6 +172,7 @@ pub fn on_interaction_intent(
     mut commands: Commands,
     minimap: Res<MinimapData>,
     mut move_queue: ResMut<MovementQueue>,
+    configs: Res<ItemConfigs>,
     player_q: Single<&Position, With<Player>>,
 ) {
     let player_pos = player_q.into_inner();
@@ -184,8 +189,16 @@ pub fn on_interaction_intent(
         return;
     }
 
+    let thrown = match intent {
+        InteractionIntent::UseItemWith { source_item_id, .. } => configs
+            .items
+            .get(source_item_id)
+            .is_some_and(|config| config.has_flag(ItemFlag::Rune)),
+        _ => false,
+    };
+
     let reaches = |p: &Position| player_pos == p || is_adjacent(player_pos, p);
-    let required = intent.required_map_positions();
+    let required = intent.required_map_positions(thrown);
 
     if required.iter().all(reaches) {
         send_intent(&mut commands, intent);
@@ -242,7 +255,7 @@ mod tests {
                 stack_index: 0,
             })
         ));
-        assert!(intent.required_map_positions().is_empty());
+        assert!(intent.required_map_positions(false).is_empty());
     }
 
     #[test]
@@ -272,6 +285,25 @@ mod tests {
                 ..
             })
         ));
-        assert_eq!(intent.required_map_positions(), vec![target]);
+        assert_eq!(intent.required_map_positions(false), vec![target]);
+    }
+
+    /// The rune case: thrown from where the player stands, so the aimed tile is
+    /// not a place the walk has to reach first.
+    #[test]
+    fn a_thrown_use_with_requires_nothing_of_its_target() {
+        let intent = InteractionIntent::UseItemWith {
+            source: ItemPlacement::Carried,
+            source_item_id: ItemId(3161),
+            target: ItemPlacement::Map {
+                position: Position::new(105, 100, 7),
+                index: 0,
+            },
+            target_item_id: ItemId(100),
+            target_agent: None,
+        };
+
+        assert!(intent.required_map_positions(true).is_empty());
+        assert_eq!(intent.required_map_positions(false).len(), 1);
     }
 }

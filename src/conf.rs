@@ -31,12 +31,11 @@ pub mod draw_order {
 }
 
 pub mod target {
-    /// OTClient uses `max(2 * scaleFactor, 1)`; at 1x that is 2 logical pixels.
     pub const SQUARE_THICKNESS: f32 = 2.0;
-    /// Red is the attack square. OTClient sets it from Lua on
-    /// `onAttackingCreatureChange` rather than in the C++ draw path; `#FF0000` is
-    /// the long-standing convention across forks.
     pub const SQUARE_COLOR: bevy::color::Color = bevy::color::Color::srgb(1.0, 0.0, 0.0);
+    pub const MARK_INSET: f32 = 2.0;
+    pub const MARK_COLOR: bevy::color::Color = bevy::color::Color::srgb(0.0, 0.0, 0.0);
+    pub const MARK_DURATION: std::time::Duration = std::time::Duration::from_secs(1);
 }
 
 pub mod agent {

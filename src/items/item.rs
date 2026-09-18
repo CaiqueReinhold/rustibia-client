@@ -130,8 +130,7 @@ pub enum ItemFlag {
     BlockSight,
     LiquidPool,
     LiquidContainer,
-    /// Lies flat on the floor, a corpse being the case that matters. Ranked
-    /// below everything that stands up; see `map::DrawRank`.
+    Rune,
     LyingObject,
 }
 

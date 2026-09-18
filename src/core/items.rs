@@ -125,6 +125,9 @@ fn read_item_config(config: &Value) -> Option<Arc<ItemConfig>> {
     if config["liquid_container"].as_bool()? {
         flags.push(ItemFlag::LiquidContainer);
     }
+    if config["rune"].as_bool()? {
+        flags.push(ItemFlag::Rune);
+    }
     Some(Arc::new(ItemConfig {
         id,
         // name,
@@ -168,6 +171,7 @@ mod tests {
             "block_sight": false,
             "multiuse": false,
             "forceuse": false,
+            "rune": false,
             "liquid_pool": false,
             "liquid_container": false,
             "lying_object": false,

@@ -2,9 +2,10 @@ use bevy::prelude::*;
 
 use crate::agent::AgentId;
 use crate::conf::map::TILE_SIZE;
-use crate::conf::target::{SQUARE_COLOR, SQUARE_THICKNESS};
-use crate::map::{Map, TARGET_SQUARE_LOCAL_Z};
+use crate::conf::target::SQUARE_COLOR;
+use crate::map::Map;
 use crate::network::events::TargetLost;
+use crate::player::square::spawn_square;
 
 /// The agent this player is attacking, as a session-local `AgentId`.
 ///
@@ -71,36 +72,6 @@ pub fn on_target_lost(
 #[derive(Component)]
 pub struct TargetSquare;
 
-/// `to_world()` is the tile's top-left corner; the square must sit on the tile
-/// centre. Y is negative because world Y grows upward while tile Y grows down.
-pub fn square_centre_offset() -> Vec2 {
-    Vec2::new(TILE_SIZE / 2.0, -TILE_SIZE / 2.0)
-}
-
-/// The four edges of the outline as `(size, centre_offset_from_tile_centre)`.
-fn square_bars() -> [(Vec2, Vec2); 4] {
-    let half = TILE_SIZE / 2.0;
-    let inset = half - SQUARE_THICKNESS / 2.0;
-    [
-        (
-            Vec2::new(TILE_SIZE, SQUARE_THICKNESS),
-            Vec2::new(0.0, inset),
-        ),
-        (
-            Vec2::new(TILE_SIZE, SQUARE_THICKNESS),
-            Vec2::new(0.0, -inset),
-        ),
-        (
-            Vec2::new(SQUARE_THICKNESS, TILE_SIZE),
-            Vec2::new(-inset, 0.0),
-        ),
-        (
-            Vec2::new(SQUARE_THICKNESS, TILE_SIZE),
-            Vec2::new(inset, 0.0),
-        ),
-    ]
-}
-
 /// Despawns any existing square and, if there is a target, spawns a new one as a
 /// **child of the target agent's entity** — which gives walk-offset tracking for
 /// free, with no per-frame sync system.
@@ -121,26 +92,13 @@ pub fn refresh_target_square(
         return;
     };
 
-    let centre = square_centre_offset();
-    commands.entity(agent_entity).with_children(|parent| {
-        let mut root = parent.spawn((
-            TargetSquare,
-            Transform::from_xyz(centre.x, centre.y, TARGET_SQUARE_LOCAL_Z),
-            Visibility::default(),
-        ));
-        root.with_children(|frame| {
-            for (size, offset) in square_bars() {
-                frame.spawn((
-                    Sprite {
-                        color: SQUARE_COLOR,
-                        custom_size: Some(size),
-                        ..Default::default()
-                    },
-                    Transform::from_xyz(offset.x, offset.y, 0.0),
-                ));
-            }
-        });
-    });
+    spawn_square(
+        commands,
+        agent_entity,
+        TargetSquare,
+        SQUARE_COLOR,
+        TILE_SIZE,
+    );
 }
 
 #[cfg(test)]
@@ -253,38 +211,6 @@ mod tests {
         world.flush();
 
         assert_eq!(world.resource::<CombatTarget>().target, Some(AgentId(9)));
-    }
-
-    #[test]
-    fn the_square_is_a_full_tile_outline() {
-        // Four bars, each spanning a full tile edge, at the configured thickness.
-        let bars = square_bars();
-        assert_eq!(bars.len(), 4);
-        for (size, _) in &bars {
-            assert!(
-                (size.x - TILE_SIZE).abs() < f32::EPSILON
-                    || (size.y - TILE_SIZE).abs() < f32::EPSILON,
-                "every bar spans one full tile edge, got {size:?}"
-            );
-            assert!(
-                (size.x - SQUARE_THICKNESS).abs() < f32::EPSILON
-                    || (size.y - SQUARE_THICKNESS).abs() < f32::EPSILON,
-                "every bar is one thickness deep, got {size:?}"
-            );
-        }
-    }
-
-    /// `to_world()` returns the tile's TOP-LEFT corner and the convention is
-    /// size-dependent: 64px sprites centre on it, 32px things do not. This is the
-    /// counterpart of OTClient's `- getDisplacement()`; both put the square on the
-    /// tile rather than on the artwork. Getting this wrong shipped a visible bug
-    /// last session.
-    #[test]
-    fn the_square_is_offset_to_the_tile_centre() {
-        assert_eq!(
-            square_centre_offset(),
-            Vec2::new(TILE_SIZE / 2.0, -TILE_SIZE / 2.0)
-        );
     }
 
     /// The square is a child of the agent, and transform hierarchies compose

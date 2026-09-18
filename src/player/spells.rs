@@ -11,12 +11,14 @@ use crate::{
 pub struct CastSpellRequested {
     pub spell_id: SpellId,
     pub target: SpellTarget,
+    pub param: Option<String>,
 }
 
 pub fn on_cast_spell_requested(event: On<CastSpellRequested>, mut commands: Commands) {
     commands.trigger(SendMessage(ClientMessage::CastSpell {
         spell_id: event.spell_id,
         target: event.target.clone(),
+        param: event.param.clone(),
     }));
 }
 
@@ -66,6 +68,7 @@ mod tests {
         world.trigger(CastSpellRequested {
             spell_id: SpellId(4),
             target: SpellTarget::Position(Position::new(100, 101, 7)),
+            param: None,
         });
         world.flush();
 
@@ -78,6 +81,7 @@ mod tests {
                     y: 101,
                     z: 7
                 }),
+                param: None,
             }]
         ));
     }

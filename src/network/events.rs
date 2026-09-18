@@ -149,6 +149,11 @@ pub struct TargetLost {
 }
 
 #[derive(Event, Debug)]
+pub struct PlayerDamagedBy {
+    pub agent_id: AgentId,
+}
+
+#[derive(Event, Debug)]
 pub struct MoveAgent {
     pub agent_id: AgentId,
     pub from: Position,
@@ -374,6 +379,9 @@ pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
         }
         ServerMessage::TargetLost { seq } => {
             commands.trigger(TargetLost { seq });
+        }
+        ServerMessage::DamagedBy { agent_id } => {
+            commands.trigger(PlayerDamagedBy { agent_id });
         }
         ServerMessage::MoveAgent {
             agent_id,

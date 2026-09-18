@@ -157,6 +157,7 @@ fn crosshair_cast(spell_id: SpellId, tile: Option<&Position>) -> Option<CastSpel
     Some(CastSpellRequested {
         spell_id,
         target: SpellTarget::Position(tile?.clone()),
+        param: None,
     })
 }
 

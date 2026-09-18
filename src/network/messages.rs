@@ -105,6 +105,7 @@ pub enum ClientMessage {
     CastSpell {
         spell_id: SpellId,
         target: SpellTarget,
+        param: Option<String>,
     },
 }
 
@@ -144,6 +145,7 @@ const SRV_SPELL_CAST: u8 = 31;
 const SRV_SPELL_LIST: u8 = 32;
 const SRV_AGENT_SPEED_UPDATED: u8 = 33;
 const SRV_PLAYER_STATUS: u8 = 34;
+const SRV_DAMAGED_BY: u8 = 35;
 
 #[derive(Clone, Debug)]
 pub enum ServerMessage {
@@ -259,6 +261,9 @@ pub enum ServerMessage {
     },
     TargetLost {
         seq: u32,
+    },
+    DamagedBy {
+        agent_id: AgentId,
     },
     ShowEffect {
         effect_id: EffectId,
@@ -680,6 +685,9 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
                 color,
             })
         }
+        SRV_DAMAGED_BY => Ok(ServerMessage::DamagedBy {
+            agent_id: AgentId(buf.read_u16_le()?),
+        }),
         SRV_AGENT_LIFE_UPDATED => {
             let agent_id = AgentId(buf.read_u16_le()?);
             let current = buf.read_u32_le()?;
@@ -1057,10 +1065,15 @@ impl Encoder for GameMessageCodec {
                 dst.put_u8(CLI_OPEN_PM_CHAT);
                 dst.put_slice(name.as_bytes());
             }
-            ClientMessage::CastSpell { spell_id, target } => {
+            ClientMessage::CastSpell {
+                spell_id,
+                target,
+                param,
+            } => {
                 dst.put_u8(CLI_CAST_SPELL);
                 dst.put_u16_le(spell_id.0);
                 encode_spell_target(target, dst);
+                encode_param(param.as_deref(), dst);
             }
         }
 
@@ -1069,6 +1082,14 @@ impl Encoder for GameMessageCodec {
 
         Ok(())
     }
+}
+
+/// Length-prefixed and empty rather than absent for a cast that names nothing: the server
+/// reads the field whatever the spell, so it has to be there to be skipped.
+fn encode_param(param: Option<&str>, dst: &mut BytesMut) {
+    let bytes = param.unwrap_or("").as_bytes();
+    dst.put_u16_le(bytes.len() as u16);
+    dst.put_slice(bytes);
 }
 
 fn encode_spell_target(target: SpellTarget, dst: &mut BytesMut) {
@@ -1143,29 +1164,32 @@ mod tests {
         buf[2..].to_vec()
     }
 
-    /// The three `SpellTarget` variants, as literal bytes. The server's
-    /// `decode_spell_target` reads exactly this frame; nothing else pins the
-    /// opcode or the variant tags on either side.
+    /// The three `SpellTarget` variants and the trailing param, as literal bytes. The
+    /// server's `decode_spell_target` and `decode_param` read exactly this frame; nothing
+    /// else pins the opcode, the variant tags or the param's width on either side.
     #[test]
     fn cast_spell_encodes_each_target_variant() {
         assert_eq!(
             payload_of(ClientMessage::CastSpell {
                 spell_id: SpellId(4),
                 target: SpellTarget::None,
+                param: None,
             }),
-            vec![CLI_CAST_SPELL, 0x04, 0x00, 0x00],
+            vec![CLI_CAST_SPELL, 0x04, 0x00, 0x00, 0x00, 0x00],
         );
         assert_eq!(
             payload_of(ClientMessage::CastSpell {
                 spell_id: SpellId(4),
                 target: SpellTarget::Agent(AgentId(7)),
+                param: None,
             }),
-            vec![CLI_CAST_SPELL, 0x04, 0x00, 0x01, 0x07, 0x00],
+            vec![CLI_CAST_SPELL, 0x04, 0x00, 0x01, 0x07, 0x00, 0x00, 0x00],
         );
         assert_eq!(
             payload_of(ClientMessage::CastSpell {
                 spell_id: SpellId(4),
                 target: SpellTarget::Position(Position::new(1000, 1001, 7)),
+                param: None,
             }),
             vec![
                 CLI_CAST_SPELL,
@@ -1176,7 +1200,27 @@ mod tests {
                 0x03,
                 0xE9,
                 0x03,
-                0x07
+                0x07,
+                0x00,
+                0x00
+            ],
+        );
+        assert_eq!(
+            payload_of(ClientMessage::CastSpell {
+                spell_id: SpellId(4),
+                target: SpellTarget::None,
+                param: Some("Bob".to_string()),
+            }),
+            vec![
+                CLI_CAST_SPELL,
+                0x04,
+                0x00,
+                0x00,
+                0x03,
+                0x00,
+                b'B',
+                b'o',
+                b'b'
             ],
         );
     }
@@ -1507,6 +1551,23 @@ mod tests {
                 assert_eq!(color, Some((255, 0, 64)));
             }
             other => panic!("expected FloatingText, got {other:?}"),
+        }
+        assert!(buf.is_empty(), "the frame must be fully consumed");
+    }
+
+    /// The twin of `encode_damaged_by_is_an_opcode_and_one_id` in the server
+    /// repository's `messages.rs`. Both assert opcode 35 and a little-endian
+    /// `u16`; if they diverge the mark silently stops appearing.
+    #[test]
+    fn decodes_a_damaged_by() {
+        let mut payload = vec![SRV_DAMAGED_BY];
+        payload.extend_from_slice(&0x0201u16.to_le_bytes());
+
+        let mut codec = GameMessageCodec {};
+        let mut buf = frame(&payload);
+        match codec.decode(&mut buf).unwrap().unwrap() {
+            ServerMessage::DamagedBy { agent_id } => assert_eq!(agent_id, AgentId(0x0201)),
+            other => panic!("expected DamagedBy, got {other:?}"),
         }
         assert!(buf.is_empty(), "the frame must be fully consumed");
     }

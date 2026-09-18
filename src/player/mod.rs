@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 
+pub mod attacker_mark;
 pub mod components;
 mod events;
 mod hotkey;
@@ -9,6 +10,7 @@ pub mod movement;
 pub mod pathfinding;
 mod session;
 pub mod spells;
+pub mod square;
 pub mod target;
 pub use hotkey::Hotkey;
 pub use interaction::{
@@ -74,6 +76,10 @@ impl Plugin for PlayerPlugin {
                 Update,
                 events::check_game_ready.run_if(in_state(GameState::Connecting)),
             )
+            .add_systems(
+                Update,
+                attacker_mark::expire_attacker_squares.run_if(in_state(GameState::InGame)),
+            )
             .add_observer(interaction::attach_observers)
             .add_observer(interaction::on_interaction_intent)
             .add_observer(movement::on_player_walk)
@@ -91,6 +97,7 @@ impl Plugin for PlayerPlugin {
             .add_observer(interaction::on_targeting_container_closed)
             .add_observer(interaction::on_targeting_inventory_updated)
             .add_observer(target::on_target_lost)
+            .add_observer(attacker_mark::on_player_damaged_by)
             .add_observer(spells::on_cast_spell_requested)
             .add_observer(spells::on_spell_cast);
     }
