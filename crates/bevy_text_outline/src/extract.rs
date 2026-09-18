@@ -2,25 +2,39 @@ use bevy::math::Affine2;
 use bevy::prelude::*;
 use bevy::render::Extract;
 use bevy::render::sync_world::TemporaryRenderEntity;
-use bevy::text::TextLayoutInfo;
+use bevy::sprite::Anchor;
+use bevy::sprite_render::{
+    ExtractedSlice, ExtractedSlices, ExtractedSprite, ExtractedSpriteKind, ExtractedSprites,
+};
+use bevy::text::{PositionedGlyph, TextBounds, TextLayoutInfo};
 use bevy::ui::{CalculatedClip, ComputedNode, ComputedUiTargetCamera};
 use bevy::ui_render::{
     ExtractedGlyph, ExtractedUiItem, ExtractedUiNode, ExtractedUiNodes, UiCameraMap,
     stack_z_offsets,
 };
 
-use crate::atlas::OutlineGlyphAtlasInfos;
 use crate::component::TextOutline;
 
-/// Injects outline glyphs into the UI render pipeline for each UI `Text` entity that has a
-/// [`TextOutline`] component and a prepared [`OutlineGlyphAtlasInfos`].
-///
-/// Must run before `extract_text_sections` in [`ExtractSchedule`] so outline glyphs are
-/// pushed to [`ExtractedUiNodes`] at a lower z-order than the fill, ensuring outlines
-/// render behind the fill text.
-pub fn extract_outline_glyphs(
+fn glyph_rect(atlases: &Assets<TextureAtlasLayout>, glyph: &PositionedGlyph) -> Rect {
+    atlases
+        .get(glyph.atlas_info.texture_atlas)
+        .unwrap()
+        .textures[glyph.atlas_info.location.glyph_index]
+        .as_rect()
+}
+
+fn ends_batch(glyphs: &[PositionedGlyph], i: usize) -> bool {
+    glyphs
+        .get(i + 1)
+        .is_none_or(|next| next.atlas_info.texture != glyphs[i].atlas_info.texture)
+}
+
+/// Runs before `extract_text_sections` at the same z, so the copies are pushed, and
+/// drawn, before the fill.
+pub fn extract_ui_text_outlines(
     mut commands: Commands,
     mut extracted_uinodes: ResMut<ExtractedUiNodes>,
+    texture_atlases: Extract<Res<Assets<TextureAtlasLayout>>>,
     camera_map: Extract<UiCameraMap>,
     query: Extract<
         Query<(
@@ -32,93 +46,121 @@ pub fn extract_outline_glyphs(
             &ComputedUiTargetCamera,
             &TextLayoutInfo,
             &TextOutline,
-            &OutlineGlyphAtlasInfos,
+            Option<&TextColor>,
         )>,
     >,
 ) {
-    let ExtractedUiNodes {
-        glyphs, uinodes, ..
-    } = &mut *extracted_uinodes;
     let mut camera_mapper = camera_map.get_mapper();
-
-    for (
-        entity,
-        uinode,
-        global_transform,
-        inherited_visibility,
-        clip,
-        target,
-        layout_info,
-        textoutline,
-        glyph_infos,
-    ) in query.iter()
-    {
-        if !inherited_visibility.get() || uinode.is_empty() {
+    for (entity, uinode, transform, visibility, clip, target, layout, outline, fill) in &query {
+        if !visibility.get() || uinode.is_empty() {
             continue;
         }
-
         let Some(extracted_camera_entity) = camera_mapper.map(target) else {
             continue;
         };
+        let Some(offsets) = outline.offsets(layout.scale_factor) else {
+            continue;
+        };
+        let color = outline.color_over(fill);
 
-        // Same transform formula as extract_text_sections.
-        let transform =
-            Affine2::from(*global_transform) * Affine2::from_translation(-0.5 * uinode.size());
-
-        let color: LinearRgba = textoutline.color.into();
-
-        let mut start = glyphs.len();
-        let mut batch_len = 0usize;
-        let mut current_image_id = None;
-
-        for (glyph, outline_info) in layout_info.glyphs.iter().zip(glyph_infos.infos.iter()) {
-            let Some(info) = outline_info else { continue };
-
-            // Flush when atlas image changes (shouldn't normally happen for our single atlas).
-            if current_image_id.is_some_and(|id| id != info.image_id) && batch_len > 0 {
-                uinodes.push(ExtractedUiNode {
-                    render_entity: commands.spawn(TemporaryRenderEntity).id(),
-                    // Slightly below TEXT so outlines render behind fill.
-                    z_order: uinode.stack_index as f32 + stack_z_offsets::TEXT - 0.01,
-                    image: current_image_id.unwrap(),
-                    clip: clip.map(|c| c.clip),
-                    extracted_camera_entity,
-                    transform,
-                    item: ExtractedUiItem::Glyphs {
-                        range: start..(start + batch_len),
-                    },
-                    main_entity: entity.into(),
+        for offset in offsets {
+            let node_transform = Affine2::from(*transform)
+                * Affine2::from_translation(-0.5 * uinode.size() + offset);
+            let mut start = extracted_uinodes.glyphs.len();
+            for (i, glyph) in layout.glyphs.iter().enumerate() {
+                extracted_uinodes.glyphs.push(ExtractedGlyph {
+                    color,
+                    translation: glyph.position,
+                    rect: glyph_rect(&texture_atlases, glyph),
                 });
-                start += batch_len;
-                batch_len = 0;
+                if ends_batch(&layout.glyphs, i) {
+                    let end = extracted_uinodes.glyphs.len();
+                    extracted_uinodes.uinodes.push(ExtractedUiNode {
+                        transform: node_transform,
+                        z_order: uinode.stack_index as f32 + stack_z_offsets::TEXT,
+                        render_entity: commands.spawn(TemporaryRenderEntity).id(),
+                        image: glyph.atlas_info.texture,
+                        clip: clip.map(|clip| clip.clip),
+                        extracted_camera_entity,
+                        item: ExtractedUiItem::Glyphs { range: start..end },
+                        main_entity: entity.into(),
+                    });
+                    start = end;
+                }
             }
-            current_image_id = Some(info.image_id);
-
-            // In the UI pipeline, glyph.position is the CENTER of the fill quad.
-            // Our outline bitmap is dilated symmetrically, so its center also aligns
-            // with glyph.position — no offset correction needed.
-            glyphs.push(ExtractedGlyph {
-                color,
-                translation: glyph.position,
-                rect: info.rect,
-            });
-            batch_len += 1;
         }
+    }
+}
 
-        // Flush final batch.
-        if batch_len > 0 {
-            uinodes.push(ExtractedUiNode {
-                render_entity: commands.spawn(TemporaryRenderEntity).id(),
-                z_order: uinode.stack_index as f32 + stack_z_offsets::TEXT - 0.01,
-                image: current_image_id.unwrap(),
-                clip: clip.map(|c| c.clip),
-                extracted_camera_entity,
-                transform,
-                item: ExtractedUiItem::Glyphs {
-                    range: start..(start + batch_len),
-                },
-                main_entity: entity.into(),
-            });
+/// Runs before `extract_text2d_sprite` at the same z, so the copies are pushed, and
+/// drawn, before the fill.
+pub fn extract_text2d_outlines(
+    mut commands: Commands,
+    mut extracted_sprites: ResMut<ExtractedSprites>,
+    mut extracted_slices: ResMut<ExtractedSlices>,
+    texture_atlases: Extract<Res<Assets<TextureAtlasLayout>>>,
+    query: Extract<
+        Query<
+            (
+                Entity,
+                &ViewVisibility,
+                &TextLayoutInfo,
+                &TextBounds,
+                &Anchor,
+                &GlobalTransform,
+                &TextOutline,
+                Option<&TextColor>,
+            ),
+            With<Text2d>,
+        >,
+    >,
+) {
+    for (entity, visibility, layout, bounds, anchor, transform, outline, fill) in &query {
+        if !visibility.get() {
+            continue;
+        }
+        let Some(offsets) = outline.offsets(layout.scale_factor) else {
+            continue;
+        };
+        let color = outline.color_over(fill);
+        let size = Vec2::new(
+            bounds.width.unwrap_or(layout.size.x),
+            bounds.height.unwrap_or(layout.size.y),
+        );
+        let top_left = (Anchor::TOP_LEFT.0 - anchor.as_vec()) * size;
+        let scaling =
+            GlobalTransform::from_scale(Vec2::splat(layout.scale_factor.recip()).extend(1.));
+
+        for offset in offsets {
+            let copy_transform = *transform
+                * GlobalTransform::from_translation(top_left.extend(0.))
+                * scaling
+                * GlobalTransform::from_translation(offset.extend(0.));
+            let mut start = extracted_slices.slices.len();
+            for (i, glyph) in layout.glyphs.iter().enumerate() {
+                let rect = glyph_rect(&texture_atlases, glyph);
+                extracted_slices.slices.push(ExtractedSlice {
+                    offset: Vec2::new(glyph.position.x, -glyph.position.y),
+                    rect,
+                    size: rect.size(),
+                });
+                if ends_batch(&layout.glyphs, i) {
+                    let end = extracted_slices.slices.len();
+                    extracted_sprites.sprites.push(ExtractedSprite {
+                        main_entity: entity,
+                        render_entity: commands.spawn(TemporaryRenderEntity).id(),
+                        transform: copy_transform,
+                        color,
+                        image_handle_id: glyph.atlas_info.texture,
+                        flip_x: false,
+                        flip_y: false,
+                        kind: ExtractedSpriteKind::Slices {
+                            indices: start..end,
+                        },
+                    });
+                    start = end;
+                }
+            }
         }
     }
 }

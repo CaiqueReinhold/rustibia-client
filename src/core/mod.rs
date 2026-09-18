@@ -70,6 +70,13 @@ impl Plugin for CorePlugin {
                 text::despawn_text_messages.run_if(in_state(GameState::InGame)),
             )
             .add_systems(
+                PostUpdate,
+                text::place_text_messages
+                    .after(bevy::ui::UiSystems::Layout)
+                    .before(bevy::transform::TransformSystems::Propagate)
+                    .run_if(in_state(GameState::InGame)),
+            )
+            .add_systems(
                 Update,
                 (
                     floating_text::tick_hit_points,
@@ -84,7 +91,8 @@ impl Plugin for CorePlugin {
                     floating_text::position_floating_texts,
                 )
                     .chain()
-                    .before(bevy::ui::UiSystems::Layout)
+                    .after(bevy::sprite::update_text2d_layout)
+                    .before(bevy::transform::TransformSystems::Propagate)
                     .run_if(in_state(GameState::InGame)),
             )
             .add_systems(
@@ -123,14 +131,10 @@ impl Plugin for CorePlugin {
                     session::cleanup_session,
                     effects::cleanup_session,
                     missiles::cleanup_session,
+                    floating_text::cleanup_session,
+                    text::cleanup_session,
                 )
                     .in_set(SessionCleanup),
             );
-
-        #[cfg(feature = "debug")]
-        app.add_systems(
-            Update,
-            floating_text::debug_spawn_floating_text.run_if(in_state(GameState::InGame)),
-        );
     }
 }

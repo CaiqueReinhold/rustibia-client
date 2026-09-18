@@ -16,6 +16,7 @@ mod game_ui;
 mod items;
 mod map;
 mod network;
+mod overlay;
 mod player;
 
 use crate::core::{GameAssetsLoaded, GameState};
@@ -52,6 +53,7 @@ fn main() {
             items::ItemsPlugin,
             player::PlayerPlugin,
             network::NetworkPlugin,
+            overlay::OverlayPlugin,
         ))
         .init_state::<GameState>()
         .init_resource::<GameAssetsLoaded>()

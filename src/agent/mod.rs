@@ -11,6 +11,7 @@ mod instancing;
 mod material;
 pub mod movement;
 mod session;
+mod world_hud;
 
 pub use crate::agent::components::*;
 pub use crate::agent::instancing::{LoadedMaterials, spawn_agent};
@@ -71,19 +72,14 @@ impl Plugin for AgentPlugin {
                     hud::update_hud_bar_health_state.after(hud::update_hud_bar_ratios),
                     hud::update_hud_bar_colors.after(hud::update_hud_bar_health_state),
                     hud::resize_hud_fill.after(hud::update_hud_bar_ratios),
+                    world_hud::resize_world_hud_fill.after(hud::update_hud_bar_ratios),
+                    world_hud::update_world_hud_bar_colors.after(hud::update_hud_bar_health_state),
                 )
                     .run_if(in_state(GameState::InGame)),
             )
             .add_systems(
                 PostUpdate,
-                (hud::attach_huds_to_viewport, hud::update_hud_positions)
-                    .chain()
-                    // Before layout, so the `UiTransform` lands this frame rather
-                    // than the next; after the camera moves, so the label and the
-                    // sprite are placed from the same frame's positions.
-                    .before(bevy::ui::UiSystems::Layout)
-                    .after(crate::player::movement::center_on_player)
-                    .run_if(in_state(GameState::InGame)),
+                hud::update_hud_visibility.run_if(in_state(GameState::InGame)),
             )
             .add_systems(
                 OnExit(GameState::InGame),
@@ -99,8 +95,5 @@ impl Plugin for AgentPlugin {
             .add_observer(events::on_agent_life_changed)
             .add_observer(events::on_agent_mana_changed)
             .add_observer(events::on_agent_speed_updated);
-
-        #[cfg(feature = "debug")]
-        app.add_systems(Update, (instancing::agent_rect,));
     }
 }

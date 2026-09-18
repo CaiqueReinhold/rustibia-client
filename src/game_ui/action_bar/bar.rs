@@ -251,7 +251,7 @@ fn hotkey_label(hotkey: &Hotkey, ui_assets: &GameUiAssets) -> impl Bundle {
             font_size: conf::HOTKEY_FONT_SIZE,
             ..default()
         }
-        .with_font_smoothing(FontSmoothing::None),
+        .with_font_smoothing(FontSmoothing::AntiAliased),
         TextColor(Color::WHITE),
         TextOutline {
             width: 1.0,

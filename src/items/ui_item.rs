@@ -49,7 +49,7 @@ fn stack_count_label(item: &Item, ui_assets: &GameUiAssets) -> Option<impl Bundl
             font_size: ITEM_COUNT_FONT_SIZE,
             ..default()
         }
-        .with_font_smoothing(FontSmoothing::None),
+        .with_font_smoothing(FontSmoothing::AntiAliased),
         TextColor(Color::WHITE),
         TextOutline {
             width: 1.0,

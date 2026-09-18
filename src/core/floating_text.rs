@@ -1,33 +1,26 @@
 //! World-anchored transient text: damage numbers and speech over a tile.
 //! Distinct from `core::text`, which anchors to the *viewport*.
 //!
-//! ## Why placement runs before `UiSystems::Layout`
-//!
-//! `ui_layout_system` is one system that reads `UiTransform`/`Node` and writes both
-//! `ComputedNode` and `UiGlobalTransform`. There is no point in the frame where you
-//! can read this frame's measured size *and* still influence this frame's layout,
-//! so placement reads the **previous** frame's `ComputedNode::size` and writes
-//! `Node.left`/`Node.top` before layout runs. A text therefore cannot be placed on
-//! the frame it spawned: it carries `Unplaced` and stays hidden until measured.
+//! Each text is a `Text2d` child of a root that sits at its anchor, in world units,
+//! for life. The root is `HudScaled`, so the child's local translation, the rise and
+//! the collision push, is in logical pixels.
 
 use std::collections::VecDeque;
 use std::time::Duration;
 
-use bevy::camera::visibility::RenderLayers;
 use bevy::prelude::*;
-use bevy::text::FontSmoothing;
+use bevy::sprite::Anchor;
+use bevy::text::{FontSmoothing, TextBounds, TextLayoutInfo};
 use bevy_text_outline::TextOutline;
 
-use crate::camera::GameCamera;
 use crate::conf::floating_text as ft;
 use crate::conf::map::TILE_SIZE;
 use crate::conf::ui::chat::CREATURE_SAY_COLOR;
 use crate::conf::ui::chat::LOCAL_CHANNEL_COLOR;
-use crate::conf::viewport::{GAME_VIEW_HEIGHT, GAME_VIEW_WIDTH};
-use crate::game_ui::scaling::logical_size;
 use crate::game_ui::{GameUiAssets, GameViewport};
 use crate::map::Position;
 use crate::network::events::ShowFloatingText;
+use crate::overlay::{HudScaled, OVERLAY_TEXT_Z, on_overlay_layer, world_hud_scale};
 use crate::player::components::Player;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,11 +43,8 @@ pub struct FloatingText {
     pub offset_y: f32,
 }
 
-/// Present until the text has been measured and placed. While it is present the
-/// text stays hidden, because a node of size `(0, 0)` cannot be centred on its
-/// anchor.
 #[derive(Component, Debug)]
-pub struct Unplaced;
+pub struct FloatingTextRoot;
 
 #[derive(Component, Debug)]
 pub struct HitPointsText {
@@ -217,16 +207,12 @@ pub fn on_floating_text(
     mut commands: Commands,
     time: Res<Time>,
     ui_assets: Res<GameUiAssets>,
-    viewport_q: Query<Entity, With<GameViewport>>,
-    mut hp_q: Query<(Entity, &FloatingText, &mut HitPointsText, &mut Text), Without<SpeechBlock>>,
+    mut hp_q: Query<(Entity, &FloatingText, &mut HitPointsText, &mut Text2d), Without<SpeechBlock>>,
     mut speech_q: Query<
-        (Entity, &FloatingText, &mut SpeechBlock, &mut Text),
+        (Entity, &FloatingText, &mut SpeechBlock, &mut Text2d),
         Without<HitPointsText>,
     >,
 ) {
-    let Ok(viewport) = viewport_q.single() else {
-        return;
-    };
     // The anchor is the tile the server named, never the speaker's current
     // position: text outlives its speaker, and the killing blow's damage number
     // arrives for an agent the next message removes.
@@ -260,7 +246,8 @@ pub fn on_floating_text(
                     }
                 }
                 HpArrival::Spawn { offset_y } => {
-                    commands.spawn((
+                    spawn_floating_text(
+                        &mut commands,
                         FloatingText {
                             kind: FloatingTextType::HitPoints,
                             speaker: event.speaker.clone(),
@@ -268,28 +255,20 @@ pub fn on_floating_text(
                             spawned_at: now,
                             offset_y,
                         },
-                        HitPointsText {
-                            value,
-                            color,
-                            timer: Timer::new(
-                                Duration::from_millis(ft::HP_DURATION_MS),
-                                TimerMode::Once,
-                            ),
-                        },
-                        Unplaced,
-                        Visibility::Hidden,
-                        ChildOf(viewport),
-                        RenderLayers::layer(1),
-                        ZIndex(ft::Z_INDEX),
-                        text_node(),
-                        Text::new(event.text.clone()),
-                        text_font(&ui_assets),
-                        TextColor(color),
-                        TextOutline {
-                            width: ft::OUTLINE_WIDTH,
-                            ..default()
-                        },
-                    ));
+                        (
+                            HitPointsText {
+                                value,
+                                color,
+                                timer: Timer::new(
+                                    Duration::from_millis(ft::HP_DURATION_MS),
+                                    TimerMode::Once,
+                                ),
+                            },
+                            Text2d::new(event.text.clone()),
+                            text_font(&ui_assets),
+                            TextColor(color),
+                        ),
+                    );
                 }
             }
         }
@@ -319,8 +298,8 @@ pub fn on_floating_text(
 
             let mut lines = VecDeque::new();
             lines.push_back(line);
-            let composed = event.text.clone();
-            commands.spawn((
+            spawn_floating_text(
+                &mut commands,
                 FloatingText {
                     kind: event.text_type,
                     speaker: event.speaker.clone(),
@@ -328,24 +307,43 @@ pub fn on_floating_text(
                     spawned_at: now,
                     offset_y: 0.0,
                 },
-                SpeechBlock { lines },
-                Unplaced,
-                Visibility::Hidden,
-                ChildOf(viewport),
-                RenderLayers::layer(1),
-                ZIndex(ft::Z_INDEX),
-                speech_node(),
-                Text::new(composed),
-                TextLayout::new_with_justify(Justify::Center),
-                text_font(&ui_assets),
-                TextColor(color),
-                TextOutline {
-                    width: ft::OUTLINE_WIDTH,
-                    ..default()
-                },
-            ));
+                (
+                    SpeechBlock { lines },
+                    Text2d::new(event.text.clone()),
+                    TextLayout::new_with_justify(Justify::Center),
+                    TextBounds::new_horizontal(ft::SPEECH_MAX_WIDTH_PX),
+                    text_font(&ui_assets),
+                    TextColor(color),
+                ),
+            );
         }
     }
+}
+
+fn spawn_floating_text(commands: &mut Commands, text: FloatingText, kind_parts: impl Bundle) {
+    let root = commands
+        .spawn((
+            FloatingTextRoot,
+            HudScaled,
+            Transform::from_translation(
+                anchor_world(&text.anchor, text.kind).extend(OVERLAY_TEXT_Z),
+            ),
+            Visibility::default(),
+            on_overlay_layer(),
+        ))
+        .id();
+    commands.spawn((
+        Transform::from_xyz(0.0, text.offset_y, 0.0),
+        text,
+        kind_parts,
+        Anchor::BOTTOM_CENTER,
+        TextOutline {
+            width: ft::OUTLINE_WIDTH,
+            ..default()
+        },
+        on_overlay_layer(),
+        ChildOf(root),
+    ));
 }
 
 fn tile_centre(anchor: &Position) -> Vec2 {
@@ -353,34 +351,21 @@ fn tile_centre(anchor: &Position) -> Vec2 {
     Vec2::new(world.x + TILE_SIZE / 2.0, world.y - TILE_SIZE / 2.0)
 }
 
-fn anchor_px(anchor: &Position, kind: FloatingTextType, cam_pos: Vec2, size: Vec2) -> Vec2 {
-    let world = tile_centre(anchor);
-    let world_y_offset = match kind {
+/// Where a text's bottom edge is centred, in world units.
+fn anchor_world(anchor: &Position, kind: FloatingTextType) -> Vec2 {
+    let head_offset = match kind {
         FloatingTextType::HitPoints => 0.0,
         FloatingTextType::PlayerMessage | FloatingTextType::CreatureSay => {
             ft::SPEECH_HEAD_OFFSET_WORLD
         }
     };
-    let uv = Vec2::new(
-        (world.x - cam_pos.x) / GAME_VIEW_WIDTH + 0.5,
-        (0.5 - (world.y - cam_pos.y) / GAME_VIEW_HEIGHT) - world_y_offset / GAME_VIEW_HEIGHT,
-    );
-    uv * size
+    tile_centre(anchor) + Vec2::new(0.0, head_offset)
 }
 
-fn text_node() -> Node {
-    Node {
-        position_type: PositionType::Absolute,
-        ..default()
-    }
-}
-
-fn speech_node() -> Node {
-    Node {
-        position_type: PositionType::Absolute,
-        max_width: Val::Px(ft::SPEECH_MAX_WIDTH_PX),
-        ..default()
-    }
+/// The anchor in logical pixels, y down, for comparing blocks with each other.
+fn anchor_logical(anchor: &Position, kind: FloatingTextType, scale: f32) -> Vec2 {
+    let world = anchor_world(anchor, kind);
+    Vec2::new(world.x, -world.y) / scale
 }
 
 fn text_font(ui_assets: &GameUiAssets) -> TextFont {
@@ -389,19 +374,19 @@ fn text_font(ui_assets: &GameUiAssets) -> TextFont {
         font_size: ft::FONT_SIZE,
         ..default()
     }
-    .with_font_smoothing(FontSmoothing::None)
+    .with_font_smoothing(FontSmoothing::AntiAliased)
 }
 
 /// Advances each number's timer, fades its tail, and despawns it at the end.
 pub fn tick_hit_points(
     mut commands: Commands,
     time: Res<Time>,
-    mut q: Query<(Entity, &mut HitPointsText, &mut TextColor)>,
+    mut q: Query<(&ChildOf, &mut HitPointsText, &mut TextColor)>,
 ) {
-    for (entity, mut hp, mut color) in q.iter_mut() {
+    for (root, mut hp, mut color) in q.iter_mut() {
         hp.timer.tick(time.delta());
         if hp.timer.is_finished() {
-            commands.entity(entity).despawn();
+            commands.entity(root.parent()).despawn();
             continue;
         }
         color.0 = hp.color.with_alpha(alpha(hp.timer.fraction()));
@@ -413,9 +398,9 @@ pub fn tick_hit_points(
 pub fn tick_speech_blocks(
     mut commands: Commands,
     time: Res<Time>,
-    mut q: Query<(Entity, &mut SpeechBlock, &mut Text)>,
+    mut q: Query<(&ChildOf, &mut SpeechBlock, &mut Text2d)>,
 ) {
-    for (entity, mut block, mut text) in q.iter_mut() {
+    for (root, mut block, mut text) in q.iter_mut() {
         let before = block.lines.len();
         for (_, timer) in block.lines.iter_mut() {
             timer.tick(time.delta());
@@ -423,7 +408,7 @@ pub fn tick_speech_blocks(
         block.lines.retain(|(_, timer)| !timer.is_finished());
 
         if block.lines.is_empty() {
-            commands.entity(entity).despawn();
+            commands.entity(root.parent()).despawn();
             continue;
         }
         if block.lines.len() != before {
@@ -432,54 +417,41 @@ pub fn tick_speech_blocks(
     }
 }
 
-/// Pushes overlapping speech blocks clear of each other and releases newly
-/// measured blocks for display.
-///
-/// Sizes come from the **previous** frame's layout (see the module docs), so a
-/// block spawned this frame is placed on the next one.
+/// Pushes overlapping speech blocks clear of each other, from this frame's
+/// measured sizes. Runs after `Text2d` layout.
 pub fn resolve_speech_collisions(
-    mut commands: Commands,
-    game_cam_q: Query<&GlobalTransform, With<GameCamera>>,
     player_pos_q: Query<&Position, With<Player>>,
-    viewport_q: Query<&ComputedNode, With<GameViewport>>,
-    mut blocks_q: Query<(Entity, &mut FloatingText, &ComputedNode), With<SpeechBlock>>,
-    changed_q: Query<(), (Changed<Text>, With<SpeechBlock>)>,
-    unplaced_q: Query<(), (With<SpeechBlock>, With<Unplaced>)>,
-    viewport_resized_q: Query<(), (Changed<ComputedNode>, With<GameViewport>)>,
+    viewport_q: Query<Ref<ComputedNode>, With<GameViewport>>,
+    mut blocks_q: Query<(Entity, &mut FloatingText, Ref<TextLayoutInfo>), With<SpeechBlock>>,
     mut removed: RemovedComponents<SpeechBlock>,
 ) {
     let removed_any = removed.read().count() > 0;
+    let Ok(viewport) = viewport_q.single() else {
+        return;
+    };
     let dirty = removed_any
-        || !changed_q.is_empty()
-        || !unplaced_q.is_empty()
-        || !viewport_resized_q.is_empty();
+        || viewport.is_changed()
+        || blocks_q.iter().any(|(_, _, layout)| layout.is_changed());
     if !dirty {
         return;
     }
-
-    let Ok(cam) = game_cam_q.single() else {
+    let Some(scale) = world_hud_scale(&viewport) else {
         return;
     };
     let Ok(player_pos) = player_pos_q.single() else {
         return;
     };
-    let Ok(viewport) = viewport_q.single() else {
-        return;
-    };
-    let cam_pos = cam.translation().truncate();
-    let size = logical_size(viewport);
 
     let mut entities = Vec::new();
     let mut layouts = Vec::new();
-    for (entity, text, node) in blocks_q.iter() {
-        let node_size = logical_size(node);
-        if text.anchor.z != player_pos.z || node_size.x <= 0.0 || node_size.y <= 0.0 {
+    for (entity, text, layout) in blocks_q.iter() {
+        if text.anchor.z != player_pos.z || layout.size.x <= 0.0 || layout.size.y <= 0.0 {
             continue;
         }
         entities.push(entity);
         layouts.push(BlockLayout {
-            anchor_px: anchor_px(&text.anchor, text.kind, cam_pos, size),
-            size: node_size,
+            anchor_px: anchor_logical(&text.anchor, text.kind, scale),
+            size: layout.size,
             spawned_at: text.spawned_at,
         });
     }
@@ -489,74 +461,50 @@ pub fn resolve_speech_collisions(
         if let Ok((_, mut text, _)) = blocks_q.get_mut(entity) {
             text.offset_y = offset_y;
         }
-        commands.entity(entity).remove::<Unplaced>();
     }
 }
 
-/// Writes every floating text's `Node` position, hides off-floor and unmeasured
-/// text, and applies the rise animation.
+/// Lifts every floating text by its collision push and rise, and hides text on
+/// other floors.
 pub fn position_floating_texts(
-    mut commands: Commands,
-    game_cam_q: Query<&GlobalTransform, With<GameCamera>>,
     player_pos_q: Query<&Position, With<Player>>,
-    viewport_q: Query<&ComputedNode, With<GameViewport>>,
     mut texts_q: Query<(
-        Entity,
         &FloatingText,
-        &ComputedNode,
-        &mut Node,
-        &mut Visibility,
         Option<&HitPointsText>,
-        Option<&Unplaced>,
+        &mut Transform,
+        &mut Visibility,
     )>,
 ) {
-    let Ok(cam) = game_cam_q.single() else {
-        return;
-    };
     let Ok(player_pos) = player_pos_q.single() else {
         return;
     };
-    let Ok(viewport) = viewport_q.single() else {
-        return;
-    };
-    let cam_pos = cam.translation().truncate();
-    let size = logical_size(viewport);
-
-    for (entity, text, node, mut style, mut visibility, hp, unplaced) in texts_q.iter_mut() {
-        let node_size = logical_size(node);
-        let measured = node_size.x > 0.0 && node_size.y > 0.0;
-
-        // Off the player's floor, or not yet measured, means nothing to show.
-        let want = if text.anchor.z == player_pos.z && measured && unplaced.is_none() {
-            Visibility::Visible
+    for (text, hp, mut transform, mut visibility) in &mut texts_q {
+        visibility.set_if_neq(if text.anchor.z == player_pos.z {
+            Visibility::Inherited
         } else {
             Visibility::Hidden
-        };
-        if *visibility != want {
-            *visibility = want;
+        });
+        let lift = text.offset_y + hp.map_or(0.0, |hp| risen(hp.timer.fraction()));
+        if transform.translation.y != lift {
+            transform.translation.y = lift;
         }
-        if !measured {
-            continue;
-        }
+    }
+}
 
-        // A damage number is placed the frame it is measured; a speech block waits
-        // for the collision pass to clear its `Unplaced`.
-        if unplaced.is_some() && hp.is_some() {
-            commands.entity(entity).remove::<Unplaced>();
-        }
-
-        let anchor = anchor_px(&text.anchor, text.kind, cam_pos, size);
-        let rise = hp.map(|hp| risen(hp.timer.fraction())).unwrap_or(0.0);
-
-        style.left = Val::Px((anchor.x - node_size.x / 2.0).round());
-        style.top = Val::Px((anchor.y - node_size.y - text.offset_y - rise).round());
+pub fn cleanup_session(mut commands: Commands, roots: Query<Entity, With<FloatingTextRoot>>) {
+    for root in &roots {
+        commands.entity(root).despawn();
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bevy::camera::visibility::RenderLayers;
+
     use crate::agent::AgentId;
+    use crate::camera::HUD_RENDER_LAYER;
+    use crate::conf::viewport::{GAME_VIEW_HEIGHT, GAME_VIEW_WIDTH};
 
     #[test]
     fn an_explicit_colour_wins_over_the_default() {
@@ -977,9 +925,9 @@ mod tests {
         Position::new(10, 10, 7)
     }
 
-    /// A world with the two things the observer needs from the app: a viewport to
-    /// parent to and the UI font. No `Map` — the message carries its own tile, and
-    /// no agent has to exist for the text to land.
+    /// A world with what the observer needs from the app: the UI font. No `Map` —
+    /// the message carries its own tile, and no agent has to exist for the text to
+    /// land.
     fn observer_world() -> World {
         let mut world = World::new();
         world.init_resource::<Time>();
@@ -992,21 +940,20 @@ mod tests {
             bar_overlay: Handle::default(),
             title_background: Handle::default(),
         });
-        world.spawn(GameViewport);
         world.add_observer(on_floating_text);
         world
     }
 
     fn hp_texts(world: &mut World) -> Vec<(String, f32)> {
         world
-            .query::<(&Text, &FloatingText)>()
+            .query::<(&Text2d, &FloatingText)>()
             .iter(world)
             .map(|(text, ft)| (text.0.clone(), ft.offset_y))
             .collect()
     }
 
     #[test]
-    fn an_arriving_number_spawns_a_parented_child_of_the_viewport() {
+    fn an_arriving_number_hangs_from_a_scaled_root_on_its_tile() {
         let mut world = observer_world();
         world.trigger(ShowFloatingText {
             text: "-25".to_owned(),
@@ -1020,24 +967,20 @@ mod tests {
         let spawned = hp_texts(&mut world);
         assert_eq!(spawned, [("-25".to_owned(), 0.0)]);
 
-        let viewport = world
-            .query_filtered::<Entity, With<GameViewport>>()
-            .single(&world)
-            .unwrap();
-        let child = world
+        let root = world
             .query_filtered::<&ChildOf, With<FloatingText>>()
             .single(&world)
-            .unwrap();
-        assert_eq!(child.parent(), viewport, "must clip with the game viewport");
+            .unwrap()
+            .parent();
+        assert!(world.get::<HudScaled>(root).is_some());
+        assert_eq!(
+            world.get::<Transform>(root).unwrap().translation,
+            anchor_world(&speaker_tile(), FloatingTextType::HitPoints).extend(OVERLAY_TEXT_Z)
+        );
     }
 
-    /// The deferred-reveal contract that placement depends on: a text cannot be
-    /// centred on its anchor until it has been measured, and measurement is a frame
-    /// behind by construction. Both kinds must therefore spawn hidden and carrying
-    /// `Unplaced`; dropping either would place the first frame un-centred with
-    /// nothing to catch it.
     #[test]
-    fn both_kinds_spawn_hidden_and_unplaced() {
+    fn every_kind_is_drawn_by_the_hud_camera() {
         for kind in [
             FloatingTextType::HitPoints,
             FloatingTextType::PlayerMessage,
@@ -1053,13 +996,16 @@ mod tests {
             });
             world.flush();
 
-            let mut q = world.query_filtered::<&Visibility, (With<FloatingText>, With<Unplaced>)>();
-            let visibility = q
-                .single(&world)
-                .expect("the spawned text must carry Unplaced");
+            let mut q = world
+                .query_filtered::<&RenderLayers, Or<(With<FloatingText>, With<FloatingTextRoot>)>>(
+                );
+            let layers: Vec<_> = q.iter(&world).collect();
+            assert_eq!(layers.len(), 2, "{kind:?}: a root and its text");
             assert!(
-                matches!(visibility, Visibility::Hidden),
-                "{kind:?} must spawn hidden, got {visibility:?}"
+                layers
+                    .iter()
+                    .all(|l| **l == RenderLayers::layer(HUD_RENDER_LAYER)),
+                "{kind:?}"
             );
         }
     }
@@ -1396,9 +1342,9 @@ mod tests {
         assert_eq!(world.query::<&SpeechBlock>().iter(&world).count(), 0);
     }
 
-    /// The composed text must be rewritten only when a line actually left. A later
-    /// system gates its work on `Changed<Text>`, so an unconditional write here
-    /// would make it re-resolve every frame for nothing.
+    /// The composed text must be rewritten only when a line actually left. A changed
+    /// `Text2d` is laid out again, and a changed layout wakes the collision pass, so
+    /// an unconditional write here would make it re-resolve every frame for nothing.
     #[test]
     fn ticking_without_an_expiry_does_not_touch_the_text() {
         let mut world = observer_world();
@@ -1415,7 +1361,7 @@ mod tests {
         advance(&mut world, 100);
         world.run_system_once(tick_speech_blocks).unwrap();
 
-        let mut q = world.query_filtered::<Entity, Changed<Text>>();
+        let mut q = world.query_filtered::<Entity, Changed<Text2d>>();
         assert_eq!(
             q.iter(&world).count(),
             0,
@@ -1423,91 +1369,37 @@ mod tests {
         );
     }
 
-    /// With the camera sitting exactly on the anchor's tile, a `HitPoints` anchor
-    /// lands dead centre of the viewport — the identity case for the whole
-    /// world→viewport conversion.
-    #[test]
-    fn an_anchor_under_the_camera_lands_at_the_viewport_centre() {
-        let anchor = Position::new(100, 100, 7);
-        let cam = tile_centre(&anchor);
-        let size = Vec2::new(480.0, 352.0);
-
-        let px = anchor_px(&anchor, FloatingTextType::HitPoints, cam, size);
-
-        assert_eq!(px, size * 0.5);
-    }
-
     /// The bug this pins: `Position::to_world` is the tile's top-left *corner*,
     /// so anchoring to it put every floating text half a tile up and to the left.
-    /// With the camera on the corner, the anchor must land half a tile down and to
-    /// the right of the viewport centre.
     #[test]
     fn the_anchor_is_the_tile_centre_not_its_corner() {
-        use crate::conf::map::TILE_SIZE;
         let anchor = Position::new(100, 100, 7);
         let corner = anchor.to_world().truncate();
-        let size = Vec2::new(480.0, 352.0);
 
-        let px = anchor_px(&anchor, FloatingTextType::HitPoints, corner, size);
-
-        assert_eq!(px.x, size.x * (TILE_SIZE / 2.0 / GAME_VIEW_WIDTH + 0.5));
-        assert_eq!(px.y, size.y * (0.5 + TILE_SIZE / 2.0 / GAME_VIEW_HEIGHT));
+        assert_eq!(
+            anchor_world(&anchor, FloatingTextType::HitPoints),
+            corner + Vec2::new(TILE_SIZE / 2.0, -TILE_SIZE / 2.0)
+        );
     }
 
-    /// Both other `anchor_px` tests put the camera exactly on the anchor, which
-    /// zeroes `world - cam_pos` on both axes and multiplies the view divisors away.
-    /// These two offset the camera by one tile so `GAME_VIEW_WIDTH` and
-    /// `GAME_VIEW_HEIGHT` are actually load-bearing — they differ (480 vs 352), so
-    /// swapping them moves text everywhere except dead centre.
-    #[test]
-    fn a_horizontal_camera_offset_divides_by_the_view_width() {
-        use crate::conf::map::TILE_SIZE;
-        let anchor = Position::new(100, 100, 7);
-        let cam = tile_centre(&anchor) - Vec2::new(TILE_SIZE, 0.0);
-        let size = Vec2::new(480.0, 352.0);
-
-        let px = anchor_px(&anchor, FloatingTextType::HitPoints, cam, size);
-
-        assert_eq!(px.x, size.x * (TILE_SIZE / GAME_VIEW_WIDTH + 0.5));
-        assert_eq!(px.y, size.y * 0.5);
-    }
-
-    #[test]
-    fn a_vertical_camera_offset_divides_by_the_view_height() {
-        use crate::conf::map::TILE_SIZE;
-        let anchor = Position::new(100, 100, 7);
-        let cam = tile_centre(&anchor) - Vec2::new(0.0, TILE_SIZE);
-        let size = Vec2::new(480.0, 352.0);
-
-        let px = anchor_px(&anchor, FloatingTextType::HitPoints, cam, size);
-
-        assert_eq!(px.x, size.x * 0.5);
-        assert_eq!(px.y, size.y * (0.5 - TILE_SIZE / GAME_VIEW_HEIGHT));
-    }
-
-    /// The property that is invisible at a 1:1 viewport and wrong at every other
-    /// size. The speech head offset is world-space, so it must scale with the view:
-    /// double the viewport, double the on-screen gap. An offset applied in text
-    /// space would produce the same gap at both sizes and drift off the sprite's
-    /// head as the window grows.
+    /// The head offset is in world units, on the root, so it scales with the view:
+    /// double the viewport, halve the scale, double the on-screen gap. An offset
+    /// in logical pixels would hold its size and drift off the sprite's head as the
+    /// window grows.
     #[test]
     fn the_speech_head_offset_scales_with_the_viewport() {
         let anchor = Position::new(100, 100, 7);
-        let cam = tile_centre(&anchor);
-        let small = Vec2::new(480.0, 352.0);
-        let large = small * 2.0;
-
-        let gap = |size: Vec2| {
-            anchor_px(&anchor, FloatingTextType::HitPoints, cam, size).y
-                - anchor_px(&anchor, FloatingTextType::PlayerMessage, cam, size).y
+        let gap = |scale: f32| {
+            anchor_logical(&anchor, FloatingTextType::HitPoints, scale).y
+                - anchor_logical(&anchor, FloatingTextType::PlayerMessage, scale).y
         };
 
-        assert!(gap(small) > 0.0, "speech must sit above the tile centre");
         assert_eq!(
-            gap(large),
-            gap(small) * 2.0,
-            "a world-space offset scales with the view"
+            gap(1.0),
+            ft::SPEECH_HEAD_OFFSET_WORLD,
+            "speech sits above the tile"
         );
+        assert_eq!(gap(0.5), gap(1.0) * 2.0);
     }
 
     /// OTClient anchors every static text the same way regardless of mode, and so
@@ -1515,376 +1407,157 @@ mod tests {
     #[test]
     fn creature_say_hangs_at_the_same_height_as_speech() {
         let anchor = speaker_tile();
-        let cam = tile_centre(&anchor);
-        let size = Vec2::new(GAME_VIEW_WIDTH, GAME_VIEW_HEIGHT);
-
         assert_eq!(
-            anchor_px(&anchor, FloatingTextType::CreatureSay, cam, size),
-            anchor_px(&anchor, FloatingTextType::PlayerMessage, cam, size)
+            anchor_world(&anchor, FloatingTextType::CreatureSay),
+            anchor_world(&anchor, FloatingTextType::PlayerMessage)
         );
     }
 
-    // --- `position_floating_texts` / `resolve_speech_collisions` world tests ---
-    //
-    // Mutation testing found that both systems can be deleted wholesale with the
-    // rest of the suite green: nothing above exercises `Node.left`/`Node.top`,
-    // the rise animation, the collision offset, the floor filter, the
-    // measured-size guard, or the `Unplaced` reveal handshake. These tests close
-    // that hole at the `World` level, since `ComputedNode` is engine-written and
-    // cannot be produced by triggering the observer alone.
+    /// `resolve_offsets` works y-down; a tile further south must compare as lower.
+    #[test]
+    fn a_southern_tile_is_lower_in_logical_pixels() {
+        let north = anchor_logical(
+            &Position::new(100, 100, 7),
+            FloatingTextType::HitPoints,
+            1.0,
+        );
+        let south = anchor_logical(
+            &Position::new(100, 101, 7),
+            FloatingTextType::HitPoints,
+            1.0,
+        );
+        assert_eq!(south.y - north.y, TILE_SIZE);
+    }
 
-    /// A world with a viewport, a game camera sitting exactly on `anchor`, and a
-    /// player standing on `anchor`'s tile but at `player_z`. Mirrors
-    /// `observer_world`, but for the two placement systems instead of the spawn
-    /// observer.
-    fn placement_world(anchor: &Position, player_z: u8) -> World {
+    fn placement_world(player_z: u8) -> World {
         let mut world = World::new();
-        world.init_resource::<Time>();
-
         world.spawn((
             GameViewport,
-            ComputedNode {
-                size: Vec2::new(480.0, 352.0),
-                inverse_scale_factor: 1.0,
-                ..Default::default()
-            },
-        ));
-        world.spawn((
-            GameCamera,
-            GlobalTransform::from_translation(tile_centre(anchor).extend(0.0)),
+            crate::overlay::a_viewport(Vec2::new(GAME_VIEW_WIDTH, GAME_VIEW_HEIGHT), 1.0),
         ));
         world.spawn((
             Player {
                 agent_id: AgentId(1),
             },
-            Position::new(anchor.x, anchor.y, player_z),
+            Position::new(100, 100, player_z),
         ));
-
         world
     }
 
-    fn fresh_hp_timer() -> Timer {
-        Timer::new(Duration::from_millis(ft::HP_DURATION_MS), TimerMode::Once)
-    }
-
-    /// The viewport centre for a camera sitting exactly on the anchor's tile —
-    /// the same identity case `an_anchor_under_the_camera_lands_at_the_viewport_centre`
-    /// pins for `anchor_px` itself.
-    const VIEWPORT_CENTRE: Vec2 = Vec2::new(240.0, 176.0);
-
-    #[test]
-    fn a_measured_number_is_centred_on_its_anchor() {
-        let anchor = Position::new(100, 100, 7);
-        let mut world = placement_world(&anchor, 7);
-
-        let node_size = Vec2::new(20.0, 10.0);
-        let entity = world
+    fn a_number(world: &mut World, elapsed_ms: u64, offset_y: f32) -> Entity {
+        let mut timer = Timer::new(Duration::from_millis(ft::HP_DURATION_MS), TimerMode::Once);
+        timer.tick(Duration::from_millis(elapsed_ms));
+        world
             .spawn((
                 FloatingText {
                     kind: FloatingTextType::HitPoints,
-                    speaker: Some(SPEAKER.to_owned()),
-                    anchor: anchor.clone(),
+                    speaker: None,
+                    anchor: Position::new(100, 100, 7),
                     spawned_at: Duration::ZERO,
-                    offset_y: 0.0,
+                    offset_y,
                 },
                 HitPointsText {
                     value: Some(5),
                     color: Color::WHITE,
-                    timer: fresh_hp_timer(),
+                    timer,
                 },
-                ComputedNode {
-                    size: node_size,
-                    inverse_scale_factor: 1.0,
-                    ..Default::default()
-                },
-                Node::default(),
+                Transform::default(),
                 Visibility::Hidden,
-                Unplaced,
             ))
-            .id();
-
-        // First run: the entity is measured, so its position is written this
-        // frame, and the queued `remove::<Unplaced>()` command is applied by
-        // `run_system_once` before it returns. But `want` was computed from the
-        // query's snapshot at the *start* of this run, when `Unplaced` was still
-        // present — so visibility does not flip to `Visible` until the *next*
-        // run sees it gone. This is the same one-frame handshake the module
-        // docs describe for `ComputedNode`, just for `Unplaced` instead.
-        world.run_system_once(position_floating_texts).unwrap();
-
-        // VIEWPORT_CENTRE - node_size / 2, and the bottom edge sitting on the
-        // anchor: 240 - 10 = 230, 176 - 10 = 166. No rise, no offset.
-        let node = world.get::<Node>(entity).unwrap();
-        assert_eq!(node.left, Val::Px(230.0));
-        assert_eq!(node.top, Val::Px(166.0));
-        assert!(
-            world.get::<Unplaced>(entity).is_none(),
-            "a measured HitPointsText must have Unplaced removed"
-        );
-        assert_eq!(
-            *world.get::<Visibility>(entity).unwrap(),
-            Visibility::Hidden,
-            "Unplaced's removal is deferred, so visibility cannot flip within the same run"
-        );
-
-        // Second run: Unplaced is gone, so the text is now visible.
-        world.run_system_once(position_floating_texts).unwrap();
-        assert_eq!(
-            *world.get::<Visibility>(entity).unwrap(),
-            Visibility::Visible
-        );
-        let node = world.get::<Node>(entity).unwrap();
-        assert_eq!(node.left, Val::Px(230.0));
-        assert_eq!(node.top, Val::Px(166.0));
+            .id()
     }
 
-    /// Would catch the `- rise` term being dropped from the top calculation: at
-    /// fraction 0 and fraction 0.5 the tops differ by exactly `risen(0.5)`.
+    fn lift(world: &World, entity: Entity) -> f32 {
+        world.get::<Transform>(entity).unwrap().translation.y
+    }
+
     #[test]
     fn a_number_rises_as_its_timer_advances() {
-        let anchor = Position::new(100, 100, 7);
-        let node_size = Vec2::new(20.0, 10.0);
-
-        let spawn = |world: &mut World, fraction_ms: u64| {
-            let mut timer = fresh_hp_timer();
-            timer.tick(Duration::from_millis(fraction_ms));
-            world
-                .spawn((
-                    FloatingText {
-                        kind: FloatingTextType::HitPoints,
-                        speaker: Some(SPEAKER.to_owned()),
-                        anchor: anchor.clone(),
-                        spawned_at: Duration::ZERO,
-                        offset_y: 0.0,
-                    },
-                    HitPointsText {
-                        value: Some(5),
-                        color: Color::WHITE,
-                        timer,
-                    },
-                    ComputedNode {
-                        size: node_size,
-                        inverse_scale_factor: 1.0,
-                        ..Default::default()
-                    },
-                    Node::default(),
-                    Visibility::Hidden,
-                    Unplaced,
-                ))
-                .id()
-        };
-
-        let mut world_at_rest = placement_world(&anchor, 7);
-        let at_rest = spawn(&mut world_at_rest, 0);
-        world_at_rest
-            .run_system_once(position_floating_texts)
-            .unwrap();
-        let top_at_rest = world_at_rest.get::<Node>(at_rest).unwrap().top;
-
-        let mut world_risen = placement_world(&anchor, 7);
-        // Half the duration: fraction 0.5.
-        let risen_entity = spawn(&mut world_risen, ft::HP_DURATION_MS / 2);
-        world_risen
-            .run_system_once(position_floating_texts)
-            .unwrap();
-        let top_risen = world_risen.get::<Node>(risen_entity).unwrap().top;
-
-        let (Val::Px(rest), Val::Px(risen_px)) = (top_at_rest, top_risen) else {
-            panic!("expected Val::Px on both");
-        };
-        assert_eq!(
-            rest - risen_px,
-            risen(0.5),
-            "top must move up by exactly the rise at fraction 0.5"
-        );
-        assert_eq!(risen(0.5), ft::HP_RISE_PX / 2.0);
-    }
-
-    #[test]
-    fn a_text_on_another_floor_stays_hidden() {
-        let anchor = Position::new(100, 100, 7);
-        // Player stands one floor below the anchor's tile.
-        let mut world = placement_world(&anchor, 8);
-
-        let entity = world
-            .spawn((
-                FloatingText {
-                    kind: FloatingTextType::HitPoints,
-                    speaker: Some(SPEAKER.to_owned()),
-                    anchor: anchor.clone(),
-                    spawned_at: Duration::ZERO,
-                    offset_y: 0.0,
-                },
-                HitPointsText {
-                    value: Some(5),
-                    color: Color::WHITE,
-                    timer: fresh_hp_timer(),
-                },
-                ComputedNode {
-                    size: Vec2::new(20.0, 10.0),
-                    inverse_scale_factor: 1.0,
-                    ..Default::default()
-                },
-                Node::default(),
-                Visibility::Hidden,
-            ))
-            .id();
+        let mut world = placement_world(7);
+        let at_rest = a_number(&mut world, 0, 0.0);
+        let halfway = a_number(&mut world, ft::HP_DURATION_MS / 2, 0.0);
 
         world.run_system_once(position_floating_texts).unwrap();
 
-        assert_eq!(
-            *world.get::<Visibility>(entity).unwrap(),
-            Visibility::Hidden,
-            "a text on another floor must stay hidden even though it is measured"
-        );
+        assert_eq!(lift(&world, at_rest), 0.0);
+        assert_eq!(lift(&world, halfway), risen(0.5));
     }
 
     #[test]
-    fn an_unmeasured_text_stays_hidden_and_unplaced() {
-        let anchor = Position::new(100, 100, 7);
-        let mut world = placement_world(&anchor, 7);
-
-        let zero_size = || ComputedNode {
-            size: Vec2::ZERO,
-            inverse_scale_factor: 1.0,
-            ..Default::default()
-        };
-
-        // The natural case: freshly spawned, never measured, still carrying
-        // `Unplaced`.
-        let fresh = world
-            .spawn((
-                FloatingText {
-                    kind: FloatingTextType::HitPoints,
-                    speaker: Some(SPEAKER.to_owned()),
-                    anchor: anchor.clone(),
-                    spawned_at: Duration::ZERO,
-                    offset_y: 0.0,
-                },
-                HitPointsText {
-                    value: Some(5),
-                    color: Color::WHITE,
-                    timer: fresh_hp_timer(),
-                },
-                zero_size(),
-                Node::default(),
-                Visibility::Hidden,
-                Unplaced,
-            ))
-            .id();
-
-        // A second, already-placed text (no `Unplaced`) whose node happens to
-        // report zero size this frame. With `Unplaced` present, `fresh` above
-        // would stay hidden from the `unplaced.is_none()` clause alone even if
-        // the `measured` clause were dropped — so it cannot by itself pin
-        // `measured` in the `want` calculation. This entity has no `Unplaced` to
-        // fall back on, so only the `measured` clause can keep it hidden.
-        let already_placed = world
-            .spawn((
-                FloatingText {
-                    kind: FloatingTextType::HitPoints,
-                    speaker: Some(SPEAKER.to_owned()),
-                    anchor: anchor.clone(),
-                    spawned_at: Duration::ZERO,
-                    offset_y: 0.0,
-                },
-                HitPointsText {
-                    value: Some(5),
-                    color: Color::WHITE,
-                    timer: fresh_hp_timer(),
-                },
-                zero_size(),
-                Node::default(),
-                Visibility::Hidden,
-            ))
-            .id();
+    fn a_collision_offset_lifts_the_text() {
+        let mut world = placement_world(7);
+        let pushed = a_number(&mut world, 0, 14.0);
 
         world.run_system_once(position_floating_texts).unwrap();
 
+        assert_eq!(lift(&world, pushed), 14.0);
+    }
+
+    #[test]
+    fn a_text_shows_only_on_the_players_floor() {
+        for (player_z, expected) in [(7, Visibility::Inherited), (8, Visibility::Hidden)] {
+            let mut world = placement_world(player_z);
+            let text = a_number(&mut world, 0, 0.0);
+
+            world.run_system_once(position_floating_texts).unwrap();
+
+            assert_eq!(
+                *world.get::<Visibility>(text).unwrap(),
+                expected,
+                "player on floor {player_z}"
+            );
+        }
+    }
+
+    fn a_block(world: &mut World, tile: Position, spawned_ms: u64, size: Vec2) -> Entity {
+        world
+            .spawn((
+                FloatingText {
+                    kind: FloatingTextType::PlayerMessage,
+                    speaker: None,
+                    anchor: tile,
+                    spawned_at: Duration::from_millis(spawned_ms),
+                    offset_y: 0.0,
+                },
+                SpeechBlock {
+                    lines: VecDeque::new(),
+                },
+                TextLayoutInfo { size, ..default() },
+            ))
+            .id()
+    }
+
+    #[test]
+    fn a_block_is_pushed_clear_by_its_neighbours_measured_height() {
+        let mut world = placement_world(7);
+        let size = Vec2::new(40.0, 12.0);
+        let first = a_block(&mut world, Position::new(100, 100, 7), 0, size);
+        let second = a_block(&mut world, Position::new(100, 100, 7), 1, size);
+
+        world.run_system_once(resolve_speech_collisions).unwrap();
+
+        assert_eq!(world.get::<FloatingText>(first).unwrap().offset_y, 0.0);
         assert_eq!(
-            *world.get::<Visibility>(fresh).unwrap(),
-            Visibility::Hidden,
-            "an unmeasured text must stay hidden"
-        );
-        assert!(
-            world.get::<Unplaced>(fresh).is_some(),
-            "an unmeasured text must keep Unplaced, since it was never placed"
-        );
-        assert_eq!(
-            *world.get::<Visibility>(already_placed).unwrap(),
-            Visibility::Hidden,
-            "measured=false must hide the text regardless of Unplaced state"
+            world.get::<FloatingText>(second).unwrap().offset_y,
+            size.y + ft::SPEECH_GAP_PX
         );
     }
 
-    /// Would catch the `- text.offset_y` term being dropped from the top
-    /// calculation: two otherwise-identical numbers differing only in
-    /// `offset_y` must land exactly `offset_y` apart.
     #[test]
-    fn a_collision_offset_reaches_the_node_position() {
-        let anchor = Position::new(100, 100, 7);
-        let node_size = Vec2::new(20.0, 10.0);
+    fn leaving_the_game_clears_every_floating_text() {
+        let mut world = observer_world();
+        world.trigger(ShowFloatingText {
+            text: "-25".to_owned(),
+            speaker: None,
+            position: speaker_tile(),
+            text_type: FloatingTextType::HitPoints,
+            color: None,
+        });
+        world.flush();
 
-        let spawn = |world: &mut World, offset_y: f32| {
-            world
-                .spawn((
-                    FloatingText {
-                        kind: FloatingTextType::HitPoints,
-                        speaker: Some(SPEAKER.to_owned()),
-                        anchor: anchor.clone(),
-                        spawned_at: Duration::ZERO,
-                        offset_y,
-                    },
-                    HitPointsText {
-                        value: Some(5),
-                        color: Color::WHITE,
-                        timer: fresh_hp_timer(),
-                    },
-                    ComputedNode {
-                        size: node_size,
-                        inverse_scale_factor: 1.0,
-                        ..Default::default()
-                    },
-                    Node::default(),
-                    Visibility::Hidden,
-                    Unplaced,
-                ))
-                .id()
-        };
+        world.run_system_once(cleanup_session).unwrap();
 
-        let mut world_flat = placement_world(&anchor, 7);
-        let flat = spawn(&mut world_flat, 0.0);
-        world_flat.run_system_once(position_floating_texts).unwrap();
-        let top_flat = world_flat.get::<Node>(flat).unwrap().top;
-
-        let mut world_pushed = placement_world(&anchor, 7);
-        let pushed = spawn(&mut world_pushed, 14.0);
-        world_pushed
-            .run_system_once(position_floating_texts)
-            .unwrap();
-        let top_pushed = world_pushed.get::<Node>(pushed).unwrap().top;
-
-        let (Val::Px(flat_px), Val::Px(pushed_px)) = (top_flat, top_pushed) else {
-            panic!("expected Val::Px on both");
-        };
-        assert_eq!(
-            flat_px - pushed_px,
-            14.0,
-            "a 14 px collision offset must move the node exactly 14 px higher"
-        );
-    }
-
-    /// `VIEWPORT_CENTRE` is the identity case documented above: sanity-check it
-    /// against `anchor_px` itself so the constant cannot silently drift from the
-    /// function it stands in for.
-    #[test]
-    fn viewport_centre_matches_anchor_px_at_the_identity_case() {
-        let anchor = Position::new(100, 100, 7);
-        let cam = tile_centre(&anchor);
-        let size = Vec2::new(480.0, 352.0);
-        assert_eq!(
-            anchor_px(&anchor, FloatingTextType::HitPoints, cam, size),
-            VIEWPORT_CENTRE
-        );
+        assert_eq!(world.query::<&FloatingText>().iter(&world).count(), 0);
+        assert_eq!(world.query::<&FloatingTextRoot>().iter(&world).count(), 0);
     }
 }

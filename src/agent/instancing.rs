@@ -1,21 +1,14 @@
 use std::sync::Arc;
 
 use bevy::asset::RenderAssetUsages;
-use bevy::camera::visibility::RenderLayers;
 use bevy::mesh::MeshTag;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::render::storage::ShaderStorageBuffer;
-use bevy::text::FontSmoothing;
-use bevy::ui::{UiTransform, Val2};
-use bevy_text_outline::TextOutline;
 
 use crate::agent::components::{Agent, AgentAnimConfigs};
-use crate::agent::{
-    AgentHud, AgentId, DisplayName, FacingDirection, Health, HealthState, Hud, HudBar, Mana,
-};
-use crate::conf::agent::{HUD_BAR_HEIGHT, HUD_BAR_WIDTH};
-use crate::conf::ui::ui_colors;
+use crate::agent::world_hud::spawn_world_hud;
+use crate::agent::{AgentId, FacingDirection, Health, Mana};
 use crate::core::OutfitColors;
 use crate::core::OutfitId;
 use crate::core::{Appearances, InstanceManager, OutfitSprite, SpriteSheet};
@@ -182,132 +175,16 @@ pub fn spawn_agent(
 
     let world_y_offset =
         outfit.still_sprite.boxes[0].max.y / 2.0 + outfit.still_sprite.shift.y + 5.0;
-    let mut display_name_entity = None;
-    let mut health_bar_entity = None;
-    let mut mana_bar_entity = None;
-    let hud_entity = commands
-        .spawn((
-            Hud,
-            Node {
-                position_type: PositionType::Absolute,
-                flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Center,
-                left: Val::Px(0.0),
-                top: Val::Px(0.0),
-                ..default()
-            },
-            UiTransform::from_translation(Val2::new(Val::ZERO, Val::ZERO)),
-            RenderLayers::layer(1),
-            Pickable::IGNORE,
-        ))
-        .with_children(|parent| {
-            display_name_entity = Some(
-                parent
-                    .spawn((
-                        DisplayName,
-                        if let Some(health) = &health {
-                            HealthState::from_ratio(health.ratio())
-                        } else {
-                            HealthState::Full
-                        },
-                        Text::new(name),
-                        TextFont {
-                            font: font.clone(),
-                            font_size: 11.0,
-                            ..default()
-                        }
-                        .with_font_smoothing(FontSmoothing::None),
-                        TextOutline {
-                            width: 1.0,
-                            ..default()
-                        },
-                        Pickable::IGNORE,
-                    ))
-                    .id(),
-            );
-            if let Some(health) = &health {
-                // `AgentHud.health_bar` must name the FILL, not the frame around
-                // it: `HudBar` and `HealthState` live on the fill, and every
-                // system that moves or recolours the bar looks them up by this
-                // entity. `.with_child(..).id()` returns the PARENT, so
-                // capturing it here recorded the frame, `get_mut` returned `Err`
-                // into an `if let Ok`, and the bar silently never moved.
-                parent
-                    .spawn((
-                        Node {
-                            width: Val::Px(HUD_BAR_WIDTH),
-                            height: Val::Px(HUD_BAR_HEIGHT),
-                            border: UiRect::all(Val::Px(1.0)),
-                            margin: UiRect::top(Val::Px(2.0)),
-                            ..default()
-                        },
-                        BorderColor::all(Color::BLACK),
-                        BackgroundColor(Color::BLACK),
-                        Pickable::IGNORE,
-                    ))
-                    .with_children(|frame| {
-                        health_bar_entity = Some(
-                            frame
-                                .spawn((
-                                    HudBar {
-                                        ratio: health.ratio(),
-                                    },
-                                    Node {
-                                        width: Val::Percent(100.0),
-                                        height: Val::Percent(100.0),
-                                        ..default()
-                                    },
-                                    HealthState::from_ratio(health.ratio()),
-                                    Pickable::IGNORE,
-                                ))
-                                .id(),
-                        );
-                    });
-            }
-
-            if let Some(mana) = mana {
-                // Same shape, same reason as the health bar above.
-                parent
-                    .spawn((
-                        Node {
-                            width: Val::Px(HUD_BAR_WIDTH),
-                            height: Val::Px(HUD_BAR_HEIGHT),
-                            border: UiRect::all(Val::Px(1.0)),
-                            ..default()
-                        },
-                        BorderColor::all(Color::BLACK),
-                        BackgroundColor(Color::BLACK),
-                        Pickable::IGNORE,
-                    ))
-                    .with_children(|frame| {
-                        mana_bar_entity = Some(
-                            frame
-                                .spawn((
-                                    HudBar {
-                                        ratio: mana.ratio(),
-                                    },
-                                    Node {
-                                        width: Val::Percent(100.0),
-                                        height: Val::Percent(100.0),
-                                        ..default()
-                                    },
-                                    BackgroundColor(ui_colors::MANA_BAR_COLOR.into()),
-                                    Pickable::IGNORE,
-                                ))
-                                .id(),
-                        );
-                    });
-            }
-        })
-        .id();
-
-    commands.entity(entity).insert(AgentHud {
-        main_entity: hud_entity,
-        health_bar: health_bar_entity,
-        mana_bar: mana_bar_entity,
-        display_name: display_name_entity.unwrap(),
+    let hud = spawn_world_hud(
+        commands,
+        entity,
+        font,
+        &name,
+        health.as_ref(),
+        mana.as_ref(),
         world_y_offset,
-    });
+    );
+    commands.entity(entity).insert(hud);
 
     Some(entity)
 }
@@ -422,27 +299,5 @@ pub fn update_agent_instances(
             instance.bbox_size = bbox.max;
             instance.shift = agent.shift;
         });
-    }
-}
-
-#[cfg(feature = "debug")]
-pub fn agent_rect(agents_q: Query<(&Transform, &Agent, Option<&Moving>)>, mut gizmos: Gizmos) {
-    for (pos, agent, moving) in &agents_q {
-        gizmos.circle_2d(pos.translation.truncate(), 2.0, Color::srgb(1.0, 0.0, 0.0));
-
-        let moving = if moving.is_some() { 1 } else { 0 } as usize;
-        gizmos.rect_2d(
-            pos.translation.truncate(),
-            Vec2::splat(64.0),
-            Color::srgb(0.0, 0.5, 1.0),
-        );
-
-        let mesh_start = pos.translation.truncate();
-        let iso = mesh_start
-            + (agent.boxes[moving][agent.direction as usize].min * Vec2::new(0.5, -0.5))
-            - agent.shift * Vec2::new(1.0, -1.0);
-        let bbox_size = agent.boxes[moving][agent.direction as usize].max;
-
-        gizmos.rect_2d(iso, bbox_size, Color::srgb(1.0, 1.0, 0.0));
     }
 }

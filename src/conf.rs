@@ -60,8 +60,6 @@ pub mod viewport {
 pub mod floating_text {
     pub const FONT_SIZE: f32 = 11.0;
     pub const OUTLINE_WIDTH: f32 = 1.0;
-    /// Above the agent HUD siblings that share the game viewport.
-    pub const Z_INDEX: i32 = 1;
 
     pub const HP_DURATION_MS: u64 = 1000;
     pub const HP_RISE_PX: f32 = 48.0;

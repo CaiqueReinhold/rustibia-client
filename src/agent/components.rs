@@ -124,7 +124,7 @@ impl WalkingDirection {
 }
 
 // --- HUD components ---
-#[derive(Component, Debug, Clone)]
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HealthState {
     Lowest,
     Low,
@@ -184,15 +184,14 @@ impl Mana {
 }
 
 #[derive(Component, Debug, Clone)]
-pub struct Hud;
+pub struct WorldHud;
 
 #[derive(Component, Debug, Clone)]
 pub struct AgentHud {
-    pub main_entity: Entity,
+    pub root: Entity,
+    pub name: Entity,
     pub health_bar: Option<Entity>,
     pub mana_bar: Option<Entity>,
-    pub display_name: Entity,
-    pub world_y_offset: f32,
 }
 
 #[derive(Component, Debug, Clone)]

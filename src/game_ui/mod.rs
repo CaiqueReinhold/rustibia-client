@@ -40,7 +40,7 @@ pub use window::{
     WindowId,
 };
 
-use crate::camera::GameRenderTexture;
+use crate::camera::{GameRenderTexture, HudRenderTexture};
 use crate::core::{GameState, PingState, SessionCleanup};
 
 #[derive(Component)]
@@ -115,6 +115,7 @@ impl Plugin for GameUiPlugin {
 pub(crate) fn spawn_main_ui(
     mut commands: Commands,
     render_texture: Res<GameRenderTexture>,
+    hud_texture: Res<HudRenderTexture>,
     ui_assets: Res<GameUiAssets>,
     cooldown_assets: Res<cooldown::CooldownAssets>,
     status_assets: Res<status_bar::StatusAssets>,
@@ -150,7 +151,8 @@ pub(crate) fn spawn_main_ui(
 
     let top_panel =
         toppanel::spawn_top_panel(&mut commands, &ui_assets, &cooldown_assets, &status_assets);
-    let gameview = game_overlay::spawn_gameviewport(&mut commands, &render_texture, &ui_assets);
+    let gameview =
+        game_overlay::spawn_gameviewport(&mut commands, &render_texture, &hud_texture, &ui_assets);
     let action_bar = action_bar::spawn_action_bar(&mut commands, &ui_assets);
     let chat = chat::spawn_chat_root(&mut commands, &chat_state, &ui_assets);
     commands

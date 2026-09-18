@@ -2,8 +2,8 @@ use bevy::{mesh::MeshTag, prelude::*, render::storage::ShaderStorageBuffer};
 
 use crate::{
     agent::{
-        Agent, AgentHud, AgentInstance, AgentMaterial, Health, LoadedMaterials, Mana, MoveQueue,
-        Moving, StartAgentMove, spawn_agent,
+        Agent, AgentInstance, AgentMaterial, Health, LoadedMaterials, Mana, MoveQueue, Moving,
+        StartAgentMove, spawn_agent,
     },
     conf::agent::{ADDON_1_FLAG, ADDON_2_FLAG},
     core::{Appearances, InstanceManager},
@@ -26,14 +26,11 @@ pub fn on_spawn_agent(
     mut map: ResMut<Map>,
     ui_assets: Res<GameUiAssets>,
     appearances: Res<Appearances>,
-    agent_q: Query<(&MeshTag, Option<&AgentHud>), With<Agent>>,
+    agent_q: Query<&MeshTag, With<Agent>>,
     floor_ents: Res<FloorEntities>,
 ) {
     if let Some(entity) = map.get_agent(event.agent_id) {
-        if let Ok((tag, maybe_hud)) = agent_q.get(entity) {
-            if let Some(hud) = maybe_hud {
-                commands.entity(hud.main_entity).despawn();
-            }
+        if let Ok(tag) = agent_q.get(entity) {
             instances.dealloc_index(tag.0);
         }
         commands.entity(entity).despawn();
@@ -111,25 +108,22 @@ pub fn on_remove_agent(
     event: On<RemoveAgent>,
     mut commands: Commands,
     mut instances: ResMut<InstanceManager<AgentInstance>>,
-    agent_q: Query<(&MeshTag, Option<&AgentHud>), With<Agent>>,
+    agent_q: Query<&MeshTag, With<Agent>>,
     mut map: ResMut<Map>,
 ) {
     let Some(agent_entity) = map.get_agent(event.agent_id) else {
         return;
     };
 
-    // Unconditional on knowing the agent existed, not on the GPU/HUD cleanup
+    // Unconditional on knowing the agent existed, not on the GPU cleanup
     // query below matching — otherwise a query miss would leave `Map`'s
     // bookkeeping stale while still failing to despawn the entity.
     map.unindex_agent(event.agent_id);
     map.remove_agent(event.agent_id);
 
-    let Ok((tag, maybe_hud)) = agent_q.get(agent_entity) else {
+    let Ok(tag) = agent_q.get(agent_entity) else {
         return;
     };
-    if let Some(hud) = maybe_hud {
-        commands.entity(hud.main_entity).despawn();
-    }
     instances.dealloc_index(tag.0);
     commands.entity(agent_entity).despawn();
 }
