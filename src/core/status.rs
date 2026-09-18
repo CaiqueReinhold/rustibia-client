@@ -12,16 +12,20 @@ pub enum PlayerStatus {
     Burning = 3,
     Poisoned = 4,
     Electrified = 5,
+    Hasted = 6,
+    MagicShield = 7,
 }
 
 impl PlayerStatus {
-    pub const ALL: [PlayerStatus; 6] = [
+    pub const ALL: [PlayerStatus; 8] = [
         PlayerStatus::LogoutBlock,
         PlayerStatus::Hungry,
         PlayerStatus::Paralysed,
         PlayerStatus::Burning,
         PlayerStatus::Poisoned,
         PlayerStatus::Electrified,
+        PlayerStatus::Hasted,
+        PlayerStatus::MagicShield,
     ];
 
     pub fn bit(self) -> u32 {
@@ -57,6 +61,8 @@ mod tests {
         assert_eq!(PlayerStatus::Burning.bit(), 1 << 3);
         assert_eq!(PlayerStatus::Poisoned.bit(), 1 << 4);
         assert_eq!(PlayerStatus::Electrified.bit(), 1 << 5);
+        assert_eq!(PlayerStatus::Hasted.bit(), 1 << 6);
+        assert_eq!(PlayerStatus::MagicShield.bit(), 1 << 7);
     }
 
     #[test]
@@ -80,7 +86,7 @@ mod tests {
 
     #[test]
     fn a_bit_the_client_does_not_know_is_no_status() {
-        let statuses = PlayerStatuses(1 << 6);
+        let statuses = PlayerStatuses(1 << 8);
 
         assert!(
             PlayerStatus::ALL

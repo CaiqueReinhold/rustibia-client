@@ -228,7 +228,7 @@ pub mod ui {
         pub const PADDING: f32 = 2.0;
         pub const BORDER: f32 = 1.0;
         pub const SHEET_CELL: u32 = 9;
-        pub const SHEET_COLUMNS: u32 = 6;
+        pub const SHEET_COLUMNS: u32 = 8;
     }
 
     pub mod login {
