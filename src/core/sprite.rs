@@ -504,7 +504,7 @@ mod tests {
     fn the_shipped_config_loads() {
         let configs = read_sprites_config();
 
-        assert_eq!(configs.items.len(), 41841);
+        assert_eq!(configs.items.len(), 41846);
         assert_eq!(configs.outfits.len(), 1404);
         assert_eq!(configs.effects.len(), 207);
         assert_eq!(configs.missiles.len(), 56);

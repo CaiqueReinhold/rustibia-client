@@ -57,14 +57,16 @@ pub struct HitPointsText {
 
 #[derive(Component, Debug)]
 pub struct SpeechBlock {
+    pub header: Option<String>,
     pub lines: VecDeque<(String, Timer)>,
 }
 
 impl SpeechBlock {
     pub fn compose(&self) -> String {
-        self.lines
+        self.header
             .iter()
-            .map(|(line, _)| line.as_str())
+            .map(String::as_str)
+            .chain(self.lines.iter().map(|(line, _)| line.as_str()))
             .collect::<Vec<_>>()
             .join("\n")
     }
@@ -296,8 +298,17 @@ pub fn on_floating_text(
                 return;
             }
 
-            let mut lines = VecDeque::new();
-            lines.push_back(line);
+            let header = match (event.text_type, &event.speaker) {
+                (FloatingTextType::PlayerMessage, Some(speaker)) => {
+                    Some(format!("{speaker} says:"))
+                }
+                _ => None,
+            };
+            let block = SpeechBlock {
+                header,
+                lines: VecDeque::from([line]),
+            };
+            let text = Text2d::new(block.compose());
             spawn_floating_text(
                 &mut commands,
                 FloatingText {
@@ -308,8 +319,8 @@ pub fn on_floating_text(
                     offset_y: 0.0,
                 },
                 (
-                    SpeechBlock { lines },
-                    Text2d::new(event.text.clone()),
+                    block,
+                    text,
                     TextLayout::new_with_justify(Justify::Center),
                     TextBounds::new_horizontal(ft::SPEECH_MAX_WIDTH_PX),
                     text_font(&ui_assets),
@@ -1044,7 +1055,44 @@ mod tests {
         let mut q = world.query::<&SpeechBlock>();
         let block = q.single(&world).unwrap();
         assert_eq!(block.lines.len(), 2, "one block, two lines");
-        assert_eq!(block.compose(), "hi there\nhow are you");
+        assert_eq!(
+            block.compose(),
+            format!("{SPEAKER} says:\nhi there\nhow are you")
+        );
+    }
+
+    #[test]
+    fn a_player_message_is_shown_under_its_speakers_header() {
+        let mut world = observer_world();
+        world.trigger(ShowFloatingText {
+            text: "hello".to_owned(),
+            speaker: Some(SPEAKER.to_owned()),
+            position: speaker_tile(),
+            text_type: FloatingTextType::PlayerMessage,
+            color: None,
+        });
+        world.flush();
+
+        let mut q = world.query::<&Text2d>();
+        let text = q.single(&world).unwrap();
+        assert_eq!(text.0, format!("{SPEAKER} says:\nhello"));
+    }
+
+    #[test]
+    fn a_creature_say_has_no_header() {
+        let mut world = observer_world();
+        world.trigger(ShowFloatingText {
+            text: "Aaaah...".to_owned(),
+            speaker: Some(SPEAKER.to_owned()),
+            position: speaker_tile(),
+            text_type: FloatingTextType::CreatureSay,
+            color: None,
+        });
+        world.flush();
+
+        let mut q = world.query::<&Text2d>();
+        let text = q.single(&world).unwrap();
+        assert_eq!(text.0, "Aaaah...");
     }
 
     #[test]
@@ -1142,6 +1190,10 @@ mod tests {
             block.compose()
         );
         assert!(block.compose().contains("line 5"));
+        assert_eq!(
+            block.compose(),
+            format!("{SPEAKER} says:\nline 1\nline 2\nline 3\nline 4\nline 5")
+        );
     }
 
     /// The mode is part of the key too, again following `StaticText::addMessage`.
@@ -1214,6 +1266,19 @@ mod tests {
         let mut q = world.query::<&SpeechBlock>();
         let block = q.single(&world).unwrap();
         assert_eq!(block.lines.len(), 2);
+    }
+
+    #[test]
+    fn a_header_composes_above_the_lines() {
+        let block = SpeechBlock {
+            header: Some(format!("{SPEAKER} says:")),
+            lines: VecDeque::from([
+                ("hi".to_owned(), Timer::from_seconds(1.0, TimerMode::Once)),
+                ("bye".to_owned(), Timer::from_seconds(1.0, TimerMode::Once)),
+            ]),
+        };
+
+        assert_eq!(block.compose(), format!("{SPEAKER} says:\nhi\nbye"));
     }
 
     use bevy::ecs::system::RunSystemOnce;
@@ -1290,7 +1355,10 @@ mod tests {
         let mut q = world.query::<&SpeechBlock>();
         let block = q.single(&world).unwrap();
         assert_eq!(block.lines.len(), 1, "the short line expired");
-        assert!(block.compose().starts_with('x'));
+        assert_eq!(
+            block.compose(),
+            format!("{SPEAKER} says:\n{}", "x".repeat(200))
+        );
     }
 
     /// A merge must not restart the absorbing number's timer, or a sustained
@@ -1520,6 +1588,7 @@ mod tests {
                     offset_y: 0.0,
                 },
                 SpeechBlock {
+                    header: None,
                     lines: VecDeque::new(),
                 },
                 TextLayoutInfo { size, ..default() },
