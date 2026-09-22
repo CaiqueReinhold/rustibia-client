@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use crate::conf::map::{MAX_FLOOR, MIN_FLOOR};
 use crate::map::floors::FloorEntities;
 use crate::map::minimap::{MinimapData, SaveTimer, flush_dirty_chunks};
-use crate::map::minimap_ui::{MinimapImageHandle, MinimapZoom};
+use crate::map::minimap_ui::{MinimapImageHandle, MinimapWindow, MinimapZoom};
 use crate::map::storage::Map;
 
 /// Resets the map to an empty world and drops the per-session minimap view.
@@ -25,6 +25,7 @@ pub(super) fn cleanup_session(
     commands.insert_resource(SaveTimer::default());
     commands.remove_resource::<MinimapImageHandle>();
     commands.remove_resource::<MinimapZoom>();
+    commands.remove_resource::<MinimapWindow>();
 
     for floor in MIN_FLOOR..=MAX_FLOOR {
         commands
@@ -65,15 +66,19 @@ mod tests {
         assert_eq!(world.get::<Visibility>(floor), Some(&Visibility::Visible));
     }
 
-    /// Both are re-created by `setup_minimap` on the next `OnEnter(InGame)`. Their
-    /// absence is what "no session" means.
+    /// All three are re-created by `setup_minimap` on the next `OnEnter(InGame)`,
+    /// against a fresh texture. Their absence is what "no session" means, and a
+    /// `MinimapWindow` that outlived its texture would report a floor as painted
+    /// that nothing had painted.
     #[test]
     fn cleanup_drops_the_minimap_view_resources() {
         let (mut world, _) = world_with_floors();
         world.insert_resource(MinimapZoom(0));
+        world.insert_resource(MinimapWindow::default());
 
         world.run_system_once(cleanup_session).unwrap();
 
         assert!(world.get_resource::<MinimapZoom>().is_none());
+        assert!(world.get_resource::<MinimapWindow>().is_none());
     }
 }

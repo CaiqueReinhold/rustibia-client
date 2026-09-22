@@ -4,7 +4,7 @@ use bevy::{prelude::*, tasks::IoTaskPool};
 
 use crate::map::Position;
 
-const CHUNK_SIZE: u16 = 64;
+pub const CHUNK_SIZE: u16 = 64;
 const TILES_PER_CHUNK: usize = (CHUNK_SIZE * CHUNK_SIZE) as usize;
 
 #[derive(Clone, Copy, Default, Debug)]

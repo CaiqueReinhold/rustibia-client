@@ -244,6 +244,8 @@ pub mod server {
 
 pub mod minimap {
     pub const IMAGE_SIZE: u16 = 2048;
+    /// How close to the texture edge the player gets before the window re-centres.
+    pub const RECENTRE_MARGIN: u16 = 256;
     /// Tiles visible per axis at each zoom level (index 0 = most zoomed in).
     pub const ZOOM_LEVELS: [u8; 4] = [20, 40, 80, 160];
     pub const DEFAULT_ZOOM: usize = 2; // 80×80 tiles
