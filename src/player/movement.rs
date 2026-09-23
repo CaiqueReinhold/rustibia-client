@@ -152,14 +152,13 @@ pub fn on_ack_walk(
     let Some(direction) = move_queue.pending_walk_ack else {
         return;
     };
-    let source_pos = event.position.clone() - direction;
     map::events::on_player_walk_ack(
         &mut commands,
         &mut tile_queue,
         &mut map,
         &config,
         &mut minimap,
-        &source_pos,
+        &event.position,
         direction,
         &event.tiles,
     );
