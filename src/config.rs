@@ -17,8 +17,8 @@ pub struct ClientConfig {
 impl Default for ClientConfig {
     fn default() -> Self {
         ClientConfig {
-            server_address: "127.0.0.1:5555".to_string(),
-            site_url: "http://127.0.0.1:8080".to_string(),
+            server_address: "rustibia.online:5555".to_string(),
+            site_url: "https://rustibia.online".to_string(),
         }
     }
 }

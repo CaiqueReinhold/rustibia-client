@@ -4,6 +4,7 @@ pub mod attacker_mark;
 pub mod components;
 mod events;
 mod hotkey;
+pub mod hover_feedback;
 mod interaction;
 mod keyboard;
 pub mod movement;
@@ -79,6 +80,16 @@ impl Plugin for PlayerPlugin {
             .add_systems(
                 Update,
                 attacker_mark::expire_attacker_squares.run_if(in_state(GameState::InGame)),
+            )
+            .add_systems(
+                Update,
+                hover_feedback::sync_hovered_marker.run_if(in_state(GameState::InGame)),
+            )
+            .add_systems(
+                PostUpdate,
+                hover_feedback::sync_hover_outline
+                    .before(crate::map::DrawOrderSet)
+                    .run_if(in_state(GameState::InGame)),
             )
             .add_observer(interaction::attach_observers)
             .add_observer(interaction::on_interaction_intent)

@@ -11,6 +11,7 @@ impl<T: Default> InstanceManager<T> {
     pub fn alloc_index(&mut self) -> u32 {
         self.dirty = true;
         if let Some(index) = self.free_list.pop() {
+            self.data[index as usize] = T::default();
             index
         } else {
             let index = self.data.len() as u32;
@@ -109,5 +110,17 @@ mod tests {
         manager.alloc_index();
 
         assert!(manager.is_dirty());
+    }
+
+    #[test]
+    fn a_reused_slot_comes_back_default() {
+        let mut manager = manager();
+        manager.update(0, |instance| instance.value = 7);
+        manager.dealloc_index(0);
+
+        let index = manager.alloc_index();
+
+        assert_eq!(index, 0);
+        assert_eq!(manager.get_buffer_data()[0], Instance::default());
     }
 }

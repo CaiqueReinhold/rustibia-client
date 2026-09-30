@@ -48,6 +48,12 @@ impl Plugin for AgentPlugin {
             )
             .add_systems(
                 PostUpdate,
+                instancing::sync_hover_highlight
+                    .before(instancing::upload_instance_buffer)
+                    .run_if(in_state(GameState::InGame)),
+            )
+            .add_systems(
+                PostUpdate,
                 instancing::upload_instance_buffer.run_if(in_state(GameState::InGame)),
             )
             .add_systems(

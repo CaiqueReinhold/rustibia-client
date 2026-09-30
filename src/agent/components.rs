@@ -186,6 +186,9 @@ impl Mana {
 #[derive(Component, Debug, Clone)]
 pub struct WorldHud;
 
+#[derive(Component)]
+pub struct Hovered;
+
 #[derive(Component, Debug, Clone)]
 pub struct AgentHud {
     pub root: Entity,

@@ -15,12 +15,16 @@ pub struct AgentInstance {
     pub bbox_min: Vec2,
     pub bbox_size: Vec2,
     pub shift: Vec2,
+    pub highlighted: u32,
 }
 
 #[repr(C)]
 #[derive(ShaderType, Clone, Copy, Debug, Default)]
 pub struct AgentParams {
     pub atlas_grid: Vec2,
+    pub pulse_base: f32,
+    pub pulse_amplitude: f32,
+    pub pulse_period: f32,
 }
 
 #[derive(Asset, AsBindGroup, TypePath, Debug, Clone, Default)]

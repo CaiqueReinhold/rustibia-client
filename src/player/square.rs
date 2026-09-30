@@ -11,15 +11,28 @@ pub fn square_centre_offset() -> Vec2 {
 }
 
 /// The four edges of a `size`-wide outline as `(bar_size, centre_offset_from_tile_centre)`.
-pub fn square_bars(size: f32) -> [(Vec2, Vec2); 4] {
+pub fn square_bars(size: f32, thickness: f32) -> [(Vec2, Vec2); 4] {
     let half = size / 2.0;
-    let inset = half - SQUARE_THICKNESS / 2.0;
+    let inset = half - thickness / 2.0;
     [
-        (Vec2::new(size, SQUARE_THICKNESS), Vec2::new(0.0, inset)),
-        (Vec2::new(size, SQUARE_THICKNESS), Vec2::new(0.0, -inset)),
-        (Vec2::new(SQUARE_THICKNESS, size), Vec2::new(-inset, 0.0)),
-        (Vec2::new(SQUARE_THICKNESS, size), Vec2::new(inset, 0.0)),
+        (Vec2::new(size, thickness), Vec2::new(0.0, inset)),
+        (Vec2::new(size, thickness), Vec2::new(0.0, -inset)),
+        (Vec2::new(thickness, size), Vec2::new(-inset, 0.0)),
+        (Vec2::new(thickness, size), Vec2::new(inset, 0.0)),
     ]
+}
+
+pub fn square_bar_sprites(color: Color, size: f32, thickness: f32) -> [(Sprite, Transform); 4] {
+    square_bars(size, thickness).map(|(bar, offset)| {
+        (
+            Sprite {
+                color,
+                custom_size: Some(bar),
+                ..Default::default()
+            },
+            Transform::from_xyz(offset.x, offset.y, 0.0),
+        )
+    })
 }
 
 /// Spawns an outline as a **child of `agent`**, which gives walk-offset tracking
@@ -39,15 +52,8 @@ pub fn spawn_square(
             Visibility::default(),
         ));
         root.with_children(|frame| {
-            for (bar, offset) in square_bars(size) {
-                frame.spawn((
-                    Sprite {
-                        color,
-                        custom_size: Some(bar),
-                        ..Default::default()
-                    },
-                    Transform::from_xyz(offset.x, offset.y, 0.0),
-                ));
+            for bar in square_bar_sprites(color, size, SQUARE_THICKNESS) {
+                frame.spawn(bar);
             }
         });
     });
@@ -59,7 +65,7 @@ mod tests {
 
     #[test]
     fn every_bar_spans_one_full_edge_at_the_configured_thickness() {
-        for (bar, _) in square_bars(TILE_SIZE) {
+        for (bar, _) in square_bars(TILE_SIZE, SQUARE_THICKNESS) {
             assert!(
                 (bar.x - TILE_SIZE).abs() < f32::EPSILON
                     || (bar.y - TILE_SIZE).abs() < f32::EPSILON,
@@ -71,6 +77,14 @@ mod tests {
                 "every bar is one thickness deep, got {bar:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_thinner_square_hugs_the_same_edges() {
+        let [(top, top_offset), ..] = square_bars(TILE_SIZE, 1.0);
+
+        assert_eq!(top, Vec2::new(TILE_SIZE, 1.0));
+        assert_eq!(top_offset, Vec2::new(0.0, TILE_SIZE / 2.0 - 0.5));
     }
 
     /// `to_world()` returns the tile's TOP-LEFT corner and the convention is

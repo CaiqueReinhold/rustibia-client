@@ -38,6 +38,14 @@ pub mod target {
     pub const MARK_DURATION: std::time::Duration = std::time::Duration::from_secs(1);
 }
 
+pub mod hover {
+    pub const OUTLINE_COLOR: bevy::color::Color = bevy::color::Color::WHITE;
+    pub const OUTLINE_THICKNESS: f32 = 1.0;
+    pub const PULSE_BASE: f32 = 0.08;
+    pub const PULSE_AMPLITUDE: f32 = 0.10;
+    pub const PULSE_PERIOD_SECS: f32 = 1.0;
+}
+
 pub mod agent {
     // pub const ADDONS_NONE: u8 = 0;
     pub const ADDON_1_FLAG: u8 = 0b1;

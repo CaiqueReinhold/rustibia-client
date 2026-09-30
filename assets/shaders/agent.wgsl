@@ -1,7 +1,11 @@
 #import bevy_sprite::mesh2d_functions as mesh_functions
+#import bevy_sprite::mesh2d_view_bindings::globals
 
 struct AgentParams {
     atlas_grid: vec2<f32>,
+    pulse_base: f32,
+    pulse_amplitude: f32,
+    pulse_period: f32,
 }
 
 struct AgentInstance {
@@ -11,6 +15,7 @@ struct AgentInstance {
     bbox_min: vec2<f32>,
     bbox_size: vec2<f32>,
     shift: vec2<f32>,
+    highlighted: u32,
 }
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(0)
@@ -271,6 +276,11 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
             let factor = mix(vec3<f32>(1.0), tint.rgb, sample.a);
             color = vec4<f32>(color.rgb * factor, color.a);
         }
+    }
+    if (instance.highlighted != 0u) {
+        let wave = 0.5 + 0.5 * sin(6.2831853 * globals.time / params.pulse_period);
+        let k = params.pulse_base + params.pulse_amplitude * wave;
+        color = vec4<f32>(mix(color.rgb, vec3<f32>(1.0), k), color.a);
     }
     return color;
 }

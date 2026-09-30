@@ -6,9 +6,10 @@ use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::render::storage::ShaderStorageBuffer;
 
-use crate::agent::components::{Agent, AgentAnimConfigs};
+use crate::agent::components::{Agent, AgentAnimConfigs, Hovered};
 use crate::agent::world_hud::spawn_world_hud;
 use crate::agent::{AgentId, FacingDirection, Health, Mana};
+use crate::conf::hover::{PULSE_AMPLITUDE, PULSE_BASE, PULSE_PERIOD_SECS};
 use crate::core::OutfitColors;
 use crate::core::OutfitId;
 use crate::core::{Appearances, InstanceManager, OutfitSprite, SpriteSheet};
@@ -199,6 +200,9 @@ fn init_material(
 ) {
     let params = AgentParams {
         atlas_grid: sheet.grid_size,
+        pulse_base: PULSE_BASE,
+        pulse_amplitude: PULSE_AMPLITUDE,
+        pulse_period: PULSE_PERIOD_SECS,
     };
     let material_handle = materials.add(AgentMaterial {
         texture: sheet.texture().clone(),
@@ -299,5 +303,67 @@ pub fn update_agent_instances(
             instance.bbox_size = bbox.max;
             instance.shift = agent.shift;
         });
+    }
+}
+
+pub fn sync_hover_highlight(
+    added: Query<&MeshTag, Added<Hovered>>,
+    mut removed: RemovedComponents<Hovered>,
+    tags: Query<&MeshTag>,
+    mut instances: ResMut<InstanceManager<AgentInstance>>,
+) {
+    for entity in removed.read() {
+        if let Ok(tag) = tags.get(entity) {
+            instances.update(tag.0, |instance| instance.highlighted = 0);
+        }
+    }
+    for tag in &added {
+        instances.update(tag.0, |instance| instance.highlighted = 1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn world_with_instance() -> (World, Entity) {
+        let mut world = World::new();
+        let mut instances = InstanceManager::<AgentInstance>::default();
+        let index = instances.alloc_index();
+        world.insert_resource(instances);
+        let agent = world.spawn(MeshTag(index)).id();
+        (world, agent)
+    }
+
+    fn highlighted(world: &World) -> u32 {
+        world
+            .resource::<InstanceManager<AgentInstance>>()
+            .get_buffer_data()[0]
+            .highlighted
+    }
+
+    #[test]
+    fn the_flag_follows_the_marker() {
+        let (mut world, agent) = world_with_instance();
+        let sync = world.register_system(sync_hover_highlight);
+
+        world.entity_mut(agent).insert(Hovered);
+        world.run_system(sync).unwrap();
+        assert_eq!(highlighted(&world), 1);
+
+        world.entity_mut(agent).remove::<Hovered>();
+        world.run_system(sync).unwrap();
+        assert_eq!(highlighted(&world), 0);
+    }
+
+    #[test]
+    fn a_despawned_hovered_agent_is_skipped() {
+        let (mut world, agent) = world_with_instance();
+        let sync = world.register_system(sync_hover_highlight);
+        world.entity_mut(agent).insert(Hovered);
+        world.run_system(sync).unwrap();
+
+        world.despawn(agent);
+        world.run_system(sync).unwrap();
     }
 }

@@ -74,11 +74,12 @@ pub enum DrawLayer {
     PassingThrough = 2,
     Bottom = 3,
     Items = 4,
-    Target = 5,
-    Creature = 6,
-    Effect = 7,
-    Top = 8,
-    Missile = 9,
+    Hover = 5,
+    Target = 6,
+    Creature = 7,
+    Effect = 8,
+    Top = 9,
+    Missile = 10,
 }
 
 const FLOOR_COUNT: i32 = (MAX_FLOOR + 1) as i32;
@@ -303,6 +304,7 @@ mod tests {
             DrawLayer::PassingThrough,
             DrawLayer::Bottom,
             DrawLayer::Items,
+            DrawLayer::Hover,
             DrawLayer::Target,
             DrawLayer::Creature,
             DrawLayer::Effect,

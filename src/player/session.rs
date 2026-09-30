@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 use crate::player::components::PlayerInventory;
+use crate::player::hover_feedback::HoverOutline;
 use crate::player::interaction::{
     ContainerNavTarget, InteractionMode, MouseHoverState, PendingWalkAction,
 };
@@ -14,7 +15,13 @@ use crate::player::target::CombatTarget;
 /// `Keybinds` stays; the action bar's own cleanup removes the slot binds it loaded.
 /// `KeyRepeatState` is re-seeded by re-running `keyboard::init_repeat_state`, which is
 /// registered into the same set.
-pub(super) fn cleanup_session(mut commands: Commands) {
+pub(super) fn cleanup_session(
+    mut commands: Commands,
+    outline_q: Query<Entity, With<HoverOutline>>,
+) {
+    for outline in &outline_q {
+        commands.entity(outline).despawn();
+    }
     commands.insert_resource(MovementQueue::default());
     commands.insert_resource(PlayerElevation::default());
     commands.insert_resource(MouseHoverState::default());
@@ -86,6 +93,16 @@ mod tests {
             *world.resource::<InteractionMode>(),
             InteractionMode::Idle
         ));
+    }
+
+    #[test]
+    fn cleanup_despawns_the_hover_outline() {
+        let mut world = seeded_world();
+        let outline = world.spawn(HoverOutline).id();
+
+        world.run_system_once(cleanup_session).unwrap();
+
+        assert!(world.get_entity(outline).is_err());
     }
 
     /// A target from the previous character must not be waiting when a new one
