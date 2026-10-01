@@ -7,7 +7,11 @@ use crate::{
     conf::map::{TILES_X, TILES_Y},
     core::ItemConfigs,
     items::{ChangedTileQueue, Item},
-    map::{Map, Position, minimap::MinimapData},
+    map::{
+        Map, Position, ViewportCenter,
+        minimap::MinimapData,
+        viewport::{TileRect, floor_viewport_rect},
+    },
     network::{
         ItemStack,
         events::{ClientOutdated, DescribeMap, TileChanged},
@@ -17,23 +21,15 @@ use crate::{
 /// Yields `(index, position)` pairs for a `DescribeMap` payload, where `index`
 /// is the tile's slot in the message.
 fn iter_viewport(pos: &Position, floor: u8) -> impl Iterator<Item = (usize, Position)> {
-    let floor_offset = pos.z as i16 - floor as i16;
-    let half_w = (TILES_X / 2) as i16;
-    let half_h = (TILES_Y / 2) as i16;
-    let x = pos.x as i16;
-    let y = pos.y as i16;
-
-    let x_start = (x - half_w + floor_offset).max(0) as u16;
-    let x_end = (x + half_w + floor_offset).max(0) as u16;
-    let y_start = (y - half_h + floor_offset).max(0) as u16;
-    let y_end = (y + half_h + floor_offset).max(0) as u16;
+    let rect = floor_viewport_rect(pos, floor);
     let z = floor;
 
     (0..TILES_Y).flat_map(move |row| {
         (0..TILES_X).filter_map(move |col| {
-            let x = x_start + col as u16;
-            let y = y_start + row as u16;
-            (x <= x_end && y <= y_end).then_some((row * TILES_X + col, Position { x, y, z }))
+            let x = rect.min_x + col as u16;
+            let y = rect.min_y + row as u16;
+            (x <= rect.max_x && y <= rect.max_y)
+                .then_some((row * TILES_X + col, Position { x, y, z }))
         })
     })
 }
@@ -43,17 +39,13 @@ fn iter_expansion(
     direction: &WalkingDirection,
     floor: u8,
 ) -> Box<dyn Iterator<Item = Position>> {
-    let floor_offset = pos.z as i16 - floor as i16;
-    let half_w = (TILES_X / 2) as i16;
-    let half_h = (TILES_Y / 2) as i16;
-    let x = pos.x as i16;
-    let y = pos.y as i16;
     let z = floor;
-
-    let x_start = (x - half_w + floor_offset).max(0) as u16;
-    let x_end = (x + half_w + floor_offset) as u16;
-    let y_start = (y - half_h + floor_offset).max(0) as u16;
-    let y_end = (y + half_h + floor_offset) as u16;
+    let TileRect {
+        min_x: x_start,
+        min_y: y_start,
+        max_x: x_end,
+        max_y: y_end,
+    } = floor_viewport_rect(pos, floor);
 
     let top_row = {
         (x_start..=x_end).map(move |xi| Position {
@@ -145,6 +137,7 @@ pub(super) fn on_describe_map(
     mut map: ResMut<Map>,
     mut queue: ResMut<ChangedTileQueue>,
     mut minimap: ResMut<MinimapData>,
+    mut center: ResMut<ViewportCenter>,
 ) {
     for (i, position) in iter_viewport(&event.center, event.floor) {
         let tile = event.tiles[i];
@@ -160,6 +153,7 @@ pub(super) fn on_describe_map(
         }
         queue.changed_positions.push_back(position);
     }
+    center.set_if_neq(ViewportCenter(Some(event.center.clone())));
 }
 
 pub fn on_player_walk_ack(
@@ -212,6 +206,7 @@ pub(super) fn on_tile_changed(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::conf::map::STACK_MAX_VISIBLE_ITEMS;
 
     const FLOOR: u8 = 7;
 
@@ -229,7 +224,7 @@ mod tests {
         for (i, (index, _)) in tiles.iter().enumerate() {
             assert_eq!(*index, i, "no gaps when nothing is clamped");
         }
-        assert_eq!(tiles[0].1, center(100 - 9, 100 - 7), "top-left corner");
+        assert_eq!(tiles[0].1, center(100 - 8, 100 - 6), "top-left corner");
         assert_eq!(tiles.last().unwrap().1, center(100 + 9, 100 + 7));
     }
 
@@ -238,17 +233,17 @@ mod tests {
     /// not at the number of tiles the first row actually described.
     #[test]
     fn a_clamped_viewport_keeps_the_server_row_stride() {
-        // x - 9 would be -6, so the described columns are 0..=12 — 13 of 19.
+        // x - 8 would be -5, so the described columns are 0..=12 — 13 of 18.
         let tiles: Vec<(usize, Position)> = iter_viewport(&center(3, 100), FLOOR).collect();
         let described_columns = 13;
 
         let first_row: Vec<_> = tiles.iter().take(described_columns).collect();
-        assert_eq!(first_row[0].1, center(0, 100 - 7), "clamped to x = 0");
-        assert_eq!(first_row[described_columns - 1].1, center(12, 100 - 7));
+        assert_eq!(first_row[0].1, center(0, 100 - 6), "clamped to x = 0");
+        assert_eq!(first_row[described_columns - 1].1, center(12, 100 - 6));
 
         let (index, position) = &tiles[described_columns];
         assert_eq!(*index, TILES_X, "the next row starts a full stride along");
-        assert_eq!(*position, center(0, 100 - 6));
+        assert_eq!(*position, center(0, 100 - 5));
 
         assert_eq!(tiles.len(), described_columns * TILES_Y);
     }
@@ -312,5 +307,26 @@ mod tests {
                 "{direction:?} has no repeats"
             );
         }
+    }
+
+    #[test]
+    fn a_map_description_moves_the_viewport_center() {
+        let mut world = World::new();
+        world.insert_resource(ItemConfigs {
+            items: std::collections::HashMap::new(),
+        });
+        world.init_resource::<Map>();
+        world.init_resource::<ChangedTileQueue>();
+        world.init_resource::<MinimapData>();
+        world.init_resource::<ViewportCenter>();
+        world.add_observer(on_describe_map);
+
+        world.trigger(DescribeMap {
+            center: center(100, 100),
+            floor: FLOOR,
+            tiles: Box::new([[None; STACK_MAX_VISIBLE_ITEMS]; TILES_X * TILES_Y]),
+        });
+
+        assert_eq!(world.resource::<ViewportCenter>().0, Some(center(100, 100)));
     }
 }

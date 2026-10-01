@@ -1,5 +1,6 @@
 /target
 /dist
+client_conf.yaml
 
 CLAUDE.md
 .claude/

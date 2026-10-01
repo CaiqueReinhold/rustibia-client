@@ -5,6 +5,7 @@ use crate::map::floors::FloorEntities;
 use crate::map::minimap::{MinimapData, SaveTimer, flush_dirty_chunks};
 use crate::map::minimap_ui::{MinimapImageHandle, MinimapWindow, MinimapZoom};
 use crate::map::storage::Map;
+use crate::map::viewport::ViewportCenter;
 
 /// Resets the map to an empty world and drops the per-session minimap view.
 ///
@@ -22,6 +23,7 @@ pub(super) fn cleanup_session(
     flush_dirty_chunks(&mut minimap);
 
     commands.insert_resource(Map::default());
+    commands.insert_resource(ViewportCenter::default());
     commands.insert_resource(SaveTimer::default());
     commands.remove_resource::<MinimapImageHandle>();
     commands.remove_resource::<MinimapZoom>();
@@ -80,5 +82,15 @@ mod tests {
 
         assert!(world.get_resource::<MinimapZoom>().is_none());
         assert!(world.get_resource::<MinimapWindow>().is_none());
+    }
+
+    #[test]
+    fn cleanup_forgets_the_viewport_center() {
+        let (mut world, _) = world_with_floors();
+        world.insert_resource(ViewportCenter(Some(crate::map::Position::new(1, 2, 7))));
+
+        world.run_system_once(cleanup_session).unwrap();
+
+        assert_eq!(world.resource::<ViewportCenter>().0, None);
     }
 }

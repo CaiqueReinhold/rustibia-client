@@ -29,7 +29,7 @@
 use bevy::prelude::*;
 
 use crate::conf::draw_order::{LAYER_COUNT, SLOT_COUNT, VIEW_MARGIN_TILES};
-use crate::conf::map::{MAX_FLOOR, TILE_SIZE, TILES_X, TILES_Y};
+use crate::conf::map::{MAX_FLOOR, TILE_SIZE, TILES_X, TILES_Y, VIEW_LEFT, VIEW_TOP};
 use crate::map::Position;
 use crate::player::components::Player;
 
@@ -109,8 +109,8 @@ pub struct DrawOrigin {
 impl DrawOrigin {
     pub fn around(pos: &Position) -> Self {
         DrawOrigin {
-            x: pos.x as i32 - (TILES_X / 2) as i32,
-            y: pos.y as i32 - (TILES_Y / 2) as i32,
+            x: pos.x as i32 - VIEW_LEFT as i32,
+            y: pos.y as i32 - VIEW_TOP as i32,
             z: pos.z,
         }
     }
@@ -665,14 +665,28 @@ mod tests {
         assert!(key(&pos, DrawLayer::Items, 99) < key(&pos, DrawLayer::Target, 0));
     }
 
+    #[test]
+    fn the_windows_top_left_tile_keys_right_after_the_margin() {
+        let player = Position::new(1000, 1000, 7);
+        let origin = DrawOrigin::around(&player);
+        let window = crate::map::viewport::floor_viewport_rect(&player, 7);
+        let top_left = Position::new(window.min_x, window.min_y, 7);
+
+        let floor = MAX_FLOOR as i32 - 7;
+        let expected = ((((floor * RANKS + DrawRank::Ground as i32) * ROWS + MARGIN) * COLS
+            + MARGIN)
+            * TILE_SPAN) as f32;
+        assert_eq!(tile_base(&origin, &top_left, DrawRank::Ground), expected);
+    }
+
     /// Off-window tiles clamp to the edge rather than wrapping into a key that
     /// belongs to a tile on the other side of the map.
     #[test]
     fn a_tile_far_outside_the_window_clamps_to_the_edge() {
         let far = Position::new(64000, 64000, 7);
         let edge = Position::new(
-            (1000 - (TILES_X / 2) as u16) + (COLS - 1 - MARGIN) as u16,
-            (1000 - (TILES_Y / 2) as u16) + (ROWS - 1 - MARGIN) as u16,
+            (1000 - VIEW_LEFT as u16) + (COLS - 1 - MARGIN) as u16,
+            (1000 - VIEW_TOP as u16) + (ROWS - 1 - MARGIN) as u16,
             7,
         );
 

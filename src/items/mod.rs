@@ -44,7 +44,7 @@ impl Plugin for ItemsPlugin {
         .add_systems(
             Update,
             (
-                instancing::process_tile_changed,
+                instancing::process_tile_changed.after(crate::map::evict_outside_viewport),
                 ui_item::move_dragged_item,
                 split_dialog::sync_split_slider,
                 container::container_content_changed,

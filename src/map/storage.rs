@@ -7,6 +7,7 @@ use smallvec::SmallVec;
 use crate::agent::AgentId;
 use crate::items::{Item, ItemFlag};
 use crate::map::position::Position;
+use crate::map::viewport::in_viewport;
 
 #[derive(Debug, Default)]
 pub struct MapTile {
@@ -44,6 +45,23 @@ impl Map {
     pub fn replace_tile(&mut self, items: Vec<Arc<Item>>, pos: &Position) {
         let tile = self.tiles.entry(pos.clone()).or_default();
         tile.items = items;
+    }
+
+    /// Strips every tile outside the viewport around `center`, keeping the entry of one an agent
+    /// stands on. Returns the positions that lost items.
+    pub fn evict_outside(&mut self, center: &Position) -> Vec<Position> {
+        let mut evicted = Vec::new();
+        self.tiles.retain(|pos, tile| {
+            if in_viewport(center, pos) {
+                return true;
+            }
+            if !tile.items.is_empty() {
+                tile.items.clear();
+                evicted.push(pos.clone());
+            }
+            !tile.agents.is_empty()
+        });
+        evicted
     }
 
     pub fn agents_on(&self, pos: &Position) -> &[AgentId] {
@@ -316,5 +334,56 @@ mod tests {
         map.index_agent(AgentId(1), &at(10, 10));
 
         assert_eq!(map.agents_on(&at(10, 10)), &[AgentId(1), AgentId(2)]);
+    }
+
+    fn ground() -> Arc<Item> {
+        item(ItemId(100), vec![ItemFlag::Ground], None)
+    }
+
+    #[test]
+    fn eviction_drops_a_tile_outside_the_window_and_keeps_one_inside() {
+        let mut map = Map::default();
+        map.replace_tile(vec![ground()], &at(100, 100));
+        map.replace_tile(vec![ground()], &at(110, 100));
+
+        let evicted = map.evict_outside(&at(100, 100));
+
+        assert_eq!(evicted, vec![at(110, 100)]);
+        assert!(map.get_items(&at(110, 100)).is_none());
+        assert_eq!(map.get_items(&at(100, 100)).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn eviction_drops_a_floor_the_server_no_longer_describes() {
+        let mut map = Map::default();
+        let surface = Position::new(100, 100, 7);
+        map.replace_tile(vec![ground()], &surface);
+
+        let evicted = map.evict_outside(&Position::new(100, 100, 8));
+
+        assert_eq!(evicted, vec![surface.clone()]);
+        assert!(map.get_items(&surface).is_none());
+    }
+
+    #[test]
+    fn eviction_clears_the_items_under_an_agent_but_keeps_the_agent_indexed() {
+        let mut map = Map::default();
+        map.replace_tile(vec![ground()], &at(110, 100));
+        map.index_agent(AgentId(5), &at(110, 100));
+
+        let evicted = map.evict_outside(&at(100, 100));
+
+        assert_eq!(evicted, vec![at(110, 100)]);
+        assert_eq!(map.get_items(&at(110, 100)).unwrap().count(), 0);
+        assert_eq!(map.agents_on(&at(110, 100)), &[AgentId(5)]);
+    }
+
+    #[test]
+    fn an_agent_only_tile_outside_is_not_reported_as_evicted() {
+        let mut map = Map::default();
+        map.index_agent(AgentId(5), &at(110, 100));
+
+        assert!(map.evict_outside(&at(100, 100)).is_empty());
+        assert_eq!(map.agents_on(&at(110, 100)), &[AgentId(5)]);
     }
 }

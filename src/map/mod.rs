@@ -11,6 +11,7 @@ mod position;
 mod session;
 mod storage;
 mod tile_agents;
+pub mod viewport;
 
 pub use crate::map::position::Position;
 pub use crate::map::storage::Map;
@@ -20,6 +21,7 @@ pub use draw_order::{
 pub use floors::FloorEntities;
 pub use minimap::MinimapData;
 pub use tile_agents::sync_tile_agents;
+pub use viewport::{ViewportCenter, evict_outside_viewport};
 
 /// Everything that turns a `DrawOrder` into a z. Systems that write a
 /// `DrawOrder` belong before it.
@@ -36,6 +38,7 @@ impl Plugin for MapPlugin {
             // .init_resource::<chunks::LoadedMaterials>()
             .init_resource::<storage::Map>()
             .init_resource::<DrawOrigin>()
+            .init_resource::<ViewportCenter>()
             .init_resource::<minimap::MinimapData>()
             .init_resource::<minimap::SaveTimer>()
             .add_plugins(minimap_ui::MinimapPlugin)
@@ -45,6 +48,11 @@ impl Plugin for MapPlugin {
             .add_systems(
                 PreUpdate,
                 sync_tile_agents.run_if(in_state(GameState::InGame)),
+            )
+            .add_systems(
+                Update,
+                viewport::evict_outside_viewport
+                    .run_if(in_state(GameState::InGame).and(resource_changed::<ViewportCenter>)),
             )
             .add_systems(PostUpdate, floors::update_floors_visibility)
             // Before propagation, so the frame's spawns and steps reach the

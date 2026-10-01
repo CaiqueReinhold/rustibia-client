@@ -1,4 +1,4 @@
-use bevy::camera::visibility::RenderLayers;
+use bevy::camera::visibility::{NoCpuCulling, RenderLayers};
 use bevy::camera::{Camera, ClearColorConfig, OrthographicProjection, RenderTarget, ScalingMode};
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::image::ImageSampler;
@@ -99,6 +99,7 @@ pub fn spawn_game_camera(mut commands: Commands, mut images: ResMut<Assets<Image
         Tonemapping::None,
         Projection::Orthographic(projection),
         GameCamera,
+        NoCpuCulling,
         Transform::default(),
         GlobalTransform::default(),
         Msaa::Off,

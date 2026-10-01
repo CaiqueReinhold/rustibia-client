@@ -2,8 +2,12 @@ pub mod map {
     pub const TILE_SIZE: f32 = 32.0;
     pub const VIEW_TILES_X: f32 = 15.0;
     pub const VIEW_TILES_Y: f32 = 11.0;
-    pub const TILES_X: usize = 19;
-    pub const TILES_Y: usize = 15;
+    pub const VIEW_LEFT: usize = 8;
+    pub const VIEW_RIGHT: usize = 9;
+    pub const VIEW_TOP: usize = 6;
+    pub const VIEW_BOTTOM: usize = 7;
+    pub const TILES_X: usize = VIEW_LEFT + VIEW_RIGHT + 1;
+    pub const TILES_Y: usize = VIEW_TOP + VIEW_BOTTOM + 1;
     pub const STACK_MAX_VISIBLE_ITEMS: usize = 8;
     pub const CONTAINER_COORD_FLAG: u16 = 0xFFFF;
     pub const INVENTORY_COORD_FLAG: u16 = 0xFFFE;
@@ -316,6 +320,23 @@ mod tests {
             map::CARRIED_SEARCH_FLAG,
             0xFFFF,
             "must equal constants::items::CARRIED_SEARCH_FLAG in the server"
+        );
+    }
+
+    /// The pin. Its twin is `the_viewport_extents_match_the_client` in the server's
+    /// `constants::view`. A split that differs but sums to the same width still decodes, and
+    /// every tile is drawn a column off.
+    #[test]
+    fn the_viewport_extents_match_the_server() {
+        assert_eq!(
+            (
+                map::VIEW_LEFT,
+                map::VIEW_RIGHT,
+                map::VIEW_TOP,
+                map::VIEW_BOTTOM
+            ),
+            (8, 9, 6, 7),
+            "must equal constants::view::VIEW_* in the server"
         );
     }
 }

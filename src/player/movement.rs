@@ -8,7 +8,7 @@ use crate::{
     conf::map::TILE_SIZE,
     core::{ItemConfigs, TextMessageType},
     items::ChangedTileQueue,
-    map::{self, Map, MinimapData, Position},
+    map::{self, Map, MinimapData, Position, ViewportCenter},
     network::{
         ClientMessage, SendMessage,
         events::{
@@ -144,6 +144,7 @@ pub fn on_ack_walk(
     mut tile_queue: ResMut<ChangedTileQueue>,
     config: Res<ItemConfigs>,
     mut minimap: ResMut<MinimapData>,
+    mut center: ResMut<ViewportCenter>,
 ) {
     if move_queue.predicted_pos.as_ref() != Some(&event.position) {
         move_queue.moves.clear();
@@ -162,6 +163,7 @@ pub fn on_ack_walk(
         direction,
         &event.tiles,
     );
+    center.set_if_neq(ViewportCenter(Some(event.position.clone())));
     move_queue.pending_walk_ack = None;
     move_queue.predicted_pos = None;
 }
@@ -336,6 +338,7 @@ mod tests {
     use crate::items::ItemId;
     use crate::items::{Item, ItemConfig, ItemFlag};
     use crate::map::Position;
+    use crate::map::ViewportCenter;
     use bevy::ecs::system::RunSystemOnce;
     use std::sync::Arc;
 
@@ -430,5 +433,47 @@ mod tests {
             Some(at(1027, 1029)),
             "the prediction is the tile the ack will name"
         );
+    }
+
+    fn a_world_awaiting_a_walk_ack() -> World {
+        let (mut world, _) = a_world_ready_to_walk();
+        world.insert_resource(ItemConfigs {
+            items: std::collections::HashMap::new(),
+        });
+        world.init_resource::<ChangedTileQueue>();
+        world.init_resource::<MinimapData>();
+        world.insert_resource(ViewportCenter(Some(at(1027, 1028))));
+        world.add_observer(on_ack_walk);
+        let mut queue = world.resource_mut::<MovementQueue>();
+        queue.pending_walk_ack = Some(WalkingDirection::South);
+        queue.predicted_pos = Some(at(1027, 1029));
+        world
+    }
+
+    #[test]
+    fn a_walk_ack_moves_the_viewport_center_to_the_servers_position() {
+        let mut world = a_world_awaiting_a_walk_ack();
+
+        world.trigger(PlayerWalk {
+            position: at(1027, 1029),
+            tiles: Vec::new(),
+        });
+
+        assert_eq!(world.resource::<ViewportCenter>().0, Some(at(1027, 1029)));
+    }
+
+    #[test]
+    fn a_predicted_step_alone_leaves_the_viewport_center_where_it_was() {
+        let (mut world, _) = a_world_ready_to_walk();
+        world.insert_resource(ViewportCenter(Some(at(1027, 1028))));
+        world
+            .resource_mut::<MovementQueue>()
+            .moves
+            .push_back(Movement::Walk(WalkingDirection::South));
+
+        world.run_system_once(process_move_queue).unwrap();
+
+        assert!(world.resource::<MovementQueue>().pending_walk_ack.is_some());
+        assert_eq!(world.resource::<ViewportCenter>().0, Some(at(1027, 1028)));
     }
 }

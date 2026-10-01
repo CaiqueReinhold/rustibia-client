@@ -6,11 +6,11 @@ use bevy::{prelude::*, tasks::IoTaskPool};
 use futures::{FutureExt, SinkExt, StreamExt};
 use futures_rustls::client::TlsStream;
 use std::io;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use crate::{
     config,
-    core::{EndGameSession, GameState, PingState, SessionEndReason},
+    core::{GameState, PingState},
     network::{
         events,
         messages::{ClientMessage, GameMessageCodec, ServerMessage},
@@ -31,23 +31,11 @@ pub struct LoginCredentials {
     pub auth_token: String,
 }
 
-/// How long to wait for the server to close the socket after a logout before
-/// tearing down anyway. The protocol has no reply to `Logout`, so this is the only
-/// backstop.
-const LOGOUT_TIMEOUT: Duration = Duration::from_secs(2);
-
-/// Asked for by the UI; acted on here so the protocol stays behind the network
-/// boundary.
 #[derive(Event, Debug)]
 pub struct RequestLogout;
 
-/// Present from the moment the player asks to log out until teardown. Its presence
-/// is what tells the connection-lost handler that the drop was intentional and needs
-/// no modal.
 #[derive(Resource, Debug)]
-pub struct LogoutRequested {
-    timer: Timer,
-}
+pub struct LogoutRequested;
 
 #[derive(Resource, Debug)]
 pub struct ConnectionState {
@@ -190,25 +178,7 @@ pub(super) fn on_request_logout(
         return;
     }
     commands.trigger(SendMessage(ClientMessage::Logout));
-    commands.insert_resource(LogoutRequested {
-        timer: Timer::new(LOGOUT_TIMEOUT, TimerMode::Once),
-    });
-}
-
-pub(super) fn tick_logout_timeout(
-    mut commands: Commands,
-    pending: Option<ResMut<LogoutRequested>>,
-    time: Res<Time>,
-) {
-    let Some(mut pending) = pending else {
-        return;
-    };
-    if pending.timer.tick(time.delta()).just_finished() {
-        warn!("logout: the server never closed the connection, tearing down anyway");
-        commands.trigger(EndGameSession {
-            reason: SessionEndReason::Logout,
-        });
-    }
+    commands.insert_resource(LogoutRequested);
 }
 
 pub struct PersistentConnection {
@@ -310,7 +280,6 @@ mod tests {
     use crate::items::ContainerId;
     use crate::map::Position;
     use bevy::ecs::system::RunSystemOnce;
-    use std::time::Duration;
 
     #[derive(Resource, Default)]
     struct Routed(Vec<&'static str>);
@@ -394,48 +363,5 @@ mod tests {
             r.0 = Some(e.reason);
         });
         world
-    }
-
-    /// The server closing the socket is what normally ends a logout. If it accepts
-    /// the request and never closes, nothing else would ever fire — `receive_messages`
-    /// stops running the moment `ConnectionState` is gone — so the timeout has to end
-    /// the session itself.
-    #[test]
-    fn the_logout_timeout_ends_the_session_on_its_own() {
-        let mut world = world_watching_for_session_end();
-        world.insert_resource(Time::<()>::default());
-        world.insert_resource(LogoutRequested {
-            timer: Timer::new(LOGOUT_TIMEOUT, TimerMode::Once),
-        });
-
-        world
-            .resource_mut::<Time<()>>()
-            .advance_by(LOGOUT_TIMEOUT + Duration::from_millis(1));
-        world.run_system_once(tick_logout_timeout).unwrap();
-        world.flush();
-
-        assert_eq!(
-            world.resource::<EndedWith>().0,
-            Some(SessionEndReason::Logout)
-        );
-    }
-
-    /// Before the timeout there is nothing to do — the socket may still close
-    /// normally at any moment.
-    #[test]
-    fn the_logout_timeout_waits_for_the_server_first() {
-        let mut world = world_watching_for_session_end();
-        world.insert_resource(Time::<()>::default());
-        world.insert_resource(LogoutRequested {
-            timer: Timer::new(LOGOUT_TIMEOUT, TimerMode::Once),
-        });
-
-        world
-            .resource_mut::<Time<()>>()
-            .advance_by(Duration::from_millis(100));
-        world.run_system_once(tick_logout_timeout).unwrap();
-        world.flush();
-
-        assert_eq!(world.resource::<EndedWith>().0, None);
     }
 }

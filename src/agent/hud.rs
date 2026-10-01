@@ -2,10 +2,11 @@ use bevy::prelude::*;
 
 use crate::agent::components::{Agent, AgentHud, HealthState};
 use crate::agent::{DisplayName, Health, HudBar, Mana};
-use crate::map::Position;
+use crate::map::{Position, ViewportCenter, viewport::in_viewport};
 use crate::player::components::Player;
 
 pub fn update_hud_visibility(
+    center: Res<ViewportCenter>,
     player_pos_q: Query<&Position, With<Player>>,
     agents_q: Query<(&AgentHud, &Position), With<Agent>>,
     mut visibility_q: Query<&mut Visibility>,
@@ -14,7 +15,8 @@ pub fn update_hud_visibility(
         return;
     };
     for (hud, position) in &agents_q {
-        let wanted = if position.z == player_pos.z {
+        let in_window = center.0.as_ref().is_none_or(|c| in_viewport(c, position));
+        let wanted = if position.z == player_pos.z && in_window {
             Visibility::Visible
         } else {
             Visibility::Hidden
@@ -101,6 +103,7 @@ mod tests {
     use bevy::ecs::system::RunSystemOnce;
 
     use crate::agent::AgentId;
+    use crate::map::ViewportCenter;
 
     /// Change detection needs the system's `last_run` to survive between runs, and a
     /// `RunSystemOnce` initialises a fresh system every call — under which `Changed<T>`
@@ -190,16 +193,22 @@ mod tests {
         );
     }
 
+    fn a_world_with_a_player_at_100_100_7(center: Option<Position>) -> World {
+        let mut world = World::new();
+        world.insert_resource(ViewportCenter(center));
+        world.spawn((
+            Player {
+                agent_id: AgentId(1),
+            },
+            Position::new(100, 100, 7),
+        ));
+        world
+    }
+
     #[test]
     fn a_hud_shows_only_on_the_players_floor() {
         for (floor, expected) in [(7, Visibility::Visible), (6, Visibility::Hidden)] {
-            let mut world = World::new();
-            world.spawn((
-                Player {
-                    agent_id: AgentId(1),
-                },
-                Position::new(100, 100, 7),
-            ));
+            let mut world = a_world_with_a_player_at_100_100_7(None);
             let (agent, hud) = a_hud_agent(&mut world);
             world
                 .entity_mut(agent)
@@ -213,5 +222,21 @@ mod tests {
                 "floor {floor}"
             );
         }
+    }
+
+    #[test]
+    fn a_hud_hides_with_an_agent_outside_the_viewport() {
+        let mut world = a_world_with_a_player_at_100_100_7(Some(Position::new(100, 100, 7)));
+        let (agent, hud) = a_hud_agent(&mut world);
+        world
+            .entity_mut(agent)
+            .insert((Agent::default(), Position::new(110, 100, 7)));
+
+        world.run_system_once(update_hud_visibility).unwrap();
+
+        assert_eq!(
+            *world.get::<Visibility>(hud.root).unwrap(),
+            Visibility::Hidden
+        );
     }
 }

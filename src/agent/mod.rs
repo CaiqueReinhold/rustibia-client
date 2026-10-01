@@ -1,3 +1,4 @@
+use bevy::camera::visibility::VisibilitySystems;
 use bevy::prelude::*;
 use bevy::sprite_render::Material2dPlugin;
 
@@ -11,6 +12,7 @@ mod instancing;
 mod material;
 pub mod movement;
 mod session;
+mod viewport;
 mod world_hud;
 
 pub use crate::agent::components::*;
@@ -85,7 +87,12 @@ impl Plugin for AgentPlugin {
             )
             .add_systems(
                 PostUpdate,
-                hud::update_hud_visibility.run_if(in_state(GameState::InGame)),
+                (
+                    viewport::hide_agents_outside_viewport,
+                    hud::update_hud_visibility,
+                )
+                    .before(VisibilitySystems::VisibilityPropagate)
+                    .run_if(in_state(GameState::InGame)),
             )
             .add_systems(
                 OnExit(GameState::InGame),

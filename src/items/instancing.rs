@@ -72,7 +72,9 @@ pub fn process_tile_changed(
             commands.entity(entity).despawn();
         }
 
-        if let Some(items) = map.get_items(&position) {
+        if let Some(mut items) = map.get_items(&position).map(Iterator::peekable)
+            && items.peek().is_some()
+        {
             let world_pos = position.to_world();
             // The parent contributes nothing to z: a tile's ground, its corpse
             // and its wall sit in three different ranks, so no tile-wide base
