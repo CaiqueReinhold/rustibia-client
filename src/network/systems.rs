@@ -4,6 +4,7 @@ use asynchronous_codec::Framed;
 use bevy::log::info;
 use bevy::{prelude::*, tasks::IoTaskPool};
 use futures::{FutureExt, SinkExt, StreamExt};
+use futures_rustls::client::TlsStream;
 use std::io;
 use std::time::{Duration, Instant};
 
@@ -13,6 +14,7 @@ use crate::{
     network::{
         events,
         messages::{ClientMessage, GameMessageCodec, ServerMessage},
+        tls,
     },
 };
 
@@ -74,13 +76,23 @@ pub(super) fn on_connect(event: On<Connect>, mut commands: Commands, ping: Res<P
 
     IoTaskPool::get()
         .spawn(async move {
-            let conn =
-                PersistentConnection::new(&config::CONFIG.server_address, srv_send, cli_recv, ping)
-                    .await;
-            if let Ok(conn) = conn {
-                return conn.run().await;
+            match PersistentConnection::new(
+                &config::CONFIG.server_address,
+                srv_send,
+                cli_recv,
+                ping,
+            )
+            .await
+            {
+                Ok(conn) => conn.run().await,
+                Err(e) => {
+                    error!(
+                        "could not connect to {}: {e}",
+                        config::CONFIG.server_address
+                    );
+                    Err(e)
+                }
             }
-            Err(conn.err().unwrap())
         })
         .detach();
 
@@ -200,7 +212,7 @@ pub(super) fn tick_logout_timeout(
 }
 
 pub struct PersistentConnection {
-    stream: Framed<TcpStream, GameMessageCodec>,
+    stream: Framed<TlsStream<TcpStream>, GameMessageCodec>,
     sender: Sender<ServerMessage>,
     receiver: Receiver<ClientMessage>,
     ping: PingState,
@@ -213,6 +225,9 @@ impl PersistentConnection {
         receiver: Receiver<ClientMessage>,
         ping: PingState,
     ) -> Result<Self, io::Error> {
+        let name = tls::server_name(server_addr).map_err(io::Error::other)?;
+        let connector =
+            tls::connector(config::CONFIG.extra_ca.as_deref()).map_err(io::Error::other)?;
         let stream = TcpStream::connect(server_addr).await?;
         // Movement frames are a few bytes each. Nagle would hold them until the
         // previous segment is acknowledged, adding up to a round trip of variable
@@ -220,6 +235,7 @@ impl PersistentConnection {
         if let Err(e) = stream.set_nodelay(true) {
             warn!("could not disable Nagle: {e}");
         }
+        let stream = connector.connect(name, stream).await?;
         let stream = Framed::new(stream, GameMessageCodec {});
         Ok(Self {
             stream,

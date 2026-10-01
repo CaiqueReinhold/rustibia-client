@@ -10,6 +10,7 @@ pub mod login;
 mod messages;
 mod session;
 mod systems;
+mod tls;
 
 pub use messages::{ClientMessage, ItemStack, ServerMessage};
 pub use systems::{LoginCredentials, LogoutRequested, RequestLogout, SendMessage};

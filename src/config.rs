@@ -12,6 +12,7 @@ pub static CONFIG: LazyLock<ClientConfig> = LazyLock::new(read_from_file);
 pub struct ClientConfig {
     pub server_address: String,
     pub site_url: String,
+    pub extra_ca: Option<String>,
 }
 
 impl Default for ClientConfig {
@@ -19,6 +20,7 @@ impl Default for ClientConfig {
         ClientConfig {
             server_address: "rustibia.online:5555".to_string(),
             site_url: "https://rustibia.online".to_string(),
+            extra_ca: None,
         }
     }
 }
@@ -171,6 +173,15 @@ site_url: "https://play.example.com"
             ClientConfig::default().server_address
         );
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_extra_ca_is_read_when_given() {
+        let config: ClientConfig =
+            serde_yaml::from_str("extra_ca: \"certs/ca.crt\"").expect("extra_ca must parse");
+
+        assert_eq!(config.extra_ca.as_deref(), Some("certs/ca.crt"));
+        assert_eq!(ClientConfig::default().extra_ca, None);
     }
 
     #[test]

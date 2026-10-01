@@ -44,10 +44,19 @@ pub struct CharacterSummary {
     pub vocation: String,
 }
 
-#[derive(Resource, Debug)]
+#[derive(Resource)]
 pub struct CharacterList {
     pub characters: Vec<CharacterSummary>,
     pub session_token: String,
+}
+
+/// Leaves out `session_token`: this is logged.
+impl std::fmt::Debug for CharacterList {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CharacterList")
+            .field("characters", &self.characters)
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Resource, Debug)]
@@ -110,7 +119,6 @@ fn auth_and_get_characters(email: String, password: String) -> Result<CharacterL
     let client = Client::new();
     info!("auth_and_get_characters");
     let session_token = get_session_token(email, password, &client)?;
-    info!("Session token: {}", session_token);
     let characters = get_character_list(session_token, &client)?;
     info!("characters: {:?}", characters);
     Ok(characters)
@@ -222,4 +230,19 @@ pub(super) fn pool_generate_game_token(
     }
 
     commands.remove_resource::<GameTokenTask>();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_character_list_never_prints_its_session_token() {
+        let list = CharacterList {
+            characters: Vec::new(),
+            session_token: "secret-session".to_string(),
+        };
+
+        assert!(!format!("{list:?}").contains("secret-session"));
+    }
 }

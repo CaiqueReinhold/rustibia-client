@@ -9,3 +9,7 @@ server_address: "127.0.0.1:5555"
 
 # The site's public origin. Login and the character list hang off it.
 site_url: "http://127.0.0.1:8080"
+
+# A PEM certificate to trust for the game connection, on top of the system's own.
+# Only a development server needs it: point it at that server's certs/ca.crt.
+# extra_ca: "../rustibia-server/certs/ca.crt"
