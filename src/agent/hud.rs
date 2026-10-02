@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use crate::agent::components::{Agent, AgentHud, HealthState};
 use crate::agent::{DisplayName, Health, HudBar, Mana};
-use crate::map::{Position, ViewportCenter, viewport::in_viewport};
+use crate::map::{Position, ViewportCenter, viewport::is_kept};
 use crate::player::components::Player;
 
 pub fn update_hud_visibility(
@@ -15,7 +15,10 @@ pub fn update_hud_visibility(
         return;
     };
     for (hud, position) in &agents_q {
-        let in_window = center.0.as_ref().is_none_or(|c| in_viewport(c, position));
+        let in_window = center
+            .0
+            .as_ref()
+            .is_none_or(|c| is_kept(c, Some(player_pos), position));
         let wanted = if position.z == player_pos.z && in_window {
             Visibility::Visible
         } else {
@@ -237,6 +240,22 @@ mod tests {
         assert_eq!(
             *world.get::<Visibility>(hud.root).unwrap(),
             Visibility::Hidden
+        );
+    }
+
+    #[test]
+    fn a_hud_stays_on_screen_while_the_players_floor_change_is_deferred() {
+        let mut world = a_world_with_a_player_at_100_100_7(Some(Position::new(100, 100, 8)));
+        let (agent, hud) = a_hud_agent(&mut world);
+        world
+            .entity_mut(agent)
+            .insert((Agent::default(), Position::new(101, 100, 7)));
+
+        world.run_system_once(update_hud_visibility).unwrap();
+
+        assert_eq!(
+            *world.get::<Visibility>(hud.root).unwrap(),
+            Visibility::Visible
         );
     }
 }

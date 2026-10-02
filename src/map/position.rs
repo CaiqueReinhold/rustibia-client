@@ -20,6 +20,25 @@ impl Display for Position {
 }
 
 impl Position {
+    pub fn direction_to(&self, to: &Position) -> Option<WalkingDirection> {
+        if self.z != to.z {
+            return None;
+        }
+        let dx = i32::from(to.x) - i32::from(self.x);
+        let dy = i32::from(to.y) - i32::from(self.y);
+        Some(match (dx, dy) {
+            (0, -1) => WalkingDirection::North,
+            (1, 0) => WalkingDirection::East,
+            (0, 1) => WalkingDirection::South,
+            (-1, 0) => WalkingDirection::West,
+            (1, -1) => WalkingDirection::NorthEast,
+            (-1, -1) => WalkingDirection::NorthWest,
+            (1, 1) => WalkingDirection::SouthEast,
+            (-1, 1) => WalkingDirection::SouthWest,
+            _ => return None,
+        })
+    }
+
     pub fn new(x: u16, y: u16, z: u8) -> Self {
         Position { x, y, z }
     }
@@ -90,5 +109,45 @@ impl Sub<WalkingDirection> for Position {
             WalkingDirection::NorthWest => self.delta(1, 1),
             WalkingDirection::SouthWest => self.delta(1, -1),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_neighbour_is_one_step_away_and_anything_else_is_not() {
+        let here = Position {
+            x: 100,
+            y: 100,
+            z: 7,
+        };
+
+        assert_eq!(
+            here.direction_to(&Position {
+                x: 101,
+                y: 99,
+                z: 7
+            }),
+            Some(WalkingDirection::NorthEast)
+        );
+        assert_eq!(
+            here.direction_to(&Position {
+                x: 102,
+                y: 100,
+                z: 7
+            }),
+            None
+        );
+        assert_eq!(
+            here.direction_to(&Position {
+                x: 100,
+                y: 101,
+                z: 6
+            }),
+            None
+        );
+        assert_eq!(here.direction_to(&here), None);
     }
 }

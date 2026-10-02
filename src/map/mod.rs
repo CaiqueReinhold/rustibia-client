@@ -51,8 +51,7 @@ impl Plugin for MapPlugin {
             )
             .add_systems(
                 Update,
-                viewport::evict_outside_viewport
-                    .run_if(in_state(GameState::InGame).and(resource_changed::<ViewportCenter>)),
+                viewport::evict_outside_viewport.run_if(in_state(GameState::InGame)),
             )
             .add_systems(PostUpdate, floors::update_floors_visibility)
             // Before propagation, so the frame's spawns and steps reach the

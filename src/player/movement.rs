@@ -145,14 +145,47 @@ pub fn on_ack_walk(
     config: Res<ItemConfigs>,
     mut minimap: ResMut<MinimapData>,
     mut center: ResMut<ViewportCenter>,
+    player: Single<(Entity, &Position, &Agent), With<Player>>,
 ) {
-    if move_queue.predicted_pos.as_ref() != Some(&event.position) {
-        move_queue.moves.clear();
-        commands.trigger(SendMessage(ClientMessage::GetPlayerPosition));
-    }
-    let Some(direction) = move_queue.pending_walk_ack else {
-        return;
+    let (entity, position, agent) = *player;
+    let pending = move_queue
+        .pending_walk_ack
+        .take()
+        .zip(move_queue.predicted_pos.take());
+
+    let direction = match pending {
+        Some((direction, predicted)) if predicted == event.position => direction,
+        pending => {
+            move_queue.moves.clear();
+            let confirmed = match pending {
+                Some((direction, predicted)) => predicted - direction,
+                None => position.clone(),
+            };
+            let Some(direction) = confirmed.direction_to(&event.position) else {
+                commands.trigger(SendMessage(ClientMessage::GetPlayerPosition));
+                return;
+            };
+            let step = map
+                .get_tile_friction(&event.position)
+                .map(|friction| {
+                    Duration::from_millis(
+                        agent.get_step_duration(friction, direction.is_diagonal()) as u64,
+                    )
+                })
+                .unwrap_or(Duration::from_millis(1));
+            commands.entity(entity).insert((
+                Moving {
+                    start: confirmed,
+                    end: event.position.clone(),
+                    timer: Timer::new(step, TimerMode::Once),
+                },
+                event.position.clone(),
+            ));
+            move_queue.walk_cooldown = Timer::new(step, TimerMode::Once);
+            direction
+        }
     };
+
     map::events::on_player_walk_ack(
         &mut commands,
         &mut tile_queue,
@@ -164,8 +197,6 @@ pub fn on_ack_walk(
         &event.tiles,
     );
     center.set_if_neq(ViewportCenter(Some(event.position.clone())));
-    move_queue.pending_walk_ack = None;
-    move_queue.predicted_pos = None;
 }
 
 pub fn on_walk_denied(
@@ -450,6 +481,89 @@ mod tests {
         world
     }
 
+    #[derive(Resource, Default)]
+    struct AskedForPosition(bool);
+
+    /// A player at (1027, 1028) with nothing pending, ready to receive acks.
+    fn a_world_receiving_acks() -> (World, Entity) {
+        let (mut world, entity) = a_world_ready_to_walk();
+        world.insert_resource(ItemConfigs {
+            items: std::collections::HashMap::new(),
+        });
+        world.init_resource::<ChangedTileQueue>();
+        world.init_resource::<MinimapData>();
+        world.init_resource::<AskedForPosition>();
+        world.insert_resource(ViewportCenter(Some(at(1027, 1028))));
+        world.add_observer(on_ack_walk);
+        world.add_observer(
+            |message: On<SendMessage>, mut asked: ResMut<AskedForPosition>| {
+                if matches!(message.0, ClientMessage::GetPlayerPosition) {
+                    asked.0 = true;
+                }
+            },
+        );
+        (world, entity)
+    }
+
+    #[test]
+    fn an_unpredicted_step_is_walked_and_recentres_the_view() {
+        let (mut world, entity) = a_world_receiving_acks();
+
+        world.trigger(PlayerWalk {
+            position: at(1027, 1029),
+            tiles: Vec::new(),
+        });
+        world.flush();
+
+        let moving = world.get::<Moving>(entity).expect("the step is animated");
+        assert_eq!(
+            (moving.start.clone(), moving.end.clone()),
+            (at(1027, 1028), at(1027, 1029))
+        );
+        assert_eq!(world.resource::<ViewportCenter>().0, Some(at(1027, 1029)));
+        assert!(!world.resource::<AskedForPosition>().0);
+    }
+
+    #[test]
+    fn an_unpredicted_jump_asks_the_server_where_the_player_is() {
+        let (mut world, entity) = a_world_receiving_acks();
+
+        world.trigger(PlayerWalk {
+            position: at(1027, 1031),
+            tiles: Vec::new(),
+        });
+        world.flush();
+
+        assert!(world.get::<Moving>(entity).is_none());
+        assert!(world.resource::<AskedForPosition>().0);
+    }
+
+    #[test]
+    fn a_push_during_a_predicted_walk_starts_from_the_confirmed_tile() {
+        let (mut world, entity) = a_world_receiving_acks();
+        world.entity_mut(entity).insert(at(1027, 1029));
+        {
+            let mut queue = world.resource_mut::<MovementQueue>();
+            queue.pending_walk_ack = Some(WalkingDirection::South);
+            queue.predicted_pos = Some(at(1027, 1029));
+        }
+
+        world.trigger(PlayerWalk {
+            position: at(1027, 1027),
+            tiles: Vec::new(),
+        });
+        world.flush();
+
+        let moving = world.get::<Moving>(entity).expect("the push is animated");
+        assert_eq!(
+            (moving.start.clone(), moving.end.clone()),
+            (at(1027, 1028), at(1027, 1027))
+        );
+        let queue = world.resource::<MovementQueue>();
+        assert!(queue.pending_walk_ack.is_none());
+        assert!(queue.predicted_pos.is_none());
+    }
+
     #[test]
     fn a_walk_ack_moves_the_viewport_center_to_the_servers_position() {
         let mut world = a_world_awaiting_a_walk_ack();
@@ -458,6 +572,7 @@ mod tests {
             position: at(1027, 1029),
             tiles: Vec::new(),
         });
+        world.flush();
 
         assert_eq!(world.resource::<ViewportCenter>().0, Some(at(1027, 1029)));
     }

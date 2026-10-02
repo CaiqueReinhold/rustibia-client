@@ -8,6 +8,7 @@ use crate::conf::map::{
 };
 use crate::items::ChangedTileQueue;
 use crate::map::{Map, Position};
+use crate::player::components::Player;
 
 /// Inclusive on both ends. Says nothing about `z`; callers pair it with a floor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,6 +54,13 @@ pub fn in_viewport(center: &Position, pos: &Position) -> bool {
     visible_floors(center.z).contains(&pos.z) && floor_viewport_rect(center, pos.z).contains(pos)
 }
 
+/// Whether the client still needs `pos`: inside the server's window, or inside the one around
+/// `player`'s committed position, which is what is on screen until a step and any teleport
+/// deferred behind it have landed.
+pub fn is_kept(center: &Position, player: Option<&Position>, pos: &Position) -> bool {
+    in_viewport(center, pos) || player.is_some_and(|player| in_viewport(player, pos))
+}
+
 /// The center of the last viewport the server described. Written only by
 /// `on_describe_map` and `on_ack_walk`; the player's predicted position never moves it.
 #[derive(Resource, Debug, Default, PartialEq)]
@@ -60,13 +68,21 @@ pub struct ViewportCenter(pub Option<Position>);
 
 pub fn evict_outside_viewport(
     center: Res<ViewportCenter>,
+    player: Query<Ref<Position>, With<Player>>,
     mut map: ResMut<Map>,
     mut queue: ResMut<ChangedTileQueue>,
 ) {
+    let player = player.single().ok();
+    if !center.is_changed() && !player.as_ref().is_some_and(|p| p.is_changed()) {
+        return;
+    }
     let Some(center) = &center.0 else {
         return;
     };
-    queue.changed_positions.extend(map.evict_outside(center));
+    let player = player.as_deref();
+    queue
+        .changed_positions
+        .extend(map.evict_unless(|pos| is_kept(center, player, pos)));
 }
 
 #[cfg(test)]
@@ -211,5 +227,60 @@ mod tests {
                 .is_empty()
         );
         assert!(world.resource::<Map>().get_items(&far).is_some());
+    }
+
+    fn a_player_standing_at(world: &mut World, position: Position) {
+        world.spawn((
+            crate::player::components::Player {
+                agent_id: crate::agent::AgentId(1),
+            },
+            position,
+        ));
+    }
+
+    /// A hole from 7 to 8: the description of floor 8 arrives while the step onto the hole is still
+    /// sliding, and the teleport waits for it to finish.
+    #[test]
+    fn the_floor_still_on_screen_survives_a_description_of_the_floor_below() {
+        let on_screen = Position::new(100, 100, 7);
+        let mut world = a_world_with_tiles(
+            std::slice::from_ref(&on_screen),
+            Some(Position::new(100, 100, 8)),
+        );
+        a_player_standing_at(&mut world, on_screen.clone());
+
+        world.run_system_once(evict_outside_viewport).unwrap();
+
+        assert!(world.resource::<Map>().get_items(&on_screen).is_some());
+    }
+
+    /// Stairs from 8 to 9: floor 8's window around the destination slides a tile down-right, so
+    /// the player's own top row falls outside it.
+    #[test]
+    fn the_top_row_on_screen_survives_a_description_one_floor_down() {
+        let top_row = Position::new(100, 94, 8);
+        let mut world = a_world_with_tiles(
+            std::slice::from_ref(&top_row),
+            Some(Position::new(100, 100, 9)),
+        );
+        a_player_standing_at(&mut world, Position::new(100, 100, 8));
+
+        world.run_system_once(evict_outside_viewport).unwrap();
+
+        assert!(world.resource::<Map>().get_items(&top_row).is_some());
+    }
+
+    #[test]
+    fn once_the_player_lands_the_floor_it_left_is_evicted() {
+        let left_behind = Position::new(100, 100, 7);
+        let mut world = a_world_with_tiles(
+            std::slice::from_ref(&left_behind),
+            Some(Position::new(100, 100, 8)),
+        );
+        a_player_standing_at(&mut world, Position::new(100, 100, 8));
+
+        world.run_system_once(evict_outside_viewport).unwrap();
+
+        assert!(world.resource::<Map>().get_items(&left_behind).is_none());
     }
 }

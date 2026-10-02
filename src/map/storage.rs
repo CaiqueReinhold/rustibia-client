@@ -7,7 +7,6 @@ use smallvec::SmallVec;
 use crate::agent::AgentId;
 use crate::items::{Item, ItemFlag};
 use crate::map::position::Position;
-use crate::map::viewport::in_viewport;
 
 #[derive(Debug, Default)]
 pub struct MapTile {
@@ -47,12 +46,12 @@ impl Map {
         tile.items = items;
     }
 
-    /// Strips every tile outside the viewport around `center`, keeping the entry of one an agent
-    /// stands on. Returns the positions that lost items.
-    pub fn evict_outside(&mut self, center: &Position) -> Vec<Position> {
+    /// Strips every tile `keep` rejects, keeping the entry of one an agent stands on. Returns the
+    /// positions that lost items.
+    pub fn evict_unless(&mut self, keep: impl Fn(&Position) -> bool) -> Vec<Position> {
         let mut evicted = Vec::new();
         self.tiles.retain(|pos, tile| {
-            if in_viewport(center, pos) {
+            if keep(pos) {
                 return true;
             }
             if !tile.items.is_empty() {
@@ -231,6 +230,7 @@ impl Map {
 mod tests {
     use super::*;
     use crate::items::{ItemConfig, ItemFlag, ItemId};
+    use crate::map::viewport::in_viewport;
 
     fn item(id: ItemId, flags: Vec<ItemFlag>, friction: Option<u16>) -> Arc<Item> {
         Arc::new(Item::new(
@@ -346,7 +346,7 @@ mod tests {
         map.replace_tile(vec![ground()], &at(100, 100));
         map.replace_tile(vec![ground()], &at(110, 100));
 
-        let evicted = map.evict_outside(&at(100, 100));
+        let evicted = map.evict_unless(|pos| in_viewport(&at(100, 100), pos));
 
         assert_eq!(evicted, vec![at(110, 100)]);
         assert!(map.get_items(&at(110, 100)).is_none());
@@ -359,7 +359,7 @@ mod tests {
         let surface = Position::new(100, 100, 7);
         map.replace_tile(vec![ground()], &surface);
 
-        let evicted = map.evict_outside(&Position::new(100, 100, 8));
+        let evicted = map.evict_unless(|pos| in_viewport(&Position::new(100, 100, 8), pos));
 
         assert_eq!(evicted, vec![surface.clone()]);
         assert!(map.get_items(&surface).is_none());
@@ -371,7 +371,7 @@ mod tests {
         map.replace_tile(vec![ground()], &at(110, 100));
         map.index_agent(AgentId(5), &at(110, 100));
 
-        let evicted = map.evict_outside(&at(100, 100));
+        let evicted = map.evict_unless(|pos| in_viewport(&at(100, 100), pos));
 
         assert_eq!(evicted, vec![at(110, 100)]);
         assert_eq!(map.get_items(&at(110, 100)).unwrap().count(), 0);
@@ -383,7 +383,10 @@ mod tests {
         let mut map = Map::default();
         map.index_agent(AgentId(5), &at(110, 100));
 
-        assert!(map.evict_outside(&at(100, 100)).is_empty());
+        assert!(
+            map.evict_unless(|pos| in_viewport(&at(100, 100), pos))
+                .is_empty()
+        );
         assert_eq!(map.agents_on(&at(110, 100)), &[AgentId(5)]);
     }
 }
