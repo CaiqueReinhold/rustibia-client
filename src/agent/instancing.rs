@@ -7,7 +7,7 @@ use bevy::prelude::*;
 use bevy::render::storage::ShaderStorageBuffer;
 
 use crate::agent::components::{Agent, AgentAnimConfigs, Hovered};
-use crate::agent::world_hud::spawn_world_hud;
+use crate::agent::world_hud::{spawn_world_hud, world_hud_anchor};
 use crate::agent::{AgentId, FacingDirection, Health, Mana};
 use crate::conf::hover::{PULSE_AMPLITUDE, PULSE_BASE, PULSE_PERIOD_SECS};
 use crate::core::OutfitColors;
@@ -174,8 +174,6 @@ pub fn spawn_agent(
         commands.entity(entity).insert(mana.clone());
     }
 
-    let world_y_offset =
-        outfit.still_sprite.boxes[0].max.y / 2.0 + outfit.still_sprite.shift.y + 5.0;
     let hud = spawn_world_hud(
         commands,
         entity,
@@ -183,7 +181,7 @@ pub fn spawn_agent(
         &name,
         health.as_ref(),
         mana.as_ref(),
-        world_y_offset,
+        world_hud_anchor(outfit.still_sprite.shift),
     );
     commands.entity(entity).insert(hud);
 

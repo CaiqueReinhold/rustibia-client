@@ -944,6 +944,7 @@ mod tests {
         world.init_resource::<Time>();
         world.insert_resource(GameUiAssets {
             font: Handle::default(),
+            name_font: Handle::default(),
             window: Default::default(),
             inventory: Default::default(),
             background_dark: Handle::default(),

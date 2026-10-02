@@ -45,7 +45,7 @@ pub fn on_spawn_agent(
         &mut meshes,
         &mut buffers,
         &mut instances,
-        &ui_assets.font,
+        &ui_assets.name_font,
         &appearances,
         event.outfit.0,
         &map,

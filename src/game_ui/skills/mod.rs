@@ -74,6 +74,7 @@ mod tests {
         let mut world = World::new();
         world.insert_resource(GameUiAssets {
             font: Handle::default(),
+            name_font: Handle::default(),
             window: UiWindowAssets::default(),
             inventory: UiInventory::default(),
             background_dark: Handle::default(),

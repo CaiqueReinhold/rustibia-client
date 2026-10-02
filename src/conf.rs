@@ -58,8 +58,10 @@ pub mod agent {
     pub const SPEED_PARAM_B: f32 = 261.29;
     pub const SPEED_PARAM_C: f32 = -4795.009;
     pub const DIAGONAL_STEP_FACTOR: u32 = 3;
-    pub const HUD_BAR_WIDTH: f32 = 30.0;
+    pub const HUD_BAR_WIDTH: f32 = 31.0;
     pub const HUD_BAR_HEIGHT: f32 = 4.0;
+    pub const HUD_BAR_GAP: f32 = 1.0;
+    pub const HUD_TILE_CLEARANCE: f32 = 4.0;
 }
 
 pub mod viewport {

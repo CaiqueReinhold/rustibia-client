@@ -4,7 +4,8 @@ use bevy::text::{FontSmoothing, LineHeight};
 use bevy_text_outline::TextOutline;
 
 use crate::agent::{AgentHud, DisplayName, Health, HealthState, HudBar, Mana, WorldHud};
-use crate::conf::agent::{HUD_BAR_HEIGHT, HUD_BAR_WIDTH};
+use crate::conf::agent::{HUD_BAR_GAP, HUD_BAR_HEIGHT, HUD_BAR_WIDTH, HUD_TILE_CLEARANCE};
+use crate::conf::map::TILE_SIZE;
 use crate::conf::ui::ui_colors;
 use crate::overlay::{HudScaled, on_overlay_layer};
 
@@ -12,6 +13,10 @@ pub const NAME_FONT_SIZE: f32 = 11.0;
 pub const NAME_LINE_HEIGHT: f32 = 13.0;
 const NAME_TO_BARS_GAP: f32 = 2.0;
 const BAR_BORDER: f32 = 1.0;
+
+pub fn world_hud_anchor(shift: Vec2) -> Vec2 {
+    Vec2::new(TILE_SIZE / 2.0 - shift.x, shift.y + HUD_TILE_CLEARANCE)
+}
 
 /// Offsets from the HUD root, in logical pixels, y up.
 #[derive(Debug, PartialEq)]
@@ -22,25 +27,16 @@ pub struct WorldHudLayout {
 }
 
 pub fn world_hud_layout(has_health: bool, has_mana: bool) -> WorldHudLayout {
-    let bars = has_health as u8 + has_mana as u8;
-    let bars_height = if bars == 0 {
-        0.0
-    } else {
-        NAME_TO_BARS_GAP + bars as f32 * HUD_BAR_HEIGHT
-    };
-    let top = (NAME_LINE_HEIGHT + bars_height) / 2.0;
-    let name_bottom = top - NAME_LINE_HEIGHT;
-
-    let mut next_bar = name_bottom - NAME_TO_BARS_GAP - HUD_BAR_HEIGHT / 2.0;
+    let mut next_bar = -HUD_BAR_HEIGHT / 2.0;
     let mut place = |present: bool| {
         present.then(|| {
             let y = next_bar;
-            next_bar -= HUD_BAR_HEIGHT;
+            next_bar -= HUD_BAR_HEIGHT + HUD_BAR_GAP;
             y
         })
     };
     WorldHudLayout {
-        name_bottom,
+        name_bottom: NAME_TO_BARS_GAP,
         health_bar: place(has_health),
         mana_bar: place(has_mana),
     }
@@ -60,14 +56,14 @@ pub fn spawn_world_hud(
     name: &str,
     health: Option<&Health>,
     mana: Option<&Mana>,
-    world_y_offset: f32,
+    anchor: Vec2,
 ) -> AgentHud {
     let layout = world_hud_layout(health.is_some(), mana.is_some());
     let root = commands
         .spawn((
             WorldHud,
             HudScaled,
-            Transform::from_xyz(0.0, world_y_offset, 0.0),
+            Transform::from_translation(anchor.extend(0.0)),
             Visibility::Hidden,
             on_overlay_layer(),
             ChildOf(agent),
@@ -85,7 +81,7 @@ pub fn spawn_world_hud(
                 font_size: NAME_FONT_SIZE,
                 ..default()
             }
-            .with_font_smoothing(FontSmoothing::AntiAliased),
+            .with_font_smoothing(FontSmoothing::None),
             LineHeight::Px(NAME_LINE_HEIGHT),
             TextColor(state.color()),
             TextOutline::default(),
@@ -169,22 +165,19 @@ mod tests {
 
     use crate::camera::HUD_RENDER_LAYER;
 
-    fn column_centre(layout: &WorldHudLayout) -> f32 {
-        let top = layout.name_bottom + NAME_LINE_HEIGHT;
-        let lowest_bar = layout.mana_bar.or(layout.health_bar);
-        let bottom = lowest_bar.map_or(layout.name_bottom, |y| y - HUD_BAR_HEIGHT / 2.0);
-        (top + bottom) / 2.0
+    #[test]
+    fn the_health_bars_top_edge_is_the_root() {
+        for has_mana in [false, true] {
+            let layout = world_hud_layout(true, has_mana);
+            assert_eq!(layout.health_bar.unwrap() + HUD_BAR_HEIGHT / 2.0, 0.0);
+        }
     }
 
     #[test]
-    fn a_one_bar_and_a_two_bar_column_centre_on_the_root() {
-        assert_eq!(column_centre(&world_hud_layout(true, false)), 0.0);
-        assert_eq!(column_centre(&world_hud_layout(true, true)), 0.0);
-    }
-
-    #[test]
-    fn a_name_without_bars_centres_on_the_root() {
-        assert_eq!(column_centre(&world_hud_layout(false, false)), 0.0);
+    fn the_name_stays_put_whatever_bars_there_are() {
+        let with_both = world_hud_layout(true, true).name_bottom;
+        assert_eq!(world_hud_layout(true, false).name_bottom, with_both);
+        assert_eq!(world_hud_layout(false, false).name_bottom, with_both);
     }
 
     #[test]
@@ -195,11 +188,11 @@ mod tests {
     }
 
     #[test]
-    fn the_mana_bar_sits_directly_under_the_health_bar() {
+    fn the_mana_bar_sits_the_bar_gap_under_the_health_bar() {
         let layout = world_hud_layout(true, true);
         assert_eq!(
             layout.health_bar.unwrap() - layout.mana_bar.unwrap(),
-            HUD_BAR_HEIGHT
+            HUD_BAR_HEIGHT + HUD_BAR_GAP
         );
     }
 
@@ -210,6 +203,16 @@ mod tests {
         assert_eq!(full, Vec2::new(HUD_BAR_WIDTH - 2.0, HUD_BAR_HEIGHT - 2.0));
         assert_eq!(half.x, full.x / 2.0);
         assert_eq!(half.y, full.y);
+    }
+
+    #[test]
+    fn an_undisplaced_outfit_anchors_over_its_tiles_centre() {
+        assert_eq!(world_hud_anchor(Vec2::ZERO), Vec2::new(16.0, 2.0));
+    }
+
+    #[test]
+    fn a_displaced_outfit_moves_its_anchor_up_and_left() {
+        assert_eq!(world_hud_anchor(Vec2::new(8.0, 8.0)), Vec2::new(8.0, 10.0));
     }
 
     #[test]
@@ -268,7 +271,7 @@ mod tests {
                 max: 10,
             }),
             Some(&Mana { current: 1, max: 2 }),
-            30.0,
+            world_hud_anchor(Vec2::ZERO),
         );
         world.flush();
 

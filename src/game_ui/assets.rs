@@ -23,6 +23,7 @@ pub struct UiInventory {
 #[derive(Resource)]
 pub struct GameUiAssets {
     pub font: Handle<Font>,
+    pub name_font: Handle<Font>,
     pub window: UiWindow,
     pub inventory: UiInventory,
     pub background_dark: Handle<Image>,
@@ -52,6 +53,7 @@ pub fn setup_game_ui_assets(mut commands: Commands, asset_server: Res<AssetServe
 
     commands.insert_resource(GameUiAssets {
         font: asset_server.load("fonts/VerdanaBd.ttf"),
+        name_font: asset_server.load("fonts/Verdana.ttf"),
         window,
         inventory,
         background_dark: asset_server.load("ui/background_dark.png"),
