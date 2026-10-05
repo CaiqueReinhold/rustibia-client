@@ -2,11 +2,18 @@ use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 
 use super::types::{SkillProgress, SkillType};
-use crate::network::events::{ExperienceChanged, PlayerSkills, SkillChanged};
+use crate::{
+    agent::Agent,
+    network::events::{
+        AgentSpeedUpdated, ExperienceChanged, PlayerSkills, SkillChanged, SpawnPlayer,
+    },
+    player::components::Player,
+};
 
 #[derive(Resource, Default)]
 pub struct SkillsState {
     pub experience: u64,
+    pub speed: u16,
     pub skills: HashMap<SkillType, SkillProgress>,
 }
 
@@ -21,6 +28,20 @@ pub fn on_skill_changed(event: On<SkillChanged>, mut state: ResMut<SkillsState>)
 
 pub fn on_experience_changed(event: On<ExperienceChanged>, mut state: ResMut<SkillsState>) {
     state.experience = event.experience;
+}
+
+pub fn on_player_spawned(event: On<SpawnPlayer>, mut state: ResMut<SkillsState>) {
+    state.speed = event.speed;
+}
+
+pub fn on_speed_changed(
+    event: On<AgentSpeedUpdated>,
+    mut state: ResMut<SkillsState>,
+    player: Single<&Agent, With<Player>>,
+) {
+    if event.agent_id == player.agent_id {
+        state.speed = event.speed;
+    }
 }
 
 #[cfg(test)]

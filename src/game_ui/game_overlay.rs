@@ -1,10 +1,14 @@
 use bevy::prelude::*;
 
 use crate::camera::{GameRenderTexture, HudRenderTexture};
-use crate::conf::ui::ui_colors;
 use crate::conf::ui::z_index::Z_MAIN_UI;
+use crate::conf::ui::{cooldown as cooldown_conf, ui_colors};
 use crate::conf::viewport::{GAME_VIEW_HEIGHT, GAME_VIEW_WIDTH};
+use crate::core::SpellGroup;
 use crate::game_ui::GameUiAssets;
+use crate::game_ui::cooldown::{
+    CooldownAssets, CooldownOverlay, group_icon, spawn_cooldown_overlay,
+};
 use crate::game_ui::scaling::logical_size;
 
 #[derive(Component)]
@@ -57,7 +61,9 @@ pub fn spawn_gameviewport(
     render_texture: &GameRenderTexture,
     hud_texture: &HudRenderTexture,
     ui_assets: &GameUiAssets,
+    cooldown_assets: &CooldownAssets,
 ) -> Entity {
+    let group_cooldowns = spawn_group_cooldowns(commands, cooldown_assets);
     commands
         .spawn((
             GameViewportContainer,
@@ -65,7 +71,8 @@ pub fn spawn_gameviewport(
                 max_width: Val::Percent(100.0),
                 max_height: Val::Percent(100.0),
                 flex_grow: 1.0,
-                min_height: Val::Px(0.0),
+                min_height: Val::Px(300.0),
+                min_width: Val::Px(300.0),
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
                 overflow: Overflow::clip(),
@@ -98,25 +105,65 @@ pub fn spawn_gameviewport(
                     left: ui_colors::DARK_BORDER_COLOR.into(),
                 },
             ))
-            .with_child((
-                GameViewport,
-                Node {
-                    height: Val::Percent(100.0),
-                    width: Val::Percent(100.0),
-                    ..default()
-                },
-                ImageNode::new(render_texture.0.clone()),
-                children![(
-                    Node {
-                        position_type: PositionType::Absolute,
-                        width: Val::Percent(100.0),
-                        height: Val::Percent(100.0),
-                        ..default()
-                    },
-                    ImageNode::new(hud_texture.0.clone()),
-                    Pickable::IGNORE,
-                )],
-            ));
+            .with_children(|border| {
+                border
+                    .spawn((
+                        GameViewport,
+                        Node {
+                            height: Val::Percent(100.0),
+                            width: Val::Percent(100.0),
+                            ..default()
+                        },
+                        ImageNode::new(render_texture.0.clone()),
+                        children![(
+                            Node {
+                                position_type: PositionType::Absolute,
+                                width: Val::Percent(100.0),
+                                height: Val::Percent(100.0),
+                                ..default()
+                            },
+                            ImageNode::new(hud_texture.0.clone()),
+                            Pickable::IGNORE,
+                        )],
+                    ))
+                    .add_child(group_cooldowns);
+            });
         })
         .id()
+}
+
+fn spawn_group_cooldowns(commands: &mut Commands, assets: &CooldownAssets) -> Entity {
+    let row = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(cooldown_conf::GROUP_ROW_INSET),
+                bottom: Val::Px(cooldown_conf::GROUP_ROW_INSET),
+                flex_direction: FlexDirection::Row,
+                column_gap: Val::Px(cooldown_conf::ICON_GAP),
+                ..default()
+            },
+            Pickable::IGNORE,
+        ))
+        .id();
+
+    for group in SpellGroup::ALL {
+        let overlay = spawn_cooldown_overlay(commands, CooldownOverlay::Group(group), None);
+        let icon = commands
+            .spawn((
+                group_icon(assets, group),
+                Node {
+                    width: Val::Px(cooldown_conf::ICON_SIZE),
+                    height: Val::Px(cooldown_conf::ICON_SIZE),
+                    flex_shrink: 0.0,
+                    ..default()
+                },
+                Pickable::IGNORE,
+            ))
+            .add_child(overlay)
+            .id();
+        commands.entity(row).add_child(icon);
+    }
+
+    row
 }

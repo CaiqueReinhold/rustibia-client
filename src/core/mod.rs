@@ -1,5 +1,8 @@
+use std::time::Duration;
+
 use bevy::prelude::*;
 use bevy::sprite_render::Material2dPlugin;
+use bevy::time::common_conditions::on_real_timer;
 
 mod animation;
 mod assets;
@@ -9,6 +12,7 @@ mod instances;
 mod items;
 mod missiles;
 mod session;
+mod sheet_eviction;
 mod spells;
 mod sprite;
 mod status;
@@ -23,6 +27,7 @@ pub use items::ItemConfigs;
 pub use session::{
     ActiveCharacter, EndGameSession, SessionCleanup, SessionEndReason, SessionEnding,
 };
+pub use sheet_eviction::{SheetEvicted, SheetUser};
 pub use spells::{
     CooldownState, SpellBook, SpellCooldowns, SpellGroup, SpellId, SpellInfo, SpellTarget,
 };
@@ -53,6 +58,13 @@ impl Plugin for CorePlugin {
             .init_resource::<status::PlayerStatuses>()
             .add_observer(status::on_player_status_updated)
             .init_resource::<InstanceManager<effects::EffectInstance>>()
+            .init_resource::<sheet_eviction::SheetEviction>()
+            .add_systems(
+                Update,
+                sheet_eviction::sweep_sheets.run_if(
+                    resource_exists::<Appearances>.and(on_real_timer(Duration::from_secs(1))),
+                ),
+            )
             .add_systems(
                 Startup,
                 (assets::start_load_tasks, effects::setup_resources),
@@ -122,6 +134,7 @@ impl Plugin for CorePlugin {
             )
             .add_observer(effects::on_show_effect)
             .add_observer(effects::on_remove_effect)
+            .add_observer(effects::on_sheet_evicted)
             .add_observer(missiles::on_launch_missile)
             .add_observer(missiles::on_remove_missile)
             .configure_sets(OnExit(GameState::InGame), SessionCleanup)

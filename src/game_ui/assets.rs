@@ -20,6 +20,12 @@ pub struct UiInventory {
     pub no_feet: Handle<Image>,
 }
 
+#[derive(Default)]
+pub struct UiButtons {
+    pub logout: Handle<Image>,
+    pub skills: Handle<Image>,
+}
+
 #[derive(Resource)]
 pub struct GameUiAssets {
     pub font: Handle<Font>,
@@ -30,6 +36,7 @@ pub struct GameUiAssets {
     pub background_light: Handle<Image>,
     pub bar_overlay: Handle<Image>,
     pub title_background: Handle<Image>,
+    pub buttons: UiButtons,
 }
 
 pub fn setup_game_ui_assets(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -51,6 +58,11 @@ pub fn setup_game_ui_assets(mut commands: Commands, asset_server: Res<AssetServe
         no_feet: asset_server.load("ui/inventory/no_boots.png"),
     };
 
+    let buttons = UiButtons {
+        logout: asset_server.load("ui/logout.png"),
+        skills: asset_server.load("ui/skills.png"),
+    };
+
     commands.insert_resource(GameUiAssets {
         font: asset_server.load("fonts/VerdanaBd.ttf"),
         name_font: asset_server.load("fonts/Verdana.ttf"),
@@ -60,5 +72,6 @@ pub fn setup_game_ui_assets(mut commands: Commands, asset_server: Res<AssetServe
         background_light: asset_server.load("ui/background_light.png"),
         bar_overlay: asset_server.load("ui/bar_overlay.png"),
         title_background: asset_server.load("ui/title_background.png"),
+        buttons,
     });
 }

@@ -8,7 +8,7 @@ use crate::conf::missiles::FLIGHT_MS_PER_ROOT_TILE;
 use crate::core::effects::{
     EffectInstance, EffectMaterial, EffectMaterials, anchor, init_instance, init_material,
 };
-use crate::core::{Appearances, InstanceManager};
+use crate::core::{Appearances, InstanceManager, SheetUser};
 use crate::map::{DrawLayer, DrawOrder, DrawRank, FloorEntities, Position};
 use crate::network::events::LaunchMissile;
 
@@ -169,6 +169,7 @@ pub fn on_launch_missile(
                 0,
             ),
             Visibility::Inherited,
+            SheetUser(sprite.group.clone()),
         ))
         .id();
     // Parented to the source floor. The wire carries a z on both positions, but

@@ -1,14 +1,9 @@
 use bevy::prelude::*;
 
 use crate::agent::{Health, HealthState, HudBar, Mana};
-use crate::conf::ui::cooldown as cooldown_conf;
 use crate::conf::ui::z_index::Z_MAIN_UI;
 use crate::conf::ui::{TOP_BAR_HEIGHT, UI_BAR_HEIGHT, ui_colors};
-use crate::core::SpellGroup;
 use crate::game_ui::assets::GameUiAssets;
-use crate::game_ui::cooldown::{
-    CooldownAssets, CooldownOverlay, group_icon, spawn_cooldown_overlay,
-};
 use crate::game_ui::status_bar::{StatusAssets, spawn_status_bar};
 use crate::player::components::Player;
 
@@ -26,7 +21,6 @@ pub struct BarEntities {
 pub fn spawn_top_panel(
     commands: &mut Commands,
     ui_assets: &GameUiAssets,
-    cooldown_assets: &CooldownAssets,
     status_assets: &StatusAssets,
 ) -> Entity {
     let top_panel = commands
@@ -61,7 +55,10 @@ pub fn spawn_top_panel(
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
                 flex_direction: FlexDirection::Column,
+                column_gap: Val::Px(3.0),
                 padding: UiRect::all(Val::Px(2.0)),
+                align_content: AlignContent::Center,
+                justify_content: JustifyContent::SpaceBetween,
                 ..default()
             },
             ImageNode {
@@ -99,35 +96,20 @@ pub fn spawn_top_panel(
         // experience,
     });
 
-    let group_row = commands
-        .spawn(Node {
-            flex_direction: FlexDirection::Row,
-            column_gap: Val::Px(cooldown_conf::ICON_GAP),
-            margin: UiRect::top(Val::Px(cooldown_conf::ICON_GAP)),
-            ..default()
-        })
-        .id();
-    commands.entity(panel_inner).add_child(group_row);
-
-    for group in SpellGroup::ALL {
-        let overlay = spawn_cooldown_overlay(commands, CooldownOverlay::Group(group), None);
-        let icon = commands
-            .spawn((
-                group_icon(cooldown_assets, group),
-                Node {
-                    width: Val::Px(cooldown_conf::ICON_SIZE),
-                    height: Val::Px(cooldown_conf::ICON_SIZE),
-                    flex_shrink: 0.0,
-                    ..default()
-                },
-            ))
-            .add_child(overlay)
-            .id();
-        commands.entity(group_row).add_child(icon);
-    }
-
     let status_bar = spawn_status_bar(commands, &ui_assets.background_dark, status_assets);
-    commands.entity(group_row).add_child(status_bar);
+    let status_bar_wrapper = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                align_content: AlignContent::Center,
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+            BackgroundColor(Color::Srgba(Srgba::RED)),
+        ))
+        .add_child(status_bar)
+        .id();
+    commands.entity(panel_inner).add_child(status_bar_wrapper);
 
     top_panel
 }

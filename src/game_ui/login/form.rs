@@ -105,7 +105,7 @@ pub(super) fn spawn_login_form(
             Node {
                 position_type: PositionType::Absolute,
                 left: Val::Px(3.0),
-                top: Val::Px(4.0),
+                top: Val::Px(-2.0),
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
                 ..default()
@@ -123,8 +123,8 @@ pub(super) fn spawn_login_form(
             overlay.spawn((
                 PasswordCaret,
                 Node {
-                    width: Val::Px(1.0),
-                    height: Val::Px(12.0),
+                    width: Val::Px(2.0),
+                    height: Val::Px(14.0),
                     ..default()
                 },
                 BackgroundColor(chat_conf::TAB_TITLE_COLOR.into()),
@@ -188,7 +188,7 @@ fn spawn_text_field(commands: &mut Commands, ui_assets: &GameUiAssets) -> (Entit
                 bottom: ui_colors::LIGHT_BORDER_COLOR.into(),
                 left: ui_colors::DARK_BORDER_COLOR.into(),
             },
-            BackgroundColor(conf::FIELD_BG_COLOR.into()),
+            BackgroundColor(ui_colors::BG_COLOR.into()),
         ))
         .id();
     let input = commands

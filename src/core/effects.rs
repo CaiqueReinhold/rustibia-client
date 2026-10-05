@@ -12,7 +12,9 @@ use bevy::sprite_render::{AlphaMode2d, Material2d};
 
 use crate::conf::effects::STATIC_DURATION;
 use crate::core::sprite::{AnimationLoop, SpriteAnimation, SpriteConfig};
-use crate::core::{Appearances, InstanceManager, SpriteAnimator, SpriteSheet};
+use crate::core::{
+    Appearances, InstanceManager, SheetEvicted, SheetUser, SpriteAnimator, SpriteSheet,
+};
 use crate::map::FloorEntities;
 use crate::map::Position;
 use crate::map::{DrawLayer, DrawOrder, DrawRank};
@@ -75,6 +77,10 @@ pub fn setup_resources(mut commands: Commands, mut buffers: ResMut<Assets<Shader
     });
 }
 
+pub fn on_sheet_evicted(event: On<SheetEvicted>, mut effect_materials: ResMut<EffectMaterials>) {
+    effect_materials.by_group.remove(&event.group);
+}
+
 /// A live effect. Parented to its floor entity, which is what makes floor
 /// occlusion apply to it without this module knowing how occlusion works.
 #[derive(Component)]
@@ -92,7 +98,7 @@ pub(super) fn init_material(
     effect_materials: &mut EffectMaterials,
 ) {
     let material = materials.add(EffectMaterial {
-        texture: sheet.texture().clone(),
+        texture: sheet.texture(),
         atlas_grid: sheet.grid_size,
         mesh_size: sheet.sprite_size,
         instances: effect_materials.buffer.clone(),
@@ -196,6 +202,7 @@ pub fn on_show_effect(
                 DrawOrder::new(tile.clone(), DrawRank::Standing, DrawLayer::Effect, 0),
                 Visibility::Inherited,
                 animator,
+                SheetUser(sprite.group.clone()),
             ))
             .id();
         commands
@@ -872,5 +879,25 @@ mod tests {
             1,
             "the fresh manager's free list must be empty"
         );
+    }
+
+    #[test]
+    fn an_evicted_sheet_loses_its_effect_material() {
+        let mut world = World::new();
+        world.insert_resource(EffectMaterials {
+            by_group: HashMap::from([(
+                "effect-a".to_owned(),
+                (Handle::default(), Handle::default()),
+            )]),
+            buffer: Handle::default(),
+        });
+        world.add_observer(on_sheet_evicted);
+
+        world.trigger(crate::core::SheetEvicted {
+            group: "effect-a".to_owned(),
+            sheet_name: "effect-a.png".to_owned(),
+        });
+
+        assert!(world.resource::<EffectMaterials>().by_group.is_empty());
     }
 }

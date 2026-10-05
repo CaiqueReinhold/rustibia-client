@@ -63,7 +63,7 @@ pub(super) fn spawn_character_list(
                 bottom: ui_colors::LIGHT_BORDER_COLOR.into(),
                 left: ui_colors::DARK_BORDER_COLOR.into(),
             },
-            BackgroundColor(conf::FIELD_BG_COLOR.into()),
+            BackgroundColor(ui_colors::BG_COLOR.into()),
         ))
         .id();
 
@@ -79,16 +79,10 @@ pub(super) fn spawn_character_list(
                 BackgroundColor(Color::NONE),
             ))
             .with_child((
-                Text::new(format!("{} \u{2014} {}", character.name, character.level)),
-                TextFont {
-                    font: ui_assets.font.clone(),
-                    font_size: 11.0,
-                    ..default()
-                },
-                TextColor(ui_colors::FONT_COLOR_CONTENT.into()),
-            ))
-            .with_child((
-                Text::new(character.vocation.clone()),
+                Text::new(format!(
+                    "{} ({}) \u{2014} {}",
+                    character.name, character.level, character.vocation
+                )),
                 TextFont {
                     font: ui_assets.font.clone(),
                     font_size: 11.0,
@@ -126,25 +120,7 @@ pub(super) fn spawn_character_list(
         commands.entity(list).add_child(row);
     }
 
-    let footer = commands
-        .spawn((
-            Text::new("Account Status: Free Account"),
-            TextFont {
-                font: ui_assets.font.clone(),
-                font_size: 10.0,
-                ..default()
-            },
-            TextColor(ui_colors::FONT_COLOR_CONTENT.into()),
-            Node {
-                margin: UiRect::top(Val::Px(6.0)),
-                ..default()
-            },
-        ))
-        .id();
-
-    commands
-        .entity(handle.content)
-        .add_children(&[list, footer]);
+    commands.entity(handle.content).add_child(list);
 }
 
 pub(super) fn despawn_character_list(

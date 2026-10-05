@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::conf::ui::{CHAT_BOX_HEIGHT, SEPARATOR_HEIGHT, ui_colors};
+use crate::conf::ui::CHAT_BOX_HEIGHT;
 use crate::core::GameState;
 use crate::game_ui::GameUiAssets;
 
@@ -71,44 +71,12 @@ pub fn spawn_chat_root(
                 position_type: PositionType::Relative,
                 width: Val::Percent(100.0),
                 height: Val::Px(CHAT_BOX_HEIGHT),
+                min_height: Val::Px(80.0),
                 flex_direction: FlexDirection::Column,
                 ..default()
             },
             ImageNode {
                 image: ui_assets.background_dark.clone(),
-                image_mode: NodeImageMode::Tiled {
-                    tile_x: true,
-                    tile_y: true,
-                    stretch_value: 1.0,
-                },
-                ..default()
-            },
-        ))
-        .id();
-
-    let separator = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Px(SEPARATOR_HEIGHT),
-                border: UiRect::axes(Val::ZERO, Val::Px(1.0)),
-                ..default()
-            },
-            BorderColor {
-                top: ui_colors::LIGHT_BORDER_COLOR.into(),
-                right: ui_colors::DARK_BORDER_COLOR.into(),
-                bottom: ui_colors::DARK_BORDER_COLOR.into(),
-                left: ui_colors::LIGHT_BORDER_COLOR.into(),
-            },
-        ))
-        .with_child((
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                ..default()
-            },
-            ImageNode {
-                image: ui_assets.background_light.clone(),
                 image_mode: NodeImageMode::Tiled {
                     tile_x: true,
                     tile_y: true,
@@ -125,7 +93,7 @@ pub fn spawn_chat_root(
 
     commands
         .entity(root)
-        .add_children(&[separator, tab_strip, panel, input]);
+        .add_children(&[tab_strip, panel, input]);
 
     root
 }

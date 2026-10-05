@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use bevy::prelude::*;
+use bevy::window::CursorIcon;
 use bevy::{camera::visibility::RenderLayers, time::common_conditions::on_timer};
 
 mod action_bar;
@@ -41,7 +42,9 @@ pub use window::{
 };
 
 use crate::camera::{GameRenderTexture, HudRenderTexture};
+use crate::conf::ui::{SEPARATOR_HEIGHT, ui_colors};
 use crate::core::{GameState, PingState, SessionCleanup};
+use crate::game_ui::chat::ChatRoot;
 
 #[derive(Component)]
 pub struct MainUI;
@@ -149,15 +152,77 @@ pub(crate) fn spawn_main_ui(
         .entity(main_ui)
         .add_children(&[left_panel, middle_container, right_panel]);
 
-    let top_panel =
-        toppanel::spawn_top_panel(&mut commands, &ui_assets, &cooldown_assets, &status_assets);
-    let gameview =
-        game_overlay::spawn_gameviewport(&mut commands, &render_texture, &hud_texture, &ui_assets);
+    let top_panel = toppanel::spawn_top_panel(&mut commands, &ui_assets, &status_assets);
+    let gameview = game_overlay::spawn_gameviewport(
+        &mut commands,
+        &render_texture,
+        &hud_texture,
+        &ui_assets,
+        &cooldown_assets,
+    );
     let action_bar = action_bar::spawn_action_bar(&mut commands, &ui_assets);
     let chat = chat::spawn_chat_root(&mut commands, &chat_state, &ui_assets);
+    let separator = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(SEPARATOR_HEIGHT),
+                border: UiRect::axes(Val::ZERO, Val::Px(1.0)),
+                ..default()
+            },
+            BorderColor {
+                top: ui_colors::LIGHT_BORDER_COLOR.into(),
+                right: ui_colors::DARK_BORDER_COLOR.into(),
+                bottom: ui_colors::DARK_BORDER_COLOR.into(),
+                left: ui_colors::LIGHT_BORDER_COLOR.into(),
+            },
+            ZIndex(100),
+        ))
+        .with_child((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                ..default()
+            },
+            ImageNode {
+                image: ui_assets.background_light.clone(),
+                image_mode: NodeImageMode::Tiled {
+                    tile_x: true,
+                    tile_y: true,
+                    stretch_value: 1.0,
+                },
+                ..default()
+            },
+        ))
+        .observe(
+            |_: On<Pointer<Over>>, mut commands: Commands, window: Single<Entity, With<Window>>| {
+                commands.entity(*window).insert(CursorIcon::System(
+                    bevy::window::SystemCursorIcon::RowResize,
+                ));
+            },
+        )
+        .observe(
+            |_: On<Pointer<Out>>, mut commands: Commands, window: Single<Entity, With<Window>>| {
+                commands
+                    .entity(*window)
+                    .insert(CursorIcon::System(bevy::window::SystemCursorIcon::Default));
+            },
+        )
+        .observe(
+            |event: On<Pointer<Drag>>, mut chat_q: Query<&mut Node, With<ChatRoot>>| {
+                if let Ok(mut node) = chat_q.single_mut() {
+                    let height = match &node.height {
+                        Val::Px(px) => *px,
+                        _ => 0.0,
+                    };
+                    node.height = Val::Px(height - event.delta.y);
+                }
+            },
+        )
+        .id();
     commands
         .entity(middle_container)
-        .add_children(&[top_panel, gameview, action_bar, chat]);
+        .add_children(&[top_panel, gameview, separator, action_bar, chat]);
 
     let ping_view = commands
         .spawn((

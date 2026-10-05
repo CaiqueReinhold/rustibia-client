@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use bevy::asset::RenderAssetUsages;
@@ -114,7 +114,7 @@ impl Appearances {
 
     pub fn get_sheet(&self, group: &str) -> &SpriteSheet {
         let sheet = self.sheets.get(group).unwrap();
-        sheet.texture.get_or_init(|| {
+        sheet.texture.lock().unwrap().get_or_insert_with(|| {
             self.asset_server.load_with_settings::<Image, _>(
                 format!("sheets/{}", sheet.sheet_name),
                 |s: &mut ImageLoaderSettings| {
@@ -124,6 +124,20 @@ impl Appearances {
         });
         sheet
     }
+
+    pub fn resident_sheets(&self) -> impl Iterator<Item = (&str, &SpriteSheet)> {
+        self.sheets
+            .iter()
+            .filter(|(_, sheet)| sheet.is_resident())
+            .map(|(group, sheet)| (group.as_str(), sheet))
+    }
+
+    /// `None` when the group is unknown or its sheet is not resident.
+    pub fn evict(&mut self, group: &str) -> Option<&SpriteSheet> {
+        let sheet = self.sheets.get_mut(group)?;
+        sheet.texture.get_mut().unwrap().take()?;
+        Some(sheet)
+    }
 }
 
 #[derive(Debug)]
@@ -131,14 +145,20 @@ pub struct SpriteSheet {
     pub sheet_name: String,
     pub grid_size: Vec2,
     pub sprite_size: Vec2,
-    texture: OnceLock<Handle<Image>>,
+    texture: Mutex<Option<Handle<Image>>>,
 }
 
 impl SpriteSheet {
-    pub fn texture(&self) -> &Handle<Image> {
+    pub fn texture(&self) -> Handle<Image> {
         self.texture
-            .get()
-            .expect("sprite sheet texture not initialized — access via Appearances::get_sheet")
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("sprite sheet texture not loaded — access via Appearances::get_sheet")
+    }
+
+    pub fn is_resident(&self) -> bool {
+        self.texture.lock().unwrap().is_some()
     }
 
     /// A sheet with no texture loaded, for tests that only read its name or its grid.
@@ -148,7 +168,7 @@ impl SpriteSheet {
             sheet_name: sheet_name.to_string(),
             grid_size,
             sprite_size,
-            texture: OnceLock::new(),
+            texture: Mutex::new(None),
         }
     }
 }
@@ -217,10 +237,6 @@ impl SpriteAnimation {
         }
     }
 
-    /// Whether the config gives `phase` no time at all.
-    ///
-    /// Read off the range and never off a sample: whether a phase is skipped
-    /// must not depend on a dice roll.
     pub fn phase_is_untimed(&self, phase: u32) -> bool {
         match self {
             SpriteAnimation::Static => true,
@@ -234,12 +250,6 @@ impl SpriteAnimation {
 
     /// True when no phase has any time on it, so nothing will ever move this
     /// animation forward. Static animations, and any config that is all zeros.
-    ///
-    /// `SpriteAnimator::new` uses this to decide whether to arm a real timer at
-    /// all: when it's true, the timer is left on its zero-duration `Once`
-    /// sentinel, which is what makes `tick_sprite_animators` skip the animator
-    /// without ever ticking it. It says nothing about whether a walk over the
-    /// phases terminates -- that is the walk's own loop bound.
     pub fn never_advances(&self) -> bool {
         (0..self.total_animation_phases()).all(|phase| self.phase_is_untimed(phase))
     }
@@ -248,11 +258,6 @@ impl SpriteAnimation {
     /// Not the same value an animator would sample while actually running: a
     /// `Counted { count }` loop's real lifetime is `count` such passes, not
     /// one, and each caller gets its own independent samples.
-    ///
-    /// Reads it to size an effect entity's lifetime for the loop modes that
-    /// never finish on their own. All 13 non-`COUNTED` effects are `Uniform`,
-    /// so for every real caller today the sampling is moot and the result is
-    /// exact.
     pub fn pass_duration(&self) -> Duration {
         (0..self.total_animation_phases())
             .map(|phase| self.phase_duration(phase))
@@ -450,12 +455,20 @@ pub fn read_sprite_sheets() -> HashMap<String, SpriteSheet> {
                 sheet_name,
                 grid_size,
                 sprite_size,
-                texture: OnceLock::new(),
+                texture: Mutex::new(None),
             },
         );
     }
 
     sheets_map
+}
+
+#[cfg(test)]
+pub(super) fn test_asset_server() -> AssetServer {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default()));
+    app.init_asset::<Image>();
+    app.world().resource::<AssetServer>().clone()
 }
 
 #[cfg(test)]
@@ -801,5 +814,29 @@ mod tests {
         assert_eq!(uniform.pass_duration(), Duration::from_millis(800));
         assert_eq!(non_uniform.pass_duration(), Duration::from_millis(350));
         assert_eq!(animation_json("null").pass_duration(), Duration::ZERO);
+    }
+
+    #[test]
+    fn an_evicted_sheet_loads_again_when_asked_for() {
+        let sheets = HashMap::from([(
+            "item-a".to_owned(),
+            SpriteSheet::for_test("item-a.png", Vec2::ONE, Vec2::splat(32.0)),
+        )]);
+        let mut appearances =
+            Appearances::new(sheets, SpriteConfigs::default(), test_asset_server());
+
+        assert_eq!(appearances.resident_sheets().count(), 0);
+        appearances.get_sheet("item-a");
+        assert!(appearances.get_sheet("item-a").is_resident());
+
+        let evicted = appearances
+            .evict("item-a")
+            .map(|sheet| sheet.sheet_name.clone());
+        assert_eq!(evicted.as_deref(), Some("item-a.png"));
+        assert_eq!(appearances.resident_sheets().count(), 0);
+        assert!(appearances.evict("item-a").is_none());
+
+        appearances.get_sheet("item-a");
+        assert_eq!(appearances.resident_sheets().count(), 1);
     }
 }

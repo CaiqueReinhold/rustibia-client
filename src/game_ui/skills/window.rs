@@ -1,6 +1,8 @@
 use bevy::prelude::*;
 
 use crate::agent::HudBar;
+use crate::conf::ui::skills::DIVIDER_HEIGHT;
+use crate::conf::ui::ui_colors::{DARK_BORDER_COLOR, FONT_COLOR_CONTENT, LIGHT_BORDER_COLOR};
 use crate::conf::ui::{skills as conf, ui_colors};
 use crate::game_ui::GameUiAssets;
 use crate::game_ui::skills::{DISPLAY_ORDER, SkillProgress, SkillType, SkillsState};
@@ -22,6 +24,11 @@ pub struct ExperienceRow {
     pub value_text: Entity,
 }
 
+#[derive(Component)]
+pub struct SpeedRow {
+    pub value_text: Entity,
+}
+
 pub fn spawn_skills_content(
     commands: &mut Commands,
     ui_assets: &GameUiAssets,
@@ -32,14 +39,14 @@ pub fn spawn_skills_content(
             SkillsWindow,
             Node {
                 width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
+                display: Display::Flex,
                 flex_direction: FlexDirection::Column,
                 row_gap: Val::Px(conf::ROW_GAP),
                 padding: UiRect::all(Val::Px(conf::PADDING)),
                 ..default()
             },
             ImageNode {
-                image: ui_assets.background_dark.clone(),
+                image: ui_assets.background_light.clone(),
                 image_mode: NodeImageMode::Tiled {
                     tile_x: true,
                     tile_y: true,
@@ -52,6 +59,8 @@ pub fn spawn_skills_content(
 
     let experience = spawn_experience_row(commands, ui_assets, state.experience);
     commands.entity(content).add_child(experience);
+    let speed = spawn_speed_row(commands, ui_assets, state.speed);
+    commands.entity(content).add_child(speed);
 
     for skill in DISPLAY_ORDER {
         let Some(progress) = state.skills.get(&skill) else {
@@ -59,9 +68,29 @@ pub fn spawn_skills_content(
         };
         let row = spawn_skill_row(commands, ui_assets, skill, *progress);
         commands.entity(content).add_child(row);
+        if skill == SkillType::Level {
+            commands.entity(content).with_child(divider());
+        }
     }
 
     content
+}
+
+fn divider() -> impl Bundle {
+    (
+        Node {
+            width: Val::Percent(100.0),
+            height: Val::Px(DIVIDER_HEIGHT),
+            border: UiRect::vertical(Val::Px(1.0)),
+            ..default()
+        },
+        BorderColor {
+            top: DARK_BORDER_COLOR.into(),
+            bottom: LIGHT_BORDER_COLOR.into(),
+            left: Color::NONE,
+            right: Color::NONE,
+        },
+    )
 }
 
 fn spawn_label(commands: &mut Commands, ui_assets: &GameUiAssets, text: &str) -> Entity {
@@ -71,9 +100,10 @@ fn spawn_label(commands: &mut Commands, ui_assets: &GameUiAssets, text: &str) ->
             TextFont {
                 font: ui_assets.font.clone(),
                 font_size: conf::FONT_SIZE,
+                weight: FontWeight::BOLD,
                 ..default()
             },
-            TextColor(Color::WHITE),
+            TextColor(FONT_COLOR_CONTENT.into()),
         ))
         .id()
 }
@@ -89,6 +119,25 @@ fn spawn_experience_row(
     commands
         .spawn((
             ExperienceRow { value_text },
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                justify_content: JustifyContent::SpaceBetween,
+                ..default()
+            },
+        ))
+        .add_child(label)
+        .add_child(value_text)
+        .id()
+}
+
+fn spawn_speed_row(commands: &mut Commands, ui_assets: &GameUiAssets, speed: u16) -> Entity {
+    let label = spawn_label(commands, ui_assets, "Speed");
+    let value_text = spawn_label(commands, ui_assets, &speed.to_string());
+
+    commands
+        .spawn((
+            SpeedRow { value_text },
             Node {
                 width: Val::Percent(100.0),
                 flex_direction: FlexDirection::Row,
@@ -130,16 +179,7 @@ fn spawn_skill_row(
                 height: Val::Percent(100.0),
                 ..default()
             },
-            ImageNode {
-                image: ui_assets.bar_overlay.clone(),
-                image_mode: NodeImageMode::Tiled {
-                    tile_x: true,
-                    tile_y: false,
-                    stretch_value: 1.0,
-                },
-                ..default()
-            },
-            BackgroundColor(ui_colors::MANA_BAR_COLOR.into()),
+            BackgroundColor(ui_colors::BAR_FILL_COLOR.into()),
         ))
         .id();
 
@@ -151,12 +191,7 @@ fn spawn_skill_row(
                 border: UiRect::all(Val::Px(1.0)),
                 ..default()
             },
-            BorderColor {
-                top: ui_colors::DARK_BORDER_COLOR.into(),
-                right: ui_colors::LIGHT_BORDER_COLOR.into(),
-                bottom: ui_colors::LIGHT_BORDER_COLOR.into(),
-                left: ui_colors::DARK_BORDER_COLOR.into(),
-            },
+            BorderColor::all(Color::BLACK),
         ))
         .add_child(bar)
         .id();
@@ -183,6 +218,7 @@ pub fn update_skills_window(
     state: Res<SkillsState>,
     skill_rows: Query<&SkillRow>,
     experience_rows: Query<&ExperienceRow>,
+    speed_rows: Query<&SpeedRow>,
     mut bar_q: Query<&mut HudBar>,
     mut text_q: Query<&mut Text>,
 ) {
@@ -201,6 +237,12 @@ pub fn update_skills_window(
     for row in &experience_rows {
         if let Ok(mut text) = text_q.get_mut(row.value_text) {
             text.0 = group_thousands(state.experience);
+        }
+    }
+
+    for row in &speed_rows {
+        if let Ok(mut text) = text_q.get_mut(row.value_text) {
+            text.0 = state.speed.to_string();
         }
     }
 }
@@ -232,7 +274,7 @@ mod tests {
 
     use bevy::ecs::system::RunSystemOnce;
 
-    use crate::game_ui::assets::{UiInventory, UiWindow};
+    use crate::game_ui::assets::{UiButtons, UiInventory, UiWindow};
 
     fn world_with(state: SkillsState) -> World {
         let mut world = World::new();
@@ -245,6 +287,7 @@ mod tests {
             background_light: Handle::default(),
             bar_overlay: Handle::default(),
             title_background: Handle::default(),
+            buttons: UiButtons::default(),
         });
         world.insert_resource(state);
         world

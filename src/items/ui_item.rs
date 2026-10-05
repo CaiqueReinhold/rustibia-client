@@ -5,7 +5,7 @@ use bevy_text_outline::TextOutline;
 
 use crate::{
     conf::ui::{ITEM_COUNT_FONT_SIZE, UI_ITEM_SIZE, z_index::DRAGGED_ITEM_UI_Z},
-    core::{Appearances, SpriteAnimator},
+    core::{Appearances, SheetUser, SpriteAnimator},
     game_ui::GameUiAssets,
     items::{Item, ItemDragEnded, ItemDragStarted, ItemPlacement, instancing::ItemState},
     player::MouseHoverState,
@@ -95,9 +95,10 @@ pub fn spawn_ui_item(
             height: Val::Px(UI_ITEM_SIZE),
             ..default()
         },
-        ImageNode::from_atlas_image(sheet.texture().clone(), atlas),
+        ImageNode::from_atlas_image(sheet.texture(), atlas),
         Transform::from_xyz(position.x, position.y, 0.0),
         RenderLayers::layer(1),
+        SheetUser(config.group.clone()),
         // An item with no count spawns no child at all; the `Option` is the
         // whole conditional.
         Children::spawn(SpawnIter(stack_count_label(item, ui_assets).into_iter())),

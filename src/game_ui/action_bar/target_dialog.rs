@@ -94,7 +94,7 @@ pub(super) fn on_open_target_dialog(
             BackgroundColor(dialog::FIELD_BG_COLOR.into()),
         ))
         .id();
-    if let Some(image) = action_image(
+    if let Some((image, user)) = action_image(
         &event.pending.into_action(None),
         &book,
         &items,
@@ -102,7 +102,11 @@ pub(super) fn on_open_target_dialog(
         &mut assets,
         &mut layouts,
     ) {
-        let icon = commands.spawn(icon_bundle(image)).id();
+        let mut icon = commands.spawn(icon_bundle(image));
+        if let Some(user) = user {
+            icon.insert(user);
+        }
+        let icon = icon.id();
         commands.entity(preview).add_child(icon);
     }
 

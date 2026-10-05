@@ -8,7 +8,11 @@ use bevy::{
 use crate::{
     conf::{
         minimap::{DEFAULT_ZOOM, IMAGE_SIZE, RECENTRE_MARGIN, ZOOM_LEVELS},
-        ui::{SIDE_PANEL_WIDTH, ui_colors, z_index::Z_WINDOW},
+        ui::{
+            SIDE_PANEL_WIDTH,
+            ui_colors::{self, DARK_BORDER_COLOR, LIGHT_BORDER_COLOR},
+            z_index::Z_WINDOW,
+        },
     },
     core::GameState,
     game_ui::{GameUiAssets, Index, RightPanelDock, UIWindow, UIWindowDock, UiWindowRef, WindowId},
@@ -120,10 +124,8 @@ fn setup_minimap(
     let zoom_in_btn = commands
         .spawn((
             Node {
-                width: Val::Px(20.0),
-                height: Val::Px(16.0),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
+                width: Val::Px(12.0),
+                height: Val::Px(12.0),
                 border: UiRect::all(Val::Px(1.0)),
                 ..default()
             },
@@ -135,13 +137,27 @@ fn setup_minimap(
             },
         ))
         .with_child((
-            Text::new("+"),
-            TextFont {
-                font: ui_assets.font.clone(),
-                font_size: 10.0,
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
                 ..default()
             },
-            TextColor(Color::from(ui_colors::FONT_COLOR_CONTENT)),
+            ImageNode::new(ui_assets.background_light.clone()).with_mode(NodeImageMode::Tiled {
+                tile_x: true,
+                tile_y: true,
+                stretch_value: 1.0,
+            }),
+            children![(
+                Text::new("+"),
+                TextFont {
+                    font: ui_assets.font.clone(),
+                    font_size: 10.0,
+                    ..default()
+                },
+                TextColor(Color::from(ui_colors::FONT_COLOR_CONTENT)),
+            )],
         ))
         .observe(|mut e: On<Pointer<Click>>, mut zoom: ResMut<MinimapZoom>| {
             e.propagate(false);
@@ -154,10 +170,8 @@ fn setup_minimap(
     let zoom_out_btn = commands
         .spawn((
             Node {
-                width: Val::Px(20.0),
-                height: Val::Px(16.0),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
+                width: Val::Px(12.0),
+                height: Val::Px(12.0),
                 border: UiRect::all(Val::Px(1.0)),
                 ..default()
             },
@@ -169,13 +183,27 @@ fn setup_minimap(
             },
         ))
         .with_child((
-            Text::new("−"),
-            TextFont {
-                font: ui_assets.font.clone(),
-                font_size: 10.0,
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
                 ..default()
             },
-            TextColor(Color::from(ui_colors::FONT_COLOR_CONTENT)),
+            ImageNode::new(ui_assets.background_light.clone()).with_mode(NodeImageMode::Tiled {
+                tile_x: true,
+                tile_y: true,
+                stretch_value: 1.0,
+            }),
+            children![(
+                Text::new("−"),
+                TextFont {
+                    font: ui_assets.font.clone(),
+                    font_size: 10.0,
+                    ..default()
+                },
+                TextColor(Color::from(ui_colors::FONT_COLOR_CONTENT)),
+            )],
         ))
         .observe(|mut e: On<Pointer<Click>>, mut zoom: ResMut<MinimapZoom>| {
             e.propagate(false);
@@ -187,13 +215,12 @@ fn setup_minimap(
 
     let button_row = commands
         .spawn(Node {
-            width: Val::Percent(100.0),
-            height: Val::Px(20.0),
+            position_type: PositionType::Absolute,
             flex_direction: FlexDirection::Row,
-            justify_content: JustifyContent::FlexEnd,
             align_items: AlignItems::Center,
-            column_gap: Val::Px(2.0),
-            padding: UiRect::horizontal(Val::Px(2.0)),
+            justify_content: JustifyContent::End,
+            top: Val::Px(7.0),
+            right: Val::Px(22.0),
             ..default()
         })
         .add_children(&[zoom_in_btn, zoom_out_btn])
@@ -205,8 +232,8 @@ fn setup_minimap(
                 position_type: PositionType::Absolute,
                 width: Val::Px(7.0),
                 height: Val::Px(1.0),
-                left: Val::Px(120.0 / 2.0 - 3.0),
-                top: Val::Px(120.0 / 2.0),
+                left: Val::Px(143.0 / 2.0 - 3.0),
+                top: Val::Px(143.0 / 2.0),
                 ..default()
             },
             BackgroundColor(Color::WHITE),
@@ -219,8 +246,8 @@ fn setup_minimap(
                 position_type: PositionType::Absolute,
                 width: Val::Px(1.0),
                 height: Val::Px(7.0),
-                left: Val::Px(120.0 / 2.0),
-                top: Val::Px(120.0 / 2.0 - 3.0),
+                left: Val::Px(143.0 / 2.0),
+                top: Val::Px(143.0 / 2.0 - 3.0),
                 ..default()
             },
             BackgroundColor(Color::WHITE),
@@ -231,8 +258,8 @@ fn setup_minimap(
         .spawn((
             MinimapImageNode,
             Node {
-                width: Val::Px(120.0),
-                height: Val::Px(120.0),
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
                 overflow: Overflow::visible(),
                 ..default()
             },
@@ -248,6 +275,24 @@ fn setup_minimap(
         .add_children(&[cross_h, cross_v])
         .id();
 
+    let image_node_wrapper = commands
+        .spawn((
+            Node {
+                width: Val::Px(143.0),
+                height: Val::Px(143.0),
+                border: UiRect::all(Val::Px(1.0)),
+                ..default()
+            },
+            BorderColor {
+                top: DARK_BORDER_COLOR.into(),
+                right: LIGHT_BORDER_COLOR.into(),
+                bottom: LIGHT_BORDER_COLOR.into(),
+                left: DARK_BORDER_COLOR.into(),
+            },
+        ))
+        .add_child(image_node)
+        .id();
+
     let content = commands
         .spawn(Node {
             width: Val::Percent(100.0),
@@ -257,7 +302,7 @@ fn setup_minimap(
             justify_items: JustifyItems::Center,
             ..default()
         })
-        .add_children(&[image_node, button_row])
+        .add_children(&[image_node_wrapper, button_row])
         .id();
 
     commands.entity(content).insert(UiWindowRef { window_id });

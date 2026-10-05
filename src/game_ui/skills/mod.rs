@@ -11,6 +11,7 @@ use window::SkillsWindow;
 
 use crate::conf::ui::SKILLS_WINDOW_HEIGHT;
 use crate::core::GameState;
+use crate::game_ui::skills::state::{on_player_spawned, on_speed_changed};
 use crate::game_ui::{AddUIWindow, CloseUIWindow, GameUiAssets, UiWindowRef};
 
 #[derive(Event, Debug)]
@@ -48,6 +49,8 @@ impl Plugin for SkillsPlugin {
             .add_observer(on_skill_changed)
             .add_observer(on_experience_changed)
             .add_observer(on_toggle_skills_window)
+            .add_observer(on_speed_changed)
+            .add_observer(on_player_spawned)
             .add_systems(
                 Update,
                 window::update_skills_window
@@ -61,7 +64,7 @@ impl Plugin for SkillsPlugin {
 mod tests {
     use super::*;
     use crate::game_ui::WindowId;
-    use crate::game_ui::assets::{UiInventory, UiWindow as UiWindowAssets};
+    use crate::game_ui::assets::{UiButtons, UiInventory, UiWindow as UiWindowAssets};
 
     /// `UIWindowPlugin` cannot run under `MinimalPlugins`: its `on_window_scroll`
     /// system reads `MessageReader<MouseWheel>`, which panics unless a real input
@@ -81,6 +84,7 @@ mod tests {
             background_light: Handle::default(),
             bar_overlay: Handle::default(),
             title_background: Handle::default(),
+            buttons: UiButtons::default(),
         });
         world.insert_resource(state);
         world.add_observer(on_toggle_skills_window);

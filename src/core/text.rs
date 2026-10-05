@@ -188,6 +188,7 @@ mod tests {
             background_light: Handle::default(),
             bar_overlay: Handle::default(),
             title_background: Handle::default(),
+            buttons: Default::default(),
         });
         world.spawn(ViewportTextRoot);
         world.spawn((

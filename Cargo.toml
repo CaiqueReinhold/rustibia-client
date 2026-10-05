@@ -41,5 +41,16 @@ debug = []
 [profile.release]
 opt-level = 3
 
+[profile.release.package.rustibia-client]
+debug-assertions = true
+
+[profile.production]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+
+[profile.production.package.rustibia-client]
+debug-assertions = false
+
 [build-dependencies]
 winresource = "0.1.31"

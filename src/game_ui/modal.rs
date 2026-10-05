@@ -2,6 +2,7 @@ use bevy::camera::visibility::RenderLayers;
 use bevy::input_focus::InputFocus;
 use bevy::prelude::*;
 
+use crate::conf::ui::dialog::{BUTTON_HEIGHT, BUTTON_MIN_WIDTH};
 use crate::conf::ui::{dialog as conf, ui_colors};
 use crate::game_ui::GameUiAssets;
 
@@ -279,8 +280,13 @@ impl ModalDialog {
 
         for button in &self.buttons {
             let id = button.id;
-            let button_entity =
-                crate::game_ui::button::spawn_panel_button(commands, button.label, ui_assets);
+            let button_entity = crate::game_ui::button::spawn_panel_button(
+                commands,
+                button.label,
+                None,
+                ui_assets,
+                Some((BUTTON_MIN_WIDTH, BUTTON_HEIGHT)),
+            );
             commands.entity(button_entity).observe(
                 move |_: On<Pointer<Click>>, mut commands: Commands| {
                     commands.trigger(DialogButtonPressed {

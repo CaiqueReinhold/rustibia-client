@@ -12,7 +12,9 @@ use crate::agent::{AgentId, FacingDirection, Health, Mana};
 use crate::conf::hover::{PULSE_AMPLITUDE, PULSE_BASE, PULSE_PERIOD_SECS};
 use crate::core::OutfitColors;
 use crate::core::OutfitId;
-use crate::core::{Appearances, InstanceManager, OutfitSprite, SpriteSheet};
+use crate::core::{
+    Appearances, InstanceManager, OutfitSprite, SheetEvicted, SheetUser, SpriteSheet,
+};
 use crate::core::{MAX_LAYERS, SpriteAnimator, SpriteConfig};
 
 use crate::agent::{
@@ -36,6 +38,10 @@ pub fn init_instances_buffer(
         buffer: buffers.add(ShaderStorageBuffer::new(&[0], RenderAssetUsages::all())),
     };
     commands.insert_resource(loaded_materials);
+}
+
+pub fn on_sheet_evicted(event: On<SheetEvicted>, mut loaded: ResMut<LoadedMaterials>) {
+    loaded.materials.remove(&event.group);
 }
 
 pub fn resolve_agent_sprite_ids(
@@ -163,6 +169,7 @@ pub fn spawn_agent(
                 moving: Arc::clone(&outfit.moving_sprite),
             },
             MoveQueue::default(),
+            SheetUser(outfit.still_sprite.group.clone()),
         ))
         .id();
 
@@ -203,7 +210,7 @@ fn init_material(
         pulse_period: PULSE_PERIOD_SECS,
     };
     let material_handle = materials.add(AgentMaterial {
-        texture: sheet.texture().clone(),
+        texture: sheet.texture(),
         params,
         instances: loaded_materials.buffer.clone(),
     });
@@ -363,5 +370,27 @@ mod tests {
 
         world.despawn(agent);
         world.run_system(sync).unwrap();
+    }
+
+    #[test]
+    fn an_evicted_sheet_loses_its_agent_material() {
+        let mut world = World::new();
+        let mut materials = HashMap::default();
+        materials.insert(
+            "outfit-a".to_owned(),
+            (Handle::default(), Handle::default()),
+        );
+        world.insert_resource(LoadedMaterials {
+            materials,
+            buffer: Handle::default(),
+        });
+        world.add_observer(on_sheet_evicted);
+
+        world.trigger(crate::core::SheetEvicted {
+            group: "outfit-a".to_owned(),
+            sheet_name: "outfit-a.png".to_owned(),
+        });
+
+        assert!(world.resource::<LoadedMaterials>().materials.is_empty());
     }
 }

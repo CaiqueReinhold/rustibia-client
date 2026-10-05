@@ -24,7 +24,13 @@ pub(super) fn spawn_button_row(
 
     let window_id = WindowId::new();
 
-    let logout = spawn_panel_button(&mut commands, "Logout", &ui_assets);
+    let logout = spawn_panel_button(
+        &mut commands,
+        "Logout",
+        Some(ui_assets.buttons.logout.clone()),
+        &ui_assets,
+        None,
+    );
     commands
         .entity(logout)
         .observe(|mut event: On<Pointer<Click>>, mut commands: Commands| {
@@ -32,7 +38,13 @@ pub(super) fn spawn_button_row(
             commands.trigger(RequestLogout);
         });
 
-    let skills = spawn_panel_button(&mut commands, "Skills", &ui_assets);
+    let skills = spawn_panel_button(
+        &mut commands,
+        "Skills",
+        Some(ui_assets.buttons.skills.clone()),
+        &ui_assets,
+        None,
+    );
     commands
         .entity(skills)
         .observe(|mut event: On<Pointer<Click>>, mut commands: Commands| {
@@ -46,9 +58,9 @@ pub(super) fn spawn_button_row(
             height: Val::Percent(100.0),
             flex_direction: FlexDirection::Row,
             align_items: AlignItems::Center,
-            justify_content: JustifyContent::Center,
-            column_gap: Val::Px(conf::PADDING),
-            padding: UiRect::all(Val::Px(conf::PADDING)),
+            justify_content: JustifyContent::Start,
+            column_gap: Val::Px(conf::PADDING_Y),
+            padding: UiRect::axes(Val::Px(conf::PADDING_X), Val::Px(conf::PADDING_Y)),
             ..default()
         })
         .add_child(skills)

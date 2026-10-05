@@ -6,7 +6,9 @@ use bevy::text::FontSmoothing;
 use bevy_text_outline::TextOutline;
 
 use crate::conf::ui::{UI_ITEM_SIZE, action_bar as conf, dialog, ui_colors};
-use crate::core::{Appearances, ItemConfigs, SpellBook, SpriteAnimator, SpriteSheet};
+use crate::core::{
+    Appearances, ItemConfigs, SheetEvicted, SheetUser, SpellBook, SpriteAnimator, SpriteSheet,
+};
 use crate::game_ui::GameUiAssets;
 use crate::game_ui::cooldown::{CooldownOverlay, spawn_cooldown_overlay};
 use crate::game_ui::scaling::logical_size;
@@ -84,6 +86,10 @@ pub(super) fn setup_action_bar_assets(
     });
 }
 
+pub(super) fn on_sheet_evicted(event: On<SheetEvicted>, mut assets: ResMut<ActionBarAssets>) {
+    assets.item_layouts.remove(&event.sheet_name);
+}
+
 pub fn spawn_action_bar(commands: &mut Commands, ui_assets: &GameUiAssets) -> Entity {
     commands
         .spawn((
@@ -95,15 +101,8 @@ pub fn spawn_action_bar(commands: &mut Commands, ui_assets: &GameUiAssets) -> En
                 flex_direction: FlexDirection::Row,
                 column_gap: Val::Px(conf::SLOT_GAP),
                 padding: UiRect::all(Val::Px(conf::PADDING)),
-                border: UiRect::all(Val::Px(conf::BORDER)),
                 overflow: Overflow::clip(),
                 ..default()
-            },
-            BorderColor {
-                top: ui_colors::LIGHT_BORDER_COLOR.into(),
-                right: ui_colors::DARK_BORDER_COLOR.into(),
-                bottom: ui_colors::DARK_BORDER_COLOR.into(),
-                left: ui_colors::LIGHT_BORDER_COLOR.into(),
             },
             ImageNode {
                 image: ui_assets.background_dark.clone(),
@@ -196,7 +195,7 @@ pub(super) fn redraw_slots(
         commands.entity(entity).despawn_children();
 
         let mut children = Vec::new();
-        if let Some(image) = slot.action.and_then(|action| {
+        if let Some((image, user)) = slot.action.and_then(|action| {
             action_image(
                 &action,
                 &book,
@@ -206,7 +205,17 @@ pub(super) fn redraw_slots(
                 &mut layouts,
             )
         }) {
-            children.push(commands.spawn(icon_bundle(image)).id());
+            let mut icon = commands.spawn(icon_bundle(image));
+            if let Some(user) = user {
+                icon.insert(user);
+            }
+            children.push(icon.id());
+            commands.entity(entity).insert(BorderColor {
+                top: ui_colors::LIGHT_BORDER_COLOR.into(),
+                right: ui_colors::DARK_BORDER_COLOR.into(),
+                bottom: ui_colors::DARK_BORDER_COLOR.into(),
+                left: ui_colors::LIGHT_BORDER_COLOR.into(),
+            });
         }
         if let Some(tracks) = slot
             .action
@@ -268,11 +277,14 @@ pub(super) fn action_image(
     appearances: &Appearances,
     assets: &mut ActionBarAssets,
     layouts: &mut Assets<TextureAtlasLayout>,
-) -> Option<ImageNode> {
+) -> Option<(ImageNode, Option<SheetUser>)> {
     match action {
-        SlotAction::Spell { id, .. } => spell_image(book.get(*id)?.icon, assets),
+        SlotAction::Spell { id, .. } => {
+            spell_image(book.get(*id)?.icon, assets).map(|image| (image, None))
+        }
         SlotAction::Item { item_id, .. } => {
             static_item_image(*item_id, items, appearances, assets, layouts)
+                .map(|(image, user)| (image, Some(user)))
         }
     }
 }
@@ -304,7 +316,7 @@ fn static_item_image(
     appearances: &Appearances,
     assets: &mut ActionBarAssets,
     layouts: &mut Assets<TextureAtlasLayout>,
-) -> Option<ImageNode> {
+) -> Option<(ImageNode, SheetUser)> {
     let config = items.items.get(&item_id)?;
     let sprite = appearances.get_item(item_id);
     let sheet = appearances.get_sheet(&sprite.group);
@@ -314,12 +326,15 @@ fn static_item_image(
         .unwrap_or((0, 0, 0));
     let first_frame = SpriteAnimator::new(Arc::clone(&sprite), pattern_x, pattern_y, pattern_z)
         .current_sprite_ids[0];
-    Some(ImageNode::from_atlas_image(
-        sheet.texture().clone(),
-        TextureAtlas {
-            layout,
-            index: first_frame as usize,
-        },
+    Some((
+        ImageNode::from_atlas_image(
+            sheet.texture(),
+            TextureAtlas {
+                layout,
+                index: first_frame as usize,
+            },
+        ),
+        SheetUser(sprite.group.clone()),
     ))
 }
 
@@ -418,5 +433,23 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn an_evicted_sheet_loses_its_layout() {
+        let mut world = World::new();
+        world.insert_resource(ActionBarAssets {
+            spells: Handle::default(),
+            spell_layout: Handle::default(),
+            item_layouts: HashMap::from([("item-32-32-0.png".to_owned(), Handle::default())]),
+        });
+        world.add_observer(on_sheet_evicted);
+
+        world.trigger(crate::core::SheetEvicted {
+            group: "item-32-32-0".to_owned(),
+            sheet_name: "item-32-32-0.png".to_owned(),
+        });
+
+        assert!(world.resource::<ActionBarAssets>().item_layouts.is_empty());
     }
 }

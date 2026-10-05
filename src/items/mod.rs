@@ -74,6 +74,7 @@ impl Plugin for ItemsPlugin {
             session::cleanup_session.in_set(SessionCleanup),
         )
         .add_observer(instancing::on_remove_item)
+        .add_observer(instancing::on_sheet_evicted)
         .add_observer(split_dialog::on_open_split_dialog)
         .add_observer(split_dialog::on_split_dialog_button)
         .add_observer(ui_item::item_drag_started)

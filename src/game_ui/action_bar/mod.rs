@@ -25,6 +25,7 @@ impl Plugin for ActionBarPlugin {
             .init_resource::<bar::VisibleSlots>()
             .init_resource::<persistence::WrittenActionBar>()
             .add_systems(Startup, bar::setup_action_bar_assets)
+            .add_observer(bar::on_sheet_evicted)
             .add_systems(OnEnter(GameState::InGame), persistence::load_action_bar)
             .add_systems(
                 Update,

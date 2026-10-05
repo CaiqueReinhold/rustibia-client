@@ -112,11 +112,11 @@ pub mod ui {
     pub const CHAT_BOX_HEIGHT: f32 = 170.0;
     pub const UI_ITEM_SIZE: f32 = 32.0;
     pub const ITEM_COUNT_FONT_SIZE: f32 = 10.0;
-    pub const LOOT_CONTAINER_DEFAULT_HEIGHT: usize = 40;
+    pub const LOOT_CONTAINER_DEFAULT_HEIGHT: usize = 60;
     pub const SKILLS_WINDOW_HEIGHT: usize = 150;
     pub const INVENTORY_HEIGHT: f32 = 170.0;
     pub const ITEM_SLOT_SIZE: f32 = 36.0;
-    pub const UI_BAR_HEIGHT: f32 = 20.0;
+    pub const UI_BAR_HEIGHT: f32 = 15.0;
     pub const MIN_DRAG_THRESHOLD: f32 = 1.0;
     pub const SEPARATOR_HEIGHT: f32 = 5.0;
 
@@ -136,12 +136,15 @@ pub mod ui {
         pub const ITEM_SLOT_OUTLINE: Srgba = Srgba::new(0.35, 0.35, 0.35, 1.0);
         pub const ITEM_SLOT_OUTLINE_HOVERED: Srgba = Srgba::new(0.8, 0.8, 0.8, 1.0);
 
-        // pub const FONT_COLOR_TITLE: Srgba = Srgba::new(0.564705, 0.564705, 0.564705, 1.0);
         pub const FONT_COLOR_CONTENT: Srgba = Srgba::new(0.75294, 0.75294, 0.75294, 1.0);
         pub const FONT_COLOR_LOOK_MSG: Srgba = Srgba::rgb(0.0, 0.7372549, 0.0);
 
         pub const MANA_BAR_COLOR: Srgba = Srgba::new(0.0, 0.0, 0.7, 1.0);
         pub const COOLDOWN_SHADE: Srgba = Srgba::new(0.345098, 0.345098, 0.345098, 0.666667);
+
+        pub const BAR_FILL_COLOR: Srgba = Srgba::new(1.0, 0.0, 0.0, 1.0);
+
+        pub const BG_COLOR: Srgba = Srgba::new(0.098, 0.102, 0.106, 1.0);
     }
 
     pub mod chat {
@@ -169,14 +172,16 @@ pub mod ui {
     pub mod button_row {
         /// One row of buttons plus the window's 2px borders.
         pub const HEIGHT: f32 = 30.0;
-        pub const PADDING: f32 = 4.0;
+        pub const PADDING_X: f32 = 15.0;
+        pub const PADDING_Y: f32 = 4.0;
     }
 
     pub mod skills {
         pub const PADDING: f32 = 4.0;
-        pub const ROW_GAP: f32 = 2.0;
+        pub const ROW_GAP: f32 = 10.0;
         pub const BAR_HEIGHT: f32 = 5.0;
         pub const FONT_SIZE: f32 = 11.0;
+        pub const DIVIDER_HEIGHT: f32 = 1.0;
     }
 
     pub mod dialog {
@@ -192,8 +197,7 @@ pub mod ui {
         pub const DOUBLE_CLICK_SECS: f32 = 0.4;
 
         pub const BUTTON_COLOR: Srgba = Srgba::new(0.34, 0.34, 0.34, 1.0);
-        pub const BUTTON_HOVER_COLOR: Srgba = Srgba::new(0.42, 0.42, 0.42, 1.0);
-        pub const FIELD_BG_COLOR: Srgba = Srgba::new(0.098, 0.102, 0.106, 1.0);
+        pub const FIELD_BG_COLOR: Srgba = Srgba::new(0.198, 0.202, 0.206, 1.0);
         pub const ROW_SELECTED_COLOR: Srgba = Srgba::new(0.25, 0.32, 0.45, 1.0);
 
         pub const HOTKEY_DIALOG_WIDTH: f32 = 400.0;
@@ -218,7 +222,7 @@ pub mod ui {
         pub const BORDER: f32 = 1.0;
         pub const HEIGHT: f32 = SLOT_SIZE + 2.0 * (PADDING + BORDER);
         pub const HOTKEY_FONT_SIZE: f32 = 9.0;
-        pub const SPELL_ICON_SIZE: u32 = 32;
+        pub const SPELL_ICON_SIZE: u32 = 30;
         pub const SPELL_ICON_COLUMNS: u32 = 12;
         pub const SPELL_ICON_ROWS: u32 = 11;
         pub const SPELL_LIST_MAX_HEIGHT: f32 = 220.0;
@@ -229,6 +233,7 @@ pub mod ui {
         pub const FONT_SIZE: f32 = 10.0;
         pub const ICON_SIZE: f32 = 20.0;
         pub const ICON_GAP: f32 = 3.0;
+        pub const GROUP_ROW_INSET: f32 = 4.0;
         pub const GROUP_SHEET_CELL: u32 = 20;
         pub const GROUP_SHEET_COLUMNS: u32 = 4;
         pub const GROUP_SHEET_ROWS: u32 = 2;

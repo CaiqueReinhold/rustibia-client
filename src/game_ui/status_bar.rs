@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::conf::ui::{cooldown as cooldown_conf, status as conf, ui_colors};
+use crate::conf::ui::{status as conf, ui_colors};
 use crate::core::{PlayerStatus, PlayerStatuses};
 
 #[derive(Component, Clone, Copy, Debug)]
@@ -89,7 +89,8 @@ pub(super) fn spawn_status_bar(
         .spawn((
             Node {
                 flex_grow: 1.0,
-                height: Val::Px(cooldown_conf::ICON_SIZE),
+                max_height: Val::Px(14.0),
+                max_width: Val::Px(150.0),
                 border: UiRect::all(Val::Px(conf::BORDER)),
                 ..default()
             },

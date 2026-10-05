@@ -27,6 +27,7 @@ impl Plugin for AgentPlugin {
         app.add_plugins(Material2dPlugin::<material::AgentMaterial>::default())
             .init_resource::<InstanceManager<AgentInstance>>()
             .add_systems(Startup, instancing::init_instances_buffer)
+            .add_observer(instancing::on_sheet_evicted)
             .add_systems(
                 Update,
                 (

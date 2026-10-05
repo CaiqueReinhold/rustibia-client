@@ -195,14 +195,14 @@ build() {
     if [[ "$TOOLCHAIN" == "msvc" ]]; then
         # Accepting the Microsoft redistributable licence is what lets xwin pull
         # the SDK; see https://github.com/Jake-Shadle/xwin for the terms.
-        XWIN_ACCEPT_LICENSE=1 cargo xwin build --release --target "$TARGET"
+        XWIN_ACCEPT_LICENSE=1 cargo xwin build --profile production --target "$TARGET"
     else
-        cargo build --release --target "$TARGET"
+        cargo build --profile production --target "$TARGET"
     fi
 }
 
 stage() {
-    local exe="$ROOT/target/$TARGET/release/$BIN_NAME.exe"
+    local exe="$ROOT/target/$TARGET/production/$BIN_NAME.exe"
     [[ -f "$exe" ]] || die "$exe not found -- drop --skip-build to build it first"
 
     log "staging into $STAGE_DIR"

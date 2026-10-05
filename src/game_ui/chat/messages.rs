@@ -4,7 +4,7 @@ use bevy::picking::hover::Hovered;
 use bevy::prelude::*;
 use bevy::ui_widgets::{ControlOrientation, CoreScrollbarThumb, Scrollbar};
 
-use crate::conf::ui::{CHAT_BOX_HEIGHT, chat, ui_colors};
+use crate::conf::ui::{chat, ui_colors};
 use crate::game_ui::GameUiAssets;
 use crate::game_ui::chat::events::{ActivateChannel, MessageAppendedUi, MessageTrimmedUi};
 use crate::game_ui::chat::state::{ChannelId, ChatState, StoredMessage};
@@ -30,10 +30,7 @@ pub fn spawn_message_panel(
         .spawn((
             Node {
                 width: Val::Percent(100.0),
-                // 6 from input padding, 4 from input border
-                height: Val::Px(
-                    CHAT_BOX_HEIGHT - chat::INPUT_HEIGHT - chat::TAB_HEIGHT - 6.0 - 4.0,
-                ),
+                height: Val::Percent(100.0),
                 border: UiRect::new(Val::Px(2.0), Val::Px(2.0), Val::Px(2.0), Val::Px(0.0)),
                 ..default()
             },

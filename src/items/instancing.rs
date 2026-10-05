@@ -1,6 +1,6 @@
 use crate::{
     conf::map::TILE_SIZE,
-    core::{Appearances, InstanceManager, SpriteAnimator, SpriteConfig},
+    core::{Appearances, InstanceManager, SheetEvicted, SheetUser, SpriteAnimator, SpriteConfig},
     items::ItemConfig,
     items::{
         Item,
@@ -51,6 +51,10 @@ pub fn on_remove_item(
     };
 
     instances.dealloc_index(tag.0);
+}
+
+pub fn on_sheet_evicted(event: On<SheetEvicted>, mut loaded: ResMut<LoadedMaterials>) {
+    loaded.materials.remove(&event.group);
 }
 
 pub fn process_tile_changed(
@@ -303,6 +307,7 @@ fn spawn_drawable(
             order,
             Visibility::Inherited,
             animator,
+            SheetUser(sprite.group.clone()),
         ))
         .id()
 }
@@ -316,7 +321,7 @@ fn init_material(
 ) {
     let sheet = appearances.get_sheet(group);
     let material_handle = materials.add(ItemMaterial {
-        texture: sheet.texture().clone(),
+        texture: sheet.texture(),
         atlas_grid: sheet.grid_size,
         mesh_size: sheet.sprite_size,
         instances: loaded_materials.buffer.clone(),
@@ -534,5 +539,25 @@ mod tests {
             placement(&config(vec![ItemFlag::Take])),
             (DrawRank::Standing, DrawLayer::Items)
         );
+    }
+
+    #[test]
+    fn an_evicted_sheet_loses_its_item_material() {
+        let mut world = World::new();
+        world.insert_resource(LoadedMaterials {
+            materials: HashMap::from([(
+                "item-a".to_owned(),
+                (Handle::default(), Handle::default()),
+            )]),
+            buffer: Handle::default(),
+        });
+        world.add_observer(on_sheet_evicted);
+
+        world.trigger(crate::core::SheetEvicted {
+            group: "item-a".to_owned(),
+            sheet_name: "item-a.png".to_owned(),
+        });
+
+        assert!(world.resource::<LoadedMaterials>().materials.is_empty());
     }
 }
