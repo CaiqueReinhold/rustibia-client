@@ -128,6 +128,7 @@ pub enum ItemFlag {
     ForceUse,
     Avoid,
     BlockSight,
+    DontHide,
     LiquidPool,
     LiquidContainer,
     Rune,

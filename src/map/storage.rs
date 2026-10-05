@@ -198,31 +198,28 @@ impl Map {
             .sum()
     }
 
-    pub fn is_ground(&self, pos: &Position) -> bool {
-        let Some(tile) = self.tiles.get(pos) else {
-            return false;
-        };
-        tile.items
-            .iter()
-            .any(|it| it.config.has_flag(ItemFlag::Ground) || it.config.has_flag(ItemFlag::Border))
+    pub fn is_look_possible(&self, pos: &Position) -> bool {
+        self.tiles.get(pos).is_some_and(|tile| {
+            !tile
+                .items
+                .iter()
+                .any(|it| it.config.has_flag(ItemFlag::BlockSight))
+        })
     }
 
-    pub fn is_bottom(&self, pos: &Position) -> bool {
-        let Some(tile) = self.tiles.get(pos) else {
+    /// Whether this tile is a ceiling for the floors below it. `free_view` lets a
+    /// wall count even when it does not block sight.
+    pub fn limits_floors_view(&self, pos: &Position, free_view: bool) -> bool {
+        let Some(first) = self.tiles.get(pos).and_then(|tile| tile.items.first()) else {
             return false;
         };
-        tile.items
-            .iter()
-            .any(|it| it.config.has_flag(ItemFlag::Bottom))
-    }
-
-    pub fn block_sight(&self, pos: &Position) -> bool {
-        let Some(tile) = self.tiles.get(pos) else {
+        let config = &first.config;
+        if config.has_flag(ItemFlag::DontHide) {
             return false;
-        };
-        tile.items
-            .iter()
-            .any(|it| it.config.has_flag(ItemFlag::BlockSight))
+        }
+        config.has_flag(ItemFlag::Ground)
+            || (config.has_flag(ItemFlag::Bottom)
+                && (free_view || config.has_flag(ItemFlag::BlockSight)))
     }
 }
 
@@ -388,5 +385,82 @@ mod tests {
                 .is_empty()
         );
         assert_eq!(map.agents_on(&at(110, 100)), &[AgentId(5)]);
+    }
+
+    fn single(flags: Vec<ItemFlag>) -> Map {
+        let mut map = Map::default();
+        map.replace_tile(vec![item(ItemId(1), flags, None)], &at(10, 10));
+        map
+    }
+
+    #[test]
+    fn ground_limits_the_view_either_way() {
+        let map = single(vec![ItemFlag::Ground]);
+
+        assert!(map.limits_floors_view(&at(10, 10), true));
+        assert!(map.limits_floors_view(&at(10, 10), false));
+    }
+
+    #[test]
+    fn a_wall_limits_only_a_free_view_unless_it_blocks_sight() {
+        let wall = single(vec![ItemFlag::Bottom]);
+        assert!(wall.limits_floors_view(&at(10, 10), true));
+        assert!(!wall.limits_floors_view(&at(10, 10), false));
+
+        let solid = single(vec![ItemFlag::Bottom, ItemFlag::BlockSight]);
+        assert!(solid.limits_floors_view(&at(10, 10), true));
+        assert!(solid.limits_floors_view(&at(10, 10), false));
+    }
+
+    #[test]
+    fn dont_hide_and_borders_never_limit_the_view() {
+        let dont_hide = single(vec![ItemFlag::Ground, ItemFlag::DontHide]);
+        assert!(!dont_hide.limits_floors_view(&at(10, 10), true));
+
+        let border = single(vec![ItemFlag::Border]);
+        assert!(!border.limits_floors_view(&at(10, 10), true));
+    }
+
+    #[test]
+    fn only_the_first_item_limits_the_view() {
+        let mut map = Map::default();
+        map.replace_tile(
+            vec![
+                item(ItemId(1), vec![ItemFlag::Top], None),
+                item(ItemId(2), vec![ItemFlag::Ground], None),
+            ],
+            &at(10, 10),
+        );
+
+        assert!(!map.limits_floors_view(&at(10, 10), true));
+    }
+
+    #[test]
+    fn no_tile_limits_nothing() {
+        assert!(!Map::default().limits_floors_view(&at(10, 10), true));
+    }
+
+    #[test]
+    fn a_missing_tile_cannot_be_looked_through() {
+        assert!(!Map::default().is_look_possible(&at(10, 10)));
+    }
+
+    #[test]
+    fn a_tile_without_a_sight_blocker_can_be_looked_through() {
+        assert!(single(vec![ItemFlag::Ground]).is_look_possible(&at(10, 10)));
+
+        let mut map = Map::default();
+        map.replace_tile(
+            vec![
+                item(ItemId(1), vec![ItemFlag::Ground], None),
+                item(
+                    ItemId(2),
+                    vec![ItemFlag::Bottom, ItemFlag::BlockSight],
+                    None,
+                ),
+            ],
+            &at(10, 10),
+        );
+        assert!(!map.is_look_possible(&at(10, 10)));
     }
 }

@@ -110,6 +110,9 @@ fn read_item_config(config: &Value) -> Option<Arc<ItemConfig>> {
     if config["block_sight"].as_bool()? {
         flags.push(ItemFlag::BlockSight);
     }
+    if config["dont_hide"].as_bool()? {
+        flags.push(ItemFlag::DontHide);
+    }
     if config["multiuse"].as_bool()? {
         flags.push(ItemFlag::MultiUse);
     }
@@ -169,6 +172,7 @@ mod tests {
             "usable": false,
             "avoid": false,
             "block_sight": false,
+            "dont_hide": false,
             "multiuse": false,
             "forceuse": false,
             "rune": false,
@@ -238,6 +242,28 @@ mod tests {
     #[test]
     fn ground_item_with_non_numeric_ground_speed_fails_the_parse() {
         let config = item_json(true, json!("fast"));
+
+        assert!(read_item_config(&config).is_none());
+    }
+
+    #[test]
+    fn dont_hide_becomes_a_flag() {
+        let mut config = item_json(true, json!(100));
+        config["dont_hide"] = json!(true);
+
+        let item = read_item_config(&config)
+            .expect("fixture supplies every field read_item_config requires");
+
+        assert!(item.has_flag(ItemFlag::DontHide));
+    }
+
+    #[test]
+    fn missing_dont_hide_fails_the_parse() {
+        let mut config = item_json(true, json!(100));
+        config
+            .as_object_mut()
+            .expect("item_json builds an object")
+            .remove("dont_hide");
 
         assert!(read_item_config(&config).is_none());
     }

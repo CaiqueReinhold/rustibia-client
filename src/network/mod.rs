@@ -32,6 +32,10 @@ impl Plugin for NetworkPlugin {
             )
             .add_systems(
                 Update,
+                systems::expire_logout_request.run_if(resource_exists::<LogoutRequested>),
+            )
+            .add_systems(
+                Update,
                 (login::pool_login_task, login::pool_generate_game_token)
                     .run_if(in_state(GameState::LoginScreen)),
             )

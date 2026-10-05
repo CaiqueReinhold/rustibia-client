@@ -8,7 +8,7 @@ pub mod map {
     pub const VIEW_BOTTOM: usize = 7;
     pub const TILES_X: usize = VIEW_LEFT + VIEW_RIGHT + 1;
     pub const TILES_Y: usize = VIEW_TOP + VIEW_BOTTOM + 1;
-    pub const STACK_MAX_VISIBLE_ITEMS: usize = 8;
+    pub const STACK_MAX_VISIBLE_ITEMS: usize = 10;
     pub const CONTAINER_COORD_FLAG: u16 = 0xFFFF;
     pub const INVENTORY_COORD_FLAG: u16 = 0xFFFE;
     /// In `y` beside `INVENTORY_COORD_FLAG`. The server's `constants::items::CARRIED_SEARCH_FLAG`

@@ -36,11 +36,6 @@ use crate::player::components::Player;
 /// Which whole-floor pass a drawable belongs to. The discriminants **are** the
 /// order, and this outranks the tile: everything in an earlier rank is drawn
 /// before everything in a later one, wherever on the floor it sits.
-///
-/// It carries the rules that are not positional. "A creature draws over a dead
-/// body whatever square it stands on" is one, and no arrangement of tiles can
-/// state it: a 2x2 corpse is anchored at its bottom-right tile and spreads up
-/// and left over tiles that draw before it, so by position it always wins.
 #[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(u32)]
 pub enum DrawRank {
@@ -48,13 +43,9 @@ pub enum DrawRank {
     /// behind anything, so a whole floor's worth can go first — which is also
     /// what makes a creature impossible to slice with a ground.
     Ground = 0,
-    /// Corpses and liquid pools. Above every ground, below everything that
-    /// stands up. Membership is per item, not per layer; see
-    /// `items::instancing::placement`.
-    Lying = 1,
-    /// Everything that stands up. Ordered by tile, which is where all the
-    /// positional rules live.
-    Standing = 2,
+    /// Everything else. Ordered by tile, which is where all the positional
+    /// rules live.
+    Standing = 1,
 }
 
 /// What a drawable is, within its tile. The discriminants **are** the order.
@@ -74,17 +65,21 @@ pub enum DrawLayer {
     PassingThrough = 2,
     Bottom = 3,
     Items = 4,
-    Hover = 5,
-    Target = 6,
-    Creature = 7,
-    Effect = 8,
-    Top = 9,
-    Missile = 10,
+    /// A lying corpse's cell on a tile it spreads onto but is not on
+    /// (`items::instancing::lying_cells`): over that tile's items, under
+    /// whoever stands there.
+    Lying = 5,
+    Hover = 6,
+    Target = 7,
+    Creature = 8,
+    Effect = 9,
+    Top = 10,
+    Missile = 11,
 }
 
 const FLOOR_COUNT: i32 = (MAX_FLOOR + 1) as i32;
 /// One more than the largest `DrawRank`, with a spare.
-const RANKS: i32 = 4;
+const RANKS: i32 = 3;
 const MARGIN: i32 = VIEW_MARGIN_TILES as i32;
 const COLS: i32 = TILES_X as i32 + 2 * MARGIN;
 const ROWS: i32 = TILES_Y as i32 + 2 * MARGIN;
@@ -304,6 +299,7 @@ mod tests {
             DrawLayer::PassingThrough,
             DrawLayer::Bottom,
             DrawLayer::Items,
+            DrawLayer::Lying,
             DrawLayer::Hover,
             DrawLayer::Target,
             DrawLayer::Creature,
@@ -369,7 +365,7 @@ mod tests {
         );
 
         // Same cell within their own floors: the gap is exactly one floor, and
-        // a floor is now RANKS windows wide.
+        // a floor is RANKS windows wide.
         let gap = above.key(&origin) - here.key(&origin);
         assert_eq!(gap, (RANKS * ROWS * COLS * TILE_SPAN) as f32);
 
@@ -522,7 +518,12 @@ mod tests {
                 .key(&origin);
 
                 for tile in &covered {
-                    for layer in [DrawLayer::Ground, DrawLayer::Border, DrawLayer::Items] {
+                    for layer in [
+                        DrawLayer::Ground,
+                        DrawLayer::Border,
+                        DrawLayer::Items,
+                        DrawLayer::Lying,
+                    ] {
                         assert!(
                             key(tile, layer, 15) < creature,
                             "stepping {here} -> {to} at f={f}: {tile} {layer:?} draws over it"
@@ -561,71 +562,72 @@ mod tests {
         }
     }
 
-    /// The rule that is not positional, and the reason `DrawRank` exists: in
-    /// Tibia a creature is over a dead body whatever square it stands on. The
-    /// corpse is checked from every tile around it, including the ones it draws
-    /// AFTER — which is every arrangement a tile-ordered key gets wrong.
-    #[test]
-    fn a_creature_draws_over_a_corpse_from_any_square() {
-        let corpse_tile = Position::new(1000, 1000, 7);
-        let corpse = ranked(&corpse_tile, DrawRank::Lying, DrawLayer::Items, 0);
-
-        for dy in -2i32..=2 {
-            for dx in -2i32..=2 {
-                let stood = Position::new((1000 + dx) as u16, (1000 + dy) as u16, 7);
-                assert!(
-                    ranked(&stood, DrawRank::Standing, DrawLayer::Creature, 0) > corpse,
-                    "a creature on {stood} must draw over the corpse on {corpse_tile}"
-                );
-            }
-        }
-    }
-
-    /// And the constraint that stops the rank being pushed any lower: a corpse
-    /// draws over its own blood. The pool carries `bottom` in the appearance
-    /// data, so it shares the `Lying` rank and the two are separated by their
-    /// layers, not by the rank.
-    #[test]
-    fn a_corpse_draws_over_its_own_blood_pool() {
-        let tile = Position::new(1000, 1000, 7);
-
-        let pool = ranked(&tile, DrawRank::Lying, DrawLayer::Bottom, 0);
-        let corpse = ranked(&tile, DrawRank::Lying, DrawLayer::Items, 0);
-        let ground = ranked(&tile, DrawRank::Ground, DrawLayer::Ground, 0);
-
-        assert!(ground < pool, "the pool lies on the ground");
-        assert!(pool < corpse, "and the body lies on the pool");
-    }
-
-    /// A corpse spreads up and left over tiles that draw before its own, and
-    /// must still clear their grounds — the whole reason it cannot simply be
-    /// keyed to an earlier tile.
-    #[test]
-    fn a_corpse_clears_the_ground_of_every_tile_it_spreads_over() {
-        let corpse_tile = Position::new(1000, 1000, 7);
-        let corpse = ranked(&corpse_tile, DrawRank::Lying, DrawLayer::Items, 0);
-
-        for tile in [
-            corpse_tile.clone(),
-            Position::new(999, 1000, 7),
-            Position::new(1000, 999, 7),
+    fn corpse_footprint() -> [Position; 4] {
+        [
             Position::new(999, 999, 7),
-            // And the tiles it does NOT reach, which it must also clear: every
-            // ground on the floor is in an earlier rank.
-            Position::new(1005, 1005, 7),
-        ] {
-            for layer in [DrawLayer::Ground, DrawLayer::Border] {
+            Position::new(1000, 999, 7),
+            Position::new(999, 1000, 7),
+            Position::new(1000, 1000, 7),
+        ]
+    }
+
+    /// A 2x2 corpse on (1000, 1000) as `items::instancing::cell_order` keys it.
+    fn corpse_cell(tile: &Position) -> f32 {
+        if *tile == Position::new(1000, 1000, 7) {
+            key(tile, DrawLayer::Items, 15)
+        } else {
+            key(tile, DrawLayer::Lying, 0)
+        }
+    }
+
+    /// A creature standing anywhere on a corpse draws over every part of it that
+    /// its sprite covers. The tiles up-left of where it stands are covered too,
+    /// by a 64 px outfit.
+    #[test]
+    fn a_creature_draws_over_every_cell_of_a_corpse() {
+        for stood in corpse_footprint() {
+            let creature = key(&stood, DrawLayer::Creature, 0);
+            for cell in corpse_footprint() {
+                if cell.x <= stood.x && cell.y <= stood.y {
+                    assert!(
+                        corpse_cell(&cell) < creature,
+                        "a creature on {stood} must draw over the corpse's cell on {cell}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_corpse_cell_draws_over_the_items_of_the_tile_it_covers() {
+        let tile = Position::new(999, 999, 7);
+        let cell = key(&tile, DrawLayer::Lying, 0);
+
+        for (layer, slot) in [(DrawLayer::Bottom, 15), (DrawLayer::Items, 15)] {
+            assert!(
+                key(&tile, layer, slot) < cell,
+                "{layer:?} must draw under the cell"
+            );
+        }
+        assert!(cell < key(&tile, DrawLayer::Hover, 0));
+        assert!(cell < key(&tile, DrawLayer::Top, 0));
+    }
+
+    #[test]
+    fn anything_on_a_later_tile_draws_over_a_corpse() {
+        for later in [Position::new(1000, 1001, 7), Position::new(1001, 1000, 7)] {
+            let item = key(&later, DrawLayer::Bottom, 0);
+            for cell in corpse_footprint() {
                 assert!(
-                    ranked(&tile, DrawRank::Ground, layer, 15) < corpse,
-                    "{tile} {layer:?} must draw under a corpse anywhere on the floor"
+                    corpse_cell(&cell) < item,
+                    "{later} must draw over the cell on {cell}"
                 );
             }
         }
     }
 
-    /// The rank must not swallow the positional rules. A wall on a later tile
-    /// still occludes a creature on an earlier one — both stand up, so both are
-    /// in the same rank and the tile decides, exactly as before.
+    /// A wall on a later tile occludes a creature on an earlier one: both are
+    /// in the same rank, so the tile decides.
     #[test]
     fn a_wall_still_occludes_a_creature_behind_it() {
         let behind = Position::new(1000, 1000, 7);
@@ -637,9 +639,8 @@ mod tests {
         );
     }
 
-    /// And the rank must not reach across floors: a deeper floor is drawn first
-    /// in its entirety, so a creature down there cannot climb over a corpse on
-    /// the floor above by rank alone.
+    /// A deeper floor is drawn first in its entirety, so nothing down there can
+    /// climb over the floor above by rank alone.
     #[test]
     fn a_rank_never_outranks_a_floor() {
         let deep = Position::new(1000, 1000, 9);

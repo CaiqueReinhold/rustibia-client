@@ -80,7 +80,7 @@ pub fn spawn_player(
         event.outfit.1,
         event.facing,
         event.speed,
-        0,
+        ADDON_1_FLAG | ADDON_2_FLAG,
         event.position.clone(),
         event.name.clone(),
         Some(event.health.clone()),

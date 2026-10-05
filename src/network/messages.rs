@@ -1680,6 +1680,28 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn a_tile_of_ten_items_decodes_all_ten() {
+        let mut payload = vec![SRV_TILE_UPDATED];
+        payload.extend_from_slice(&1u16.to_le_bytes());
+        payload.extend_from_slice(&2u16.to_le_bytes());
+        payload.push(7);
+        for id in 100..110u16 {
+            payload.extend_from_slice(&id.to_le_bytes());
+            payload.push(1);
+        }
+        payload.extend_from_slice(&0xFFFFu16.to_le_bytes());
+
+        let mut codec = GameMessageCodec {};
+        let ServerMessage::TileUpdated { items, .. } =
+            codec.decode(&mut frame(&payload)).unwrap().unwrap()
+        else {
+            panic!("expected TileUpdated");
+        };
+        let ids: Vec<u16> = items.iter().flatten().map(|(id, _)| id.0).collect();
+        assert_eq!(ids, (100..110).collect::<Vec<u16>>());
+    }
+
     /// Silent drift is worse than a disconnect: a decoder that stops early
     /// would otherwise misread every field of a version-skewed message.
     #[test]

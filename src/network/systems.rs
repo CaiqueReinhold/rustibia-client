@@ -6,7 +6,7 @@ use bevy::{prelude::*, tasks::IoTaskPool};
 use futures::{FutureExt, SinkExt, StreamExt};
 use futures_rustls::client::TlsStream;
 use std::io;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::{
     config,
@@ -34,8 +34,13 @@ pub struct LoginCredentials {
 #[derive(Event, Debug)]
 pub struct RequestLogout;
 
+/// How long a logout waits for the server to close the socket before it is taken as refused.
+const LOGOUT_GRACE: Duration = Duration::from_secs(2);
+
 #[derive(Resource, Debug)]
-pub struct LogoutRequested;
+pub struct LogoutRequested {
+    timer: Timer,
+}
 
 #[derive(Resource, Debug)]
 pub struct ConnectionState {
@@ -170,15 +175,25 @@ pub(super) fn on_send_message(event: On<SendMessage>, connection: Option<Res<Con
 pub(super) fn on_request_logout(
     _: On<RequestLogout>,
     mut commands: Commands,
-    pending: Option<Res<LogoutRequested>>,
     connection: Option<Res<ConnectionState>>,
 ) {
-    // Repeat clicks, and clicks after the connection has already gone, are noise.
-    if pending.is_some() || connection.is_none() {
+    if connection.is_none() {
         return;
     }
     commands.trigger(SendMessage(ClientMessage::Logout));
-    commands.insert_resource(LogoutRequested);
+    commands.insert_resource(LogoutRequested {
+        timer: Timer::new(LOGOUT_GRACE, TimerMode::Once),
+    });
+}
+
+pub(super) fn expire_logout_request(
+    mut commands: Commands,
+    mut pending: ResMut<LogoutRequested>,
+    time: Res<Time>,
+) {
+    if pending.timer.tick(time.delta()).just_finished() {
+        commands.remove_resource::<LogoutRequested>();
+    }
 }
 
 pub struct PersistentConnection {
@@ -276,7 +291,6 @@ mod tests {
     use crate::agent::{FacingDirection, Health, Mana};
     use crate::core::OutfitColors;
     use crate::core::OutfitId;
-    use crate::core::{EndGameSession, SessionEndReason};
     use crate::items::ContainerId;
     use crate::map::Position;
     use bevy::ecs::system::RunSystemOnce;
@@ -353,15 +367,36 @@ mod tests {
         );
     }
 
-    #[derive(Resource, Default)]
-    struct EndedWith(Option<SessionEndReason>);
-
-    fn world_watching_for_session_end() -> World {
+    fn world_with_pending_logout() -> World {
         let mut world = World::new();
-        world.init_resource::<EndedWith>();
-        world.add_observer(|e: On<EndGameSession>, mut r: ResMut<EndedWith>| {
-            r.0 = Some(e.reason);
+        world.insert_resource(Time::<()>::default());
+        world.insert_resource(LogoutRequested {
+            timer: Timer::new(LOGOUT_GRACE, TimerMode::Once),
         });
         world
+    }
+
+    #[test]
+    fn a_logout_the_server_never_acts_on_is_dropped_after_the_grace() {
+        let mut world = world_with_pending_logout();
+
+        world
+            .resource_mut::<Time<()>>()
+            .advance_by(LOGOUT_GRACE + Duration::from_millis(1));
+        world.run_system_once(expire_logout_request).unwrap();
+
+        assert!(world.get_resource::<LogoutRequested>().is_none());
+    }
+
+    #[test]
+    fn a_logout_is_kept_within_the_grace() {
+        let mut world = world_with_pending_logout();
+
+        world
+            .resource_mut::<Time<()>>()
+            .advance_by(LOGOUT_GRACE - Duration::from_millis(1));
+        world.run_system_once(expire_logout_request).unwrap();
+
+        assert!(world.get_resource::<LogoutRequested>().is_some());
     }
 }

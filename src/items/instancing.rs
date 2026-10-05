@@ -1,4 +1,5 @@
 use crate::{
+    conf::map::TILE_SIZE,
     core::{Appearances, InstanceManager, SpriteAnimator, SpriteConfig},
     items::ItemConfig,
     items::{
@@ -76,9 +77,8 @@ pub fn process_tile_changed(
             && items.peek().is_some()
         {
             let world_pos = position.to_world();
-            // The parent contributes nothing to z: a tile's ground, its corpse
-            // and its wall sit in three different ranks, so no tile-wide base
-            // key exists to put here.
+            // The parent contributes nothing to z: a tile's ground and its wall
+            // sit in different ranks, so no tile-wide base key exists to put here.
             let parent = commands
                 .spawn((
                     Transform::from_xyz(world_pos.x, world_pos.y, 0.0),
@@ -118,11 +118,6 @@ pub fn process_tile_changed(
 }
 
 /// Where an item draws: which whole-floor pass, and where within its tile.
-///
-/// The order of the tests is load-bearing: a blood pool carries `bottom` AND
-/// `liquidpool` in the appearance data, so `LiquidPool` has to come before
-/// `Bottom` or the pool ranks with the walls and draws over the corpse that
-/// bled it.
 fn placement(config: &ItemConfig) -> (DrawRank, DrawLayer) {
     if config.has_flag(ItemFlag::Top) {
         (DrawRank::Standing, DrawLayer::Top)
@@ -131,14 +126,60 @@ fn placement(config: &ItemConfig) -> (DrawRank, DrawLayer) {
     } else if config.has_flag(ItemFlag::Border) {
         (DrawRank::Ground, DrawLayer::Border)
     } else if config.has_flag(ItemFlag::LyingObject) {
-        (DrawRank::Lying, DrawLayer::Items)
-    } else if config.has_flag(ItemFlag::LiquidPool) {
-        (DrawRank::Lying, DrawLayer::Bottom)
+        (DrawRank::Standing, DrawLayer::Items)
     } else if config.has_flag(ItemFlag::Bottom) {
         (DrawRank::Standing, DrawLayer::Bottom)
     } else {
         (DrawRank::Standing, DrawLayer::Items)
     }
+}
+
+/// Cuts an item's box into the parts over each tile its sprite covers.
+///
+/// `bbox` and every returned box are `(min, size)` in sprite pixels, y down:
+/// `Rect::max` holds the size, as the item shader reads it. Each part is paired
+/// with its tile's offset from the item's own tile, which is the sprite's
+/// bottom-right square; a square the box does not reach is left out.
+fn lying_cells(sprite_size: Vec2, bbox: Rect) -> Vec<(IVec2, Rect)> {
+    let cols = (sprite_size.x / TILE_SIZE) as i32;
+    let rows = (sprite_size.y / TILE_SIZE) as i32;
+    let bbox_end = bbox.min + bbox.max;
+
+    let mut cells = Vec::new();
+    for row in 0..rows {
+        for col in 0..cols {
+            let square = Vec2::new(col as f32, row as f32) * TILE_SIZE;
+            let min = bbox.min.max(square);
+            let end = bbox_end.min(square + TILE_SIZE);
+            if min.x < end.x && min.y < end.y {
+                cells.push((
+                    IVec2::new(col - (cols - 1), row - (rows - 1)),
+                    Rect {
+                        min,
+                        max: end - min,
+                    },
+                ));
+            }
+        }
+    }
+    cells
+}
+
+fn cell_order(position: &Position, offset: IVec2, stack_index: u32) -> DrawOrder {
+    if offset == IVec2::ZERO {
+        return DrawOrder::new(
+            position.clone(),
+            DrawRank::Standing,
+            DrawLayer::Items,
+            stack_index,
+        );
+    }
+    let tile = Position::new(
+        position.x.saturating_add_signed(offset.x as i16),
+        position.y.saturating_add_signed(offset.y as i16),
+        position.z,
+    );
+    DrawOrder::new(tile, DrawRank::Standing, DrawLayer::Lying, 0)
 }
 
 fn spawn_item(
@@ -167,14 +208,8 @@ fn spawn_item(
     }
 
     let (mesh, material) = loaded_materials.materials.get(&sprite.group).unwrap();
-    let index = instances.alloc_index();
-    let instance = instances.get_mut(index);
     let patterns = item.get_patterns(position, &sprite);
-    let (px, py, pz) = patterns;
-    init_instance(instance, &sprite, patterns);
-
-    let animator = SpriteAnimator::new(Arc::clone(&sprite), px, py, pz);
-    instance.sprite_id = animator.current_sprite_ids[0];
+    let bbox = item_bbox(&sprite, patterns.0);
 
     let (rank, layer) = placement(&item.config);
     let half_tile_x = if sheet.sprite_size.x <= 32.0 {
@@ -189,6 +224,75 @@ fn spawn_item(
     };
     let translation = Vec3::new(-elevation + half_tile_x, elevation + half_tile_y, 0.0);
 
+    let lying = layer == DrawLayer::Items && item.config.has_flag(ItemFlag::LyingObject);
+    if !lying || sheet.sprite_size == Vec2::splat(TILE_SIZE) {
+        return spawn_drawable(
+            commands,
+            instances,
+            mesh,
+            material,
+            &sprite,
+            patterns,
+            bbox,
+            translation,
+            DrawOrder::new(position.clone(), rank, layer, stack_index as u32),
+        );
+    }
+
+    let holder = commands
+        .spawn((
+            Transform::from_translation(translation),
+            Visibility::Inherited,
+        ))
+        .id();
+    for (offset, cell_box) in lying_cells(sheet.sprite_size, bbox) {
+        let cell = spawn_drawable(
+            commands,
+            instances,
+            mesh,
+            material,
+            &sprite,
+            patterns,
+            cell_box,
+            Vec3::ZERO,
+            cell_order(position, offset, stack_index as u32),
+        );
+        commands.entity(holder).add_child(cell);
+    }
+    holder
+}
+
+fn item_bbox(sprite: &SpriteConfig, pattern_x: u32) -> Rect {
+    sprite
+        .boxes
+        .get(pattern_x as usize)
+        .copied()
+        .unwrap_or(Rect {
+            min: Vec2::ZERO,
+            max: Vec2::splat(TILE_SIZE),
+        })
+}
+
+fn spawn_drawable(
+    commands: &mut Commands,
+    instances: &mut InstanceManager<ItemInstance>,
+    mesh: &Handle<Mesh>,
+    material: &Handle<ItemMaterial>,
+    sprite: &Arc<SpriteConfig>,
+    (px, py, pz): (u32, u32, u32),
+    bbox: Rect,
+    translation: Vec3,
+    order: DrawOrder,
+) -> Entity {
+    let index = instances.alloc_index();
+    let instance = instances.get_mut(index);
+    instance.bbox_min = bbox.min;
+    instance.bbox_size = bbox.max;
+    instance.shift = sprite.shift;
+
+    let animator = SpriteAnimator::new(Arc::clone(sprite), px, py, pz);
+    instance.sprite_id = animator.current_sprite_ids[0];
+
     commands
         .spawn((
             SpawnedItem,
@@ -196,24 +300,11 @@ fn spawn_item(
             MeshMaterial2d(material.clone()),
             MeshTag(index),
             Transform::from_translation(translation),
-            DrawOrder::new(position.clone(), rank, layer, stack_index as u32),
+            order,
             Visibility::Inherited,
             animator,
         ))
         .id()
-}
-
-fn init_instance(instance: &mut ItemInstance, sprite: &SpriteConfig, patterns: (u32, u32, u32)) {
-    let (px, _py, _pz) = patterns;
-    if !sprite.boxes.is_empty() {
-        let bbox = &sprite.boxes[px as usize];
-        instance.bbox_min = bbox.min;
-        instance.bbox_size = bbox.max;
-    } else {
-        instance.bbox_min = Vec2::ZERO;
-        instance.bbox_size = Vec2::new(32.0, 32.0);
-    }
-    instance.shift = sprite.shift;
 }
 
 fn init_material(
@@ -289,30 +380,128 @@ mod tests {
     }
 
     /// The flags an item really carries, taken from `appearances.json`: a blood
-    /// pool is `bottom` + `liquidpool` and NO `lying_object`, while a corpse is
-    /// `lying_object` and carries no placement flag at all. Ranking the pool by
-    /// its `bottom` flag would put it in with the walls and it would then draw
-    /// over the very corpse that bled it.
+    /// pool is `bottom` + `liquidpool` and no `lying_object`, while a corpse is
+    /// `lying_object` and carries no placement flag at all.
     #[test]
-    fn a_blood_pool_ranks_with_the_corpse_and_not_with_the_walls() {
+    fn a_corpse_lies_over_its_own_blood_pool() {
         let pool = placement(&config(vec![
             ItemFlag::Bottom,
             ItemFlag::LiquidPool,
             ItemFlag::Unmove,
         ]));
         let corpse = placement(&config(vec![ItemFlag::LyingObject, ItemFlag::Container]));
-        let wall = placement(&config(vec![ItemFlag::Bottom, ItemFlag::Unpass]));
 
-        assert_eq!(pool, (DrawRank::Lying, DrawLayer::Bottom));
-        assert_eq!(corpse, (DrawRank::Lying, DrawLayer::Items));
-        assert_eq!(wall, (DrawRank::Standing, DrawLayer::Bottom));
+        assert_eq!(pool, (DrawRank::Standing, DrawLayer::Bottom));
+        assert_eq!(corpse, (DrawRank::Standing, DrawLayer::Items));
 
         let tile = Position::new(1000, 1000, 7);
         let origin = DrawOrigin::around(&tile);
         let key = |(rank, layer)| DrawOrder::new(tile.clone(), rank, layer, 0).key(&origin);
 
-        assert!(key(pool) < key(corpse), "the body lies on the pool");
-        assert!(key(corpse) < key(wall), "and a wall stands over both");
+        assert!(key(pool) < key(corpse));
+    }
+
+    fn rect(x: f32, y: f32, w: f32, h: f32) -> Rect {
+        Rect {
+            min: Vec2::new(x, y),
+            max: Vec2::new(w, h),
+        }
+    }
+
+    #[test]
+    fn a_full_2x2_sprite_splits_into_four_cells() {
+        let cells = lying_cells(Vec2::new(64.0, 64.0), rect(0.0, 0.0, 64.0, 64.0));
+
+        assert_eq!(
+            cells,
+            vec![
+                (IVec2::new(-1, -1), rect(0.0, 0.0, 32.0, 32.0)),
+                (IVec2::new(0, -1), rect(32.0, 0.0, 32.0, 32.0)),
+                (IVec2::new(-1, 0), rect(0.0, 32.0, 32.0, 32.0)),
+                (IVec2::new(0, 0), rect(32.0, 32.0, 32.0, 32.0)),
+            ]
+        );
+    }
+
+    /// A real corpse box (item 52861), a small body straddling the centre.
+    #[test]
+    fn a_cell_holds_only_the_part_of_the_box_over_its_tile() {
+        let cells = lying_cells(Vec2::new(64.0, 64.0), rect(30.0, 28.0, 34.0, 36.0));
+
+        assert_eq!(
+            cells,
+            vec![
+                (IVec2::new(-1, -1), rect(30.0, 28.0, 2.0, 4.0)),
+                (IVec2::new(0, -1), rect(32.0, 28.0, 32.0, 4.0)),
+                (IVec2::new(-1, 0), rect(30.0, 32.0, 2.0, 32.0)),
+                (IVec2::new(0, 0), rect(32.0, 32.0, 32.0, 32.0)),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_wide_or_tall_sprite_splits_in_two() {
+        assert_eq!(
+            lying_cells(Vec2::new(64.0, 32.0), rect(17.0, 2.0, 47.0, 29.0)),
+            vec![
+                (IVec2::new(-1, 0), rect(17.0, 2.0, 15.0, 29.0)),
+                (IVec2::new(0, 0), rect(32.0, 2.0, 32.0, 29.0)),
+            ]
+        );
+        assert_eq!(
+            lying_cells(Vec2::new(32.0, 64.0), rect(0.0, 25.0, 31.0, 38.0)),
+            vec![
+                (IVec2::new(0, -1), rect(0.0, 25.0, 31.0, 7.0)),
+                (IVec2::new(0, 0), rect(0.0, 32.0, 31.0, 31.0)),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_square_the_box_does_not_reach_has_no_cell() {
+        assert_eq!(
+            lying_cells(Vec2::new(64.0, 64.0), rect(32.0, 32.0, 32.0, 32.0)),
+            vec![(IVec2::ZERO, rect(32.0, 32.0, 32.0, 32.0))]
+        );
+    }
+
+    #[test]
+    fn a_one_tile_sprite_is_one_unchanged_cell() {
+        let bbox = rect(1.0, 0.0, 31.0, 32.0);
+
+        assert_eq!(
+            lying_cells(Vec2::new(32.0, 32.0), bbox),
+            vec![(IVec2::ZERO, bbox)]
+        );
+    }
+
+    #[test]
+    fn a_corpses_own_cell_keeps_its_stack_slot() {
+        let tile = Position::new(1000, 1000, 7);
+
+        assert_eq!(
+            cell_order(&tile, IVec2::ZERO, 3),
+            DrawOrder::new(tile.clone(), DrawRank::Standing, DrawLayer::Items, 3)
+        );
+    }
+
+    #[test]
+    fn a_spread_cell_keys_to_the_tile_it_covers() {
+        let tile = Position::new(1000, 1000, 7);
+
+        assert_eq!(
+            cell_order(&tile, IVec2::new(-1, -1), 3),
+            DrawOrder::new(
+                Position::new(999, 999, 7),
+                DrawRank::Standing,
+                DrawLayer::Lying,
+                0
+            )
+        );
+        assert_eq!(
+            cell_order(&tile, IVec2::new(0, -1), 3).pos,
+            Position::new(1000, 999, 7)
+        );
     }
 
     /// Grounds and borders are the pass that goes first, so nothing they draw

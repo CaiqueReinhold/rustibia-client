@@ -1,7 +1,8 @@
+use std::ops::RangeInclusive;
+
 use bevy::prelude::*;
 
 use crate::{
-    agent::WalkingDirection,
     conf::map::{BASE_FLOOR, MAX_FLOOR, MIN_FLOOR, UNDERGROUND_REACH},
     map::{Map, Position},
     player::components::Player,
@@ -26,130 +27,98 @@ pub fn setup_floors(mut commands: Commands) {
     });
 }
 
-/// The tile on `floor` that visually covers `pos`: one tile `dir`-wards per floor
-/// between the two. `None` when that tile falls off the map.
-fn covering_tile(dir: WalkingDirection, pos: &Position, floor: u8) -> Option<Position> {
-    let floor_offset = (pos.z as i32) - (floor as i32);
-    let (dx, dy) = match dir {
-        WalkingDirection::East => (floor_offset, 0),
-        WalkingDirection::West => (-floor_offset, 0),
-        WalkingDirection::North => (0, -floor_offset),
-        WalkingDirection::South => (0, floor_offset),
-        _ => (0, 0),
-    };
-
-    let x = u16::try_from(pos.x as i32 + dx).ok()?;
-    let y = u16::try_from(pos.y as i32 + dy).ok()?;
-    Some(Position::new(x, y, floor))
+fn covered_up(pos: &Position) -> Option<Position> {
+    Some(Position::new(
+        pos.x.checked_add(1)?,
+        pos.y.checked_add(1)?,
+        pos.z.checked_sub(1)?,
+    ))
 }
 
-fn has_oclusion(dir: WalkingDirection, pos: &Position, floor: u8, map: &Map) -> bool {
-    let Some(offset_pos) = covering_tile(dir, pos, floor) else {
-        return false;
+/// The highest floor drawn over `camera`. A transcription of OTClient's
+/// `MapView::calcFirstVisibleFloor`.
+fn first_visible_floor(map: &Map, camera: &Position) -> u8 {
+    let mut first = if camera.z > BASE_FLOOR {
+        camera
+            .z
+            .saturating_sub(UNDERGROUND_REACH)
+            .max(BASE_FLOOR + 1)
+    } else {
+        MIN_FLOOR
     };
 
-    if map.is_bottom(&offset_pos) && matches!(dir, WalkingDirection::East | WalkingDirection::South)
-    {
-        return true;
+    for ix in -1i32..=1 {
+        for iy in -1i32..=1 {
+            if first >= camera.z {
+                return first;
+            }
+            let (Ok(x), Ok(y)) = (
+                u16::try_from(camera.x as i32 + ix),
+                u16::try_from(camera.y as i32 + iy),
+            ) else {
+                continue;
+            };
+            let pos = Position::new(x, y, camera.z);
+            let look_possible = map.is_look_possible(&pos);
+            let centre = ix == 0 && iy == 0;
+            if !centre && (ix.abs() == iy.abs() || !look_possible) {
+                continue;
+            }
+
+            let mut upper = pos.clone();
+            let mut covered = pos;
+            while let Some(next) = covered_up(&covered) {
+                covered = next;
+                upper.z = covered.z;
+                if upper.z < first {
+                    break;
+                }
+                if map.limits_floors_view(&upper, !look_possible) {
+                    first = upper.z + 1;
+                    break;
+                }
+                if map.limits_floors_view(&covered, look_possible) {
+                    first = covered.z + 1;
+                    break;
+                }
+            }
+        }
     }
-
-    (!map.block_sight(&(pos.clone() + dir)) || (floor as i32 - pos.z as i32) < -1)
-        && map.is_ground(&offset_pos)
-}
-
-fn is_floor_visible(map: &Map, pos: &Position, floor: u8) -> bool {
-    if (pos.z <= BASE_FLOOR) && (floor > BASE_FLOOR) {
-        return false;
-    }
-
-    if (pos.z > BASE_FLOOR) && (floor <= BASE_FLOOR) {
-        return false;
-    }
-
-    if pos.z == floor {
-        return true;
-    }
-
-    if floor > pos.z {
-        return true;
-    }
-
-    if has_oclusion(WalkingDirection::North, pos, floor, map) {
-        return false;
-    }
-
-    if has_oclusion(WalkingDirection::East, pos, floor, map) {
-        return false;
-    }
-
-    if has_oclusion(WalkingDirection::South, pos, floor, map) {
-        return false;
-    }
-
-    if has_oclusion(WalkingDirection::West, pos, floor, map) {
-        return false;
-    }
-
-    true
+    first
 }
 
 pub fn update_floors_visibility(
     mut commands: Commands,
-    position_q: Query<&Position, (With<Player>, Changed<Position>)>,
+    player_q: Query<&Position, With<Player>>,
     floor_ents: Res<FloorEntities>,
     map: Res<Map>,
+    mut drawn: Local<Option<RangeInclusive<u8>>>,
 ) {
-    let Ok(position) = position_q.single() else {
+    let Ok(camera) = player_q.single() else {
         return;
     };
 
-    let mut set = |floor: u8, visibility: Visibility| {
-        commands
-            .entity(floor_ents.floors[floor as usize])
-            .insert(visibility);
-    };
-
-    if position.z <= BASE_FLOOR {
-        let mut z = position.z as i16;
-        while z >= MIN_FLOOR as i16 && is_floor_visible(&map, position, z as u8) {
-            set(z as u8, Visibility::Visible);
-            z -= 1;
-        }
-        for hidden in MIN_FLOOR as i16..=z {
-            set(hidden as u8, Visibility::Hidden);
-        }
-
-        for z in (position.z + 1)..=BASE_FLOOR {
-            set(z, Visibility::Visible);
-        }
-        for z in (BASE_FLOOR + 1)..=MAX_FLOOR {
-            set(z, Visibility::Hidden);
-        }
+    let last = if camera.z <= BASE_FLOOR {
+        BASE_FLOOR
     } else {
-        let shallowest = position
-            .z
-            .saturating_sub(UNDERGROUND_REACH)
-            .max(BASE_FLOOR + 1);
-        let mut z = position.z as i16;
-        while z >= shallowest as i16 && is_floor_visible(&map, position, z as u8) {
-            set(z as u8, Visibility::Visible);
-            z -= 1;
-        }
-        for hidden in (BASE_FLOOR as i16 + 1)..=z {
-            set(hidden as u8, Visibility::Hidden);
-        }
-
-        let deepest = (position.z + UNDERGROUND_REACH).min(MAX_FLOOR);
-        for z in (position.z + 1)..=deepest {
-            set(z, Visibility::Visible);
-        }
-        for z in (deepest + 1)..=MAX_FLOOR {
-            set(z, Visibility::Hidden);
-        }
-        for z in MIN_FLOOR..=BASE_FLOOR {
-            set(z, Visibility::Hidden);
-        }
+        (camera.z + UNDERGROUND_REACH).min(MAX_FLOOR)
+    };
+    let visible = first_visible_floor(&map, camera)..=last;
+    if drawn.as_ref() == Some(&visible) {
+        return;
     }
+
+    for z in MIN_FLOOR..=MAX_FLOOR {
+        let visibility = if visible.contains(&z) {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+        commands
+            .entity(floor_ents.floors[z as usize])
+            .insert(visibility);
+    }
+    *drawn = Some(visible);
 }
 
 #[cfg(test)]
@@ -179,89 +148,159 @@ mod tests {
         );
     }
 
-    /// The offset is the gap to the *player's* floor, not to `BASE_FLOOR`, and it
-    /// runs down-right.
-    #[test]
-    fn the_covering_tile_is_measured_from_the_players_floor() {
-        let player = Position::new(100, 100, 9);
-
-        assert_eq!(
-            covering_tile(WalkingDirection::East, &player, 8),
-            Some(Position::new(101, 100, 8)),
-        );
-        assert_eq!(
-            covering_tile(WalkingDirection::South, &player, 8),
-            Some(Position::new(100, 101, 8)),
-        );
-        // Two floors up, two tiles along.
-        assert_eq!(
-            covering_tile(WalkingDirection::East, &player, 7),
-            Some(Position::new(102, 100, 7)),
-        );
+    fn item(flags: Vec<ItemFlag>) -> Arc<Item> {
+        Arc::new(Item::new(
+            Arc::new(ItemConfig {
+                id: ItemId(100),
+                flags,
+                friction: None,
+                slot: None,
+                minimap_color: None,
+                elevation: None,
+            }),
+            1,
+        ))
     }
 
-    /// A player on `BASE_FLOOR` is the case every other test on this system was
-    /// written against; it must keep its answers.
-    #[test]
-    fn the_surface_offset_is_unchanged() {
+    fn surface_player(map: &mut Map) -> Position {
         let player = Position::new(100, 100, 7);
-
-        assert_eq!(
-            covering_tile(WalkingDirection::East, &player, 6),
-            Some(Position::new(101, 100, 6)),
-        );
-        assert_eq!(
-            covering_tile(WalkingDirection::North, &player, 5),
-            Some(Position::new(100, 98, 5)),
-        );
+        ground_at(map, player.clone());
+        player
     }
 
-    /// A covering tile off the map is no tile, so it hides nothing — and asking
-    /// for one must not wrap into a real coordinate.
     #[test]
-    fn a_covering_tile_off_the_map_hides_nothing() {
+    fn nothing_above_shows_every_floor_from_the_top() {
         let mut map = Map::default();
-        // Ground on the tiles a wrapped coordinate would land on.
-        for pos in [Position::new(65535, 0, 8), Position::new(0, 65535, 8)] {
-            ground_at(&mut map, pos);
-        }
-        let player = Position::new(0, 0, 9);
+        let player = surface_player(&mut map);
 
-        assert!(covering_tile(WalkingDirection::West, &player, 8).is_none());
-        assert!(covering_tile(WalkingDirection::North, &player, 8).is_none());
-        assert!(
-            is_floor_visible(&map, &player, 8),
-            "nothing covers a player in the map's corner"
+        assert_eq!(first_visible_floor(&map, &player), 0);
+    }
+
+    #[test]
+    fn underground_the_view_reaches_two_floors_up_and_never_the_surface() {
+        let mut deep = Map::default();
+        ground_at(&mut deep, Position::new(100, 100, 10));
+        assert_eq!(first_visible_floor(&deep, &Position::new(100, 100, 10)), 8);
+
+        let mut shallow = Map::default();
+        ground_at(&mut shallow, Position::new(100, 100, 8));
+        assert_eq!(
+            first_visible_floor(&shallow, &Position::new(100, 100, 8)),
+            8
         );
     }
 
-    /// Ground on the covering tile is a ceiling. Two floors up, not one: the four
-    /// probes are symmetric, so a one-floor gap cannot tell a sign error from a
-    /// correct offset.
     #[test]
-    fn a_ceiling_two_floors_up_hides_that_floor() {
-        let player = Position::new(100, 100, 10);
+    fn ground_directly_above_the_player_is_a_ceiling() {
+        let mut map = Map::default();
+        let player = surface_player(&mut map);
+        ground_at(&mut map, Position::new(100, 100, 5));
 
+        assert_eq!(first_visible_floor(&map, &player), 6);
+    }
+
+    /// Two floors up the covering tile is two along on both axes; a probe along one
+    /// axis only lands on a tile that covers nothing.
+    #[test]
+    fn the_tile_drawn_over_the_player_is_a_ceiling() {
         let mut covered = Map::default();
-        ground_at(&mut covered, Position::new(102, 100, 8));
-        assert!(!is_floor_visible(&covered, &player, 8));
+        let player = surface_player(&mut covered);
+        ground_at(&mut covered, Position::new(102, 102, 5));
+        assert_eq!(first_visible_floor(&covered, &player), 6);
 
-        let mut uncovered = Map::default();
-        ground_at(&mut uncovered, Position::new(101, 100, 8));
-        assert!(
-            is_floor_visible(&uncovered, &player, 8),
-            "one tile along is the covering tile for floor 9, not floor 8"
-        );
+        let mut beside = Map::default();
+        surface_player(&mut beside);
+        ground_at(&mut beside, Position::new(102, 100, 5));
+        assert_eq!(first_visible_floor(&beside, &player), 0);
     }
 
-    /// Occlusion only ever asks what is above the player.
     #[test]
-    fn a_deeper_floor_is_never_occluded() {
+    fn a_see_through_neighbour_is_probed() {
         let mut map = Map::default();
-        ground_at(&mut map, Position::new(101, 100, 10));
-        ground_at(&mut map, Position::new(99, 100, 10));
+        let player = surface_player(&mut map);
+        ground_at(&mut map, Position::new(101, 100, 7));
+        ground_at(&mut map, Position::new(101, 100, 5));
 
-        assert!(is_floor_visible(&map, &Position::new(100, 100, 9), 10));
+        assert_eq!(first_visible_floor(&map, &player), 6);
+    }
+
+    #[test]
+    fn a_neighbour_that_blocks_sight_is_not_probed() {
+        let mut map = Map::default();
+        let player = surface_player(&mut map);
+        map.replace_tile(
+            vec![
+                item(vec![ItemFlag::Ground]),
+                item(vec![ItemFlag::Bottom, ItemFlag::BlockSight]),
+            ],
+            &Position::new(101, 100, 7),
+        );
+        ground_at(&mut map, Position::new(101, 100, 5));
+
+        assert_eq!(first_visible_floor(&map, &player), 0);
+    }
+
+    #[test]
+    fn a_missing_neighbour_is_not_probed() {
+        let mut map = Map::default();
+        let player = surface_player(&mut map);
+        ground_at(&mut map, Position::new(101, 100, 5));
+
+        assert_eq!(first_visible_floor(&map, &player), 0);
+    }
+
+    #[test]
+    fn diagonal_neighbours_are_not_probed() {
+        let mut map = Map::default();
+        let player = surface_player(&mut map);
+        ground_at(&mut map, Position::new(101, 101, 7));
+        ground_at(&mut map, Position::new(101, 101, 5));
+
+        assert_eq!(first_visible_floor(&map, &player), 0);
+    }
+
+    /// The west neighbour is probed before the player's own tile, so it finds the
+    /// higher ceiling first; the lower one must still win.
+    #[test]
+    fn a_later_probe_lowers_the_first_floor() {
+        let mut map = Map::default();
+        let player = surface_player(&mut map);
+        ground_at(&mut map, Position::new(99, 100, 7));
+        ground_at(&mut map, Position::new(99, 100, 4));
+        ground_at(&mut map, Position::new(100, 100, 6));
+
+        assert_eq!(first_visible_floor(&map, &player), 7);
+    }
+
+    #[test]
+    fn the_map_edge_does_not_wrap() {
+        let mut map = Map::default();
+        let player = Position::new(65535, 65535, 7);
+        ground_at(&mut map, player.clone());
+        ground_at(&mut map, Position::new(0, 0, 6));
+        ground_at(&mut map, Position::new(0, 0, 5));
+
+        assert_eq!(first_visible_floor(&map, &player), 0);
+    }
+
+    /// The physical probe uses the strict test and the geometric one the free test.
+    #[test]
+    fn a_plain_wall_hides_only_from_the_covering_tile() {
+        let mut above = Map::default();
+        let player = surface_player(&mut above);
+        above.replace_tile(
+            vec![item(vec![ItemFlag::Bottom])],
+            &Position::new(100, 100, 6),
+        );
+        assert_eq!(first_visible_floor(&above, &player), 0);
+
+        let mut covering = Map::default();
+        surface_player(&mut covering);
+        covering.replace_tile(
+            vec![item(vec![ItemFlag::Bottom])],
+            &Position::new(101, 101, 6),
+        );
+        assert_eq!(first_visible_floor(&covering, &player), 7);
     }
 
     fn world_with_floors(player: Position, map: Map) -> (World, Vec<Entity>) {
@@ -339,8 +378,8 @@ mod tests {
     #[test]
     fn underground_a_ceiling_hides_itself_and_everything_above_it() {
         let mut map = Map::default();
-        // Covers a player on 10 from floor 9.
-        ground_at(&mut map, Position::new(101, 100, 9));
+        ground_at(&mut map, Position::new(100, 100, 10));
+        ground_at(&mut map, Position::new(101, 101, 9));
         let (mut world, floors) = world_with_floors(Position::new(100, 100, 10), map);
 
         world.run_system_once(update_floors_visibility).unwrap();
@@ -374,13 +413,28 @@ mod tests {
     #[test]
     fn floor_zero_is_hidden_when_it_is_the_ceiling() {
         let mut map = Map::default();
-        // Covers a player on 1 from floor 0.
-        ground_at(&mut map, Position::new(101, 100, 0));
+        ground_at(&mut map, Position::new(100, 100, 1));
+        ground_at(&mut map, Position::new(101, 101, 0));
         let (mut world, floors) = world_with_floors(Position::new(100, 100, 1), map);
 
         world.run_system_once(update_floors_visibility).unwrap();
 
         assert_eq!(visibility(&world, &floors, 1), Some(Visibility::Visible));
         assert_eq!(visibility(&world, &floors, 0), Some(Visibility::Hidden));
+    }
+
+    #[test]
+    fn a_ceiling_that_arrives_without_a_step_hides_its_floor() {
+        let mut map = Map::default();
+        let player = surface_player(&mut map);
+        let (mut world, floors) = world_with_floors(player, map);
+        let system = world.register_system(update_floors_visibility);
+
+        world.run_system(system).unwrap();
+        assert_eq!(visibility(&world, &floors, 6), Some(Visibility::Visible));
+
+        ground_at(&mut world.resource_mut::<Map>(), Position::new(101, 101, 6));
+        world.run_system(system).unwrap();
+        assert_eq!(visibility(&world, &floors, 6), Some(Visibility::Hidden));
     }
 }
