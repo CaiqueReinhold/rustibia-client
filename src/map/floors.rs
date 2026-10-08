@@ -95,6 +95,7 @@ pub fn update_floors_visibility(
     mut drawn: Local<Option<RangeInclusive<u8>>>,
 ) {
     let Ok(camera) = player_q.single() else {
+        *drawn = None;
         return;
     };
 
@@ -421,6 +422,38 @@ mod tests {
 
         assert_eq!(visibility(&world, &floors, 1), Some(Visibility::Visible));
         assert_eq!(visibility(&world, &floors, 0), Some(Visibility::Hidden));
+    }
+
+    #[test]
+    fn a_new_session_under_the_same_ceiling_hides_its_floor() {
+        let mut map = Map::default();
+        let player = surface_player(&mut map);
+        ground_at(&mut map, Position::new(101, 101, 6));
+        let (mut world, floors) = world_with_floors(player.clone(), map);
+        let system = world.register_system(update_floors_visibility);
+
+        world.run_system(system).unwrap();
+        assert_eq!(visibility(&world, &floors, 6), Some(Visibility::Hidden));
+
+        let session = world
+            .query_filtered::<Entity, With<Player>>()
+            .single(&world)
+            .unwrap();
+        world.despawn(session);
+        world.run_system(system).unwrap();
+        for &floor in &floors {
+            world.entity_mut(floor).insert(Visibility::Visible);
+        }
+        world.spawn((
+            Player {
+                agent_id: AgentId(1),
+            },
+            Agent::default(),
+            player,
+        ));
+        world.run_system(system).unwrap();
+
+        assert_eq!(visibility(&world, &floors, 6), Some(Visibility::Hidden));
     }
 
     #[test]

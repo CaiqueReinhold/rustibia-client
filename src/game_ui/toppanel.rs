@@ -98,15 +98,12 @@ pub fn spawn_top_panel(
 
     let status_bar = spawn_status_bar(commands, &ui_assets.background_dark, status_assets);
     let status_bar_wrapper = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                align_content: AlignContent::Center,
-                justify_content: JustifyContent::Center,
-                ..default()
-            },
-            BackgroundColor(Color::Srgba(Srgba::RED)),
-        ))
+        .spawn((Node {
+            width: Val::Percent(100.0),
+            align_content: AlignContent::Center,
+            justify_content: JustifyContent::Center,
+            ..default()
+        },))
         .add_child(status_bar)
         .id();
     commands.entity(panel_inner).add_child(status_bar_wrapper);

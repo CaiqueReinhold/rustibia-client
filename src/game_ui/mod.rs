@@ -11,6 +11,7 @@ mod button_row;
 mod chat;
 pub mod context_menu;
 mod cooldown;
+mod death;
 mod disconnect;
 mod game_overlay;
 mod leftpanel;
@@ -111,7 +112,9 @@ impl Plugin for GameUiPlugin {
             .add_observer(outdated::on_client_outdated)
             .add_observer(outdated::on_dismiss)
             .add_observer(disconnect::on_connection_lost)
-            .add_observer(disconnect::on_dismiss);
+            .add_observer(disconnect::on_dismiss)
+            .add_observer(death::on_player_died)
+            .add_observer(death::on_dismiss);
     }
 }
 

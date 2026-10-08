@@ -146,6 +146,7 @@ const SRV_SPELL_LIST: u8 = 32;
 const SRV_AGENT_SPEED_UPDATED: u8 = 33;
 const SRV_PLAYER_STATUS: u8 = 34;
 const SRV_DAMAGED_BY: u8 = 35;
+const SRV_DIED: u8 = 36;
 
 #[derive(Clone, Debug)]
 pub enum ServerMessage {
@@ -311,6 +312,7 @@ pub enum ServerMessage {
     PlayerStatus {
         status: u32,
     },
+    PlayerDied,
 }
 
 impl Display for ServerMessage {
@@ -800,6 +802,7 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
         SRV_PLAYER_STATUS => Ok(ServerMessage::PlayerStatus {
             status: buf.read_u32_le()?,
         }),
+        SRV_DIED => Ok(ServerMessage::PlayerDied),
         _ => Err(MessageDecodeError::WrongSequence),
     }
 }
@@ -1256,6 +1259,17 @@ mod tests {
             }
             other => panic!("expected SpellCast, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn player_died_decodes_from_its_bare_opcode() {
+        let mut buf = frame(&[SRV_DIED]);
+
+        match (GameMessageCodec {}).decode(&mut buf).unwrap().unwrap() {
+            ServerMessage::PlayerDied => {}
+            other => panic!("expected PlayerDied, got {other:?}"),
+        }
+        assert!(buf.is_empty(), "the frame left trailing bytes");
     }
 
     #[test]

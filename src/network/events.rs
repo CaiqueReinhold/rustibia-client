@@ -27,6 +27,9 @@ pub struct ConnectionLost;
 pub struct ClientOutdated;
 
 #[derive(Event, Debug)]
+pub struct PlayerDied;
+
+#[derive(Event, Debug)]
 pub struct SpawnPlayer {
     pub agent_id: AgentId,
     pub position: Position,
@@ -523,6 +526,9 @@ pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
         }
         ServerMessage::PlayerStatus { status } => {
             commands.trigger(PlayerStatusUpdated { status });
+        }
+        ServerMessage::PlayerDied => {
+            commands.trigger(PlayerDied);
         }
     }
 }

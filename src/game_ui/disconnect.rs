@@ -4,6 +4,7 @@ use bevy::prelude::*;
 use crate::core::{EndGameSession, GameState, SessionEndReason, SessionEnding};
 use crate::game_ui::GameUiAssets;
 use crate::game_ui::chat::events::ExitChatMode;
+use crate::game_ui::death::DeathModal;
 use crate::game_ui::modal::{DialogButtonPressed, ModalDialog, ModalOrder};
 use crate::network::LogoutRequested;
 use crate::network::events::ConnectionLost;
@@ -14,7 +15,7 @@ pub(super) struct DisconnectedModal;
 /// What a `ConnectionLost` means, given the state around it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ConnectionLostAction {
-    /// Not ours: no session was running, or the notice is already up.
+    /// Not ours: no session was running, or a session-ending notice is already up.
     Ignore,
     /// The player asked for this — tear down without a word.
     EndNow,
@@ -26,9 +27,9 @@ pub(super) enum ConnectionLostAction {
 pub(super) fn action_for_connection_lost(
     state: &GameState,
     logout_requested: bool,
-    modal_open: bool,
+    session_ending_modal_open: bool,
 ) -> ConnectionLostAction {
-    if *state != GameState::InGame || modal_open {
+    if *state != GameState::InGame || session_ending_modal_open {
         return ConnectionLostAction::Ignore;
     }
     if logout_requested {
@@ -45,7 +46,7 @@ pub(super) fn on_connection_lost(
     mut commands: Commands,
     state: Res<State<GameState>>,
     logout: Option<Res<LogoutRequested>>,
-    existing: Query<(), With<DisconnectedModal>>,
+    existing: Query<(), Or<(With<DisconnectedModal>, With<DeathModal>)>>,
     ui_assets: Res<GameUiAssets>,
     mut order: ResMut<ModalOrder>,
     mut input_focus: ResMut<InputFocus>,
@@ -122,7 +123,8 @@ mod tests {
         );
     }
 
-    /// The notice must not stack on top of itself.
+    /// A drop while a session-ending notice — this one or the death notice — is up
+    /// adds nothing.
     #[test]
     fn a_second_drop_does_not_stack_a_second_modal() {
         assert_eq!(

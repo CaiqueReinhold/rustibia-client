@@ -1,23 +1,12 @@
 use bevy::prelude::*;
 
-use crate::conf::map::{MAX_FLOOR, MIN_FLOOR};
-use crate::map::floors::FloorEntities;
 use crate::map::minimap::{MinimapData, SaveTimer, flush_dirty_chunks};
 use crate::map::minimap_ui::{MinimapImageHandle, MinimapWindow, MinimapZoom};
 use crate::map::storage::Map;
 use crate::map::viewport::ViewportCenter;
 
 /// Resets the map to an empty world and drops the per-session minimap view.
-///
-/// The floor entities themselves are spawned at `Startup` and outlive every
-/// session, so they are not despawned — their item children are despawned by
-/// `items::session::cleanup_session`, and all this does is undo the visibility the
-/// occlusion system left behind.
-pub(super) fn cleanup_session(
-    mut commands: Commands,
-    mut minimap: ResMut<MinimapData>,
-    floors: Res<FloorEntities>,
-) {
+pub(super) fn cleanup_session(mut commands: Commands, mut minimap: ResMut<MinimapData>) {
     // The save timer only ticks while in-game, so anything explored since the last
     // tick would be lost — and the explored map is meant to survive the session.
     flush_dirty_chunks(&mut minimap);
@@ -28,12 +17,6 @@ pub(super) fn cleanup_session(
     commands.remove_resource::<MinimapImageHandle>();
     commands.remove_resource::<MinimapZoom>();
     commands.remove_resource::<MinimapWindow>();
-
-    for floor in MIN_FLOOR..=MAX_FLOOR {
-        commands
-            .entity(floors.floors[floor as usize])
-            .insert(Visibility::Visible);
-    }
 }
 
 #[cfg(test)]
@@ -41,31 +24,11 @@ mod tests {
     use super::*;
     use bevy::ecs::system::RunSystemOnce;
 
-    fn world_with_floors() -> (World, Entity) {
+    fn session_world() -> World {
         let mut world = World::new();
         world.init_resource::<MinimapData>();
         world.init_resource::<Map>();
-        let floors: Vec<Entity> = (MIN_FLOOR..=MAX_FLOOR)
-            .map(|_| world.spawn(Visibility::Hidden).id())
-            .collect();
-        let first = floors[0];
-        world.insert_resource(FloorEntities {
-            floors: floors.try_into().unwrap(),
-        });
-        (world, first)
-    }
-
-    /// The floors are spawned once at startup and outlive every session, so the
-    /// per-session thing to undo is the visibility the floor-occlusion system left
-    /// on them — otherwise the next session starts with floors hidden until the
-    /// player moves.
-    #[test]
-    fn cleanup_makes_every_floor_visible_again() {
-        let (mut world, floor) = world_with_floors();
-
-        world.run_system_once(cleanup_session).unwrap();
-
-        assert_eq!(world.get::<Visibility>(floor), Some(&Visibility::Visible));
+        world
     }
 
     /// All three are re-created by `setup_minimap` on the next `OnEnter(InGame)`,
@@ -74,7 +37,7 @@ mod tests {
     /// that nothing had painted.
     #[test]
     fn cleanup_drops_the_minimap_view_resources() {
-        let (mut world, _) = world_with_floors();
+        let mut world = session_world();
         world.insert_resource(MinimapZoom(0));
         world.insert_resource(MinimapWindow::default());
 
@@ -86,7 +49,7 @@ mod tests {
 
     #[test]
     fn cleanup_forgets_the_viewport_center() {
-        let (mut world, _) = world_with_floors();
+        let mut world = session_world();
         world.insert_resource(ViewportCenter(Some(crate::map::Position::new(1, 2, 7))));
 
         world.run_system_once(cleanup_session).unwrap();

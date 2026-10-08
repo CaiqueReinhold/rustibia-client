@@ -28,6 +28,8 @@ pub enum SessionEndReason {
     Logout,
     /// The connection dropped and the player dismissed the notice.
     Disconnected,
+    /// The player died and dismissed the notice.
+    Died,
 }
 
 /// The single entry point to teardown. Triggering this is what sends the client
@@ -38,9 +40,9 @@ pub struct EndGameSession {
     pub reason: SessionEndReason,
 }
 
-/// Present from the moment the "Connection Lost" modal appears until the cleanup
-/// runs. The world is still on screen during that window, so local input has to be
-/// gated off it — see the `run_if`s in `PlayerPlugin`.
+/// Present from the moment a session-ending modal ("Connection Lost" or "You're
+/// dead") appears until the cleanup runs. The world is still on screen during that
+/// window, so local input has to be gated off it — see the `run_if`s in `PlayerPlugin`.
 #[derive(Resource, Debug)]
 pub struct SessionEnding;
 
