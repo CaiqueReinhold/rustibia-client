@@ -36,6 +36,8 @@ pub struct ChatMessage {
     pub channel_id: Option<ChannelId>,
     /// Resolved at append time, not render time. `None` for client-generated lines.
     pub author: Option<String>,
+    /// Overrides the channel's text color.
+    pub color: Option<Color>,
 }
 
 #[derive(Debug)]
@@ -221,6 +223,7 @@ pub fn on_append_chat_message(
                 text: event.message.text.clone(),
                 channel_id: event.message.channel_id,
                 author: event.message.author.clone(),
+                color: event.message.color,
             },
         };
 

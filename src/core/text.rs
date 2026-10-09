@@ -15,6 +15,7 @@ const ACTION_DENIED_ABOVE_BOTTOM: f32 = 20.0;
 pub enum TextMessageType {
     ActionDenied,
     Look,
+    ServerMessage,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,13 +50,24 @@ pub struct TextMessage {
     message_type: TextMessageType,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Slot {
+    Centre,
+    Bottom,
+}
+
+fn slot(message_type: TextMessageType) -> Slot {
+    match message_type {
+        TextMessageType::ActionDenied => Slot::Bottom,
+        TextMessageType::Look | TextMessageType::ServerMessage => Slot::Centre,
+    }
+}
+
 /// The top of a message's first line, in logical pixels from the view's centre, y up.
 fn message_top(message_type: TextMessageType, scale: f32) -> f32 {
-    match message_type {
-        TextMessageType::ActionDenied => {
-            -GAME_VIEW_HEIGHT / scale / 2.0 + ACTION_DENIED_ABOVE_BOTTOM
-        }
-        TextMessageType::Look => 0.0,
+    match slot(message_type) {
+        Slot::Bottom => -GAME_VIEW_HEIGHT / scale / 2.0 + ACTION_DENIED_ABOVE_BOTTOM,
+        Slot::Centre => 0.0,
     }
 }
 
@@ -72,15 +84,17 @@ pub fn on_text_message(
 ) {
     let timer = match event.message_type {
         TextMessageType::ActionDenied => Timer::from_seconds(2.0, TimerMode::Once),
-        TextMessageType::Look => Timer::from_seconds(5.0, TimerMode::Once),
+        TextMessageType::Look | TextMessageType::ServerMessage => {
+            Timer::from_seconds(5.0, TimerMode::Once)
+        }
     };
     let color = match event.message_type {
-        TextMessageType::ActionDenied => Color::WHITE,
+        TextMessageType::ActionDenied | TextMessageType::ServerMessage => Color::WHITE,
         TextMessageType::Look => ui_colors::FONT_COLOR_LOOK_MSG.into(),
     };
 
     for (entity, msg) in message_q {
-        if msg.message_type == event.message_type {
+        if slot(msg.message_type) == slot(event.message_type) {
             commands.entity(entity).despawn();
         }
     }
@@ -167,8 +181,9 @@ mod tests {
     }
 
     #[test]
-    fn a_look_message_starts_at_the_centre() {
+    fn look_and_server_messages_start_at_the_centre() {
         assert_eq!(message_top(TextMessageType::Look, 0.5), 0.0);
+        assert_eq!(message_top(TextMessageType::ServerMessage, 0.5), 0.0);
     }
 
     #[test]
@@ -234,11 +249,12 @@ mod tests {
     }
 
     #[test]
-    fn a_new_message_replaces_one_of_its_type() {
+    fn a_new_message_replaces_the_one_in_its_place() {
         let mut world = message_world();
         show(&mut world, TextMessageType::Look);
         show(&mut world, TextMessageType::Look);
         show(&mut world, TextMessageType::ActionDenied);
+        show(&mut world, TextMessageType::ServerMessage);
 
         let mut kinds: Vec<_> = world
             .query::<&TextMessage>()
@@ -248,7 +264,10 @@ mod tests {
         kinds.sort_by_key(|k| *k as u8);
         assert_eq!(
             kinds,
-            [TextMessageType::ActionDenied, TextMessageType::Look]
+            [
+                TextMessageType::ActionDenied,
+                TextMessageType::ServerMessage
+            ]
         );
     }
 

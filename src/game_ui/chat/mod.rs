@@ -41,6 +41,7 @@ impl Plugin for ChatPlugin {
             .add_observer(network::on_channel_list_received)
             .add_observer(network::on_private_chat_opened)
             .add_observer(network::on_chat_message_received)
+            .add_observer(network::on_look_message_logged)
             .add_observer(network::on_open_channel_wire)
             .add_observer(network::on_close_channel_wire)
             .add_observer(channels_dialog::on_open_channels_dialog)

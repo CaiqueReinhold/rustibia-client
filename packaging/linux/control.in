@@ -1,0 +1,9 @@
+Package: rustibia
+Version: @VERSION@
+Section: games
+Priority: optional
+Architecture: amd64
+Maintainer: Caique Reinhold <caiquereinhold@gmail.com>
+Depends: libasound2t64 | libasound2, libudev1, libvulkan1, libxkbcommon0, libwayland-client0, libx11-6, libxcursor1, libxi6, libxrandr2
+Description: Rustibia game client
+ A 2D top-down MMO client for the Rustibia world.

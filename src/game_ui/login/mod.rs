@@ -8,6 +8,7 @@ use crate::game_ui::GameUiAssets;
 
 mod charlist;
 mod form;
+mod update_required;
 
 /// Which login dialog is showing. Exists only while
 /// `GameState::LoginScreen` is active; resets to `EnterGame` on re-entry.
@@ -18,6 +19,7 @@ pub enum LoginPhase {
     EnterGame,
     LoadingCharacters,
     CharacterList,
+    UpdateRequired,
 }
 
 /// Error dialog (title, message) carried across the Connecting →
@@ -90,6 +92,23 @@ impl Plugin for LoginPlugin {
             )
             .add_observer(charlist::on_charlist_dialog_button)
             .add_observer(charlist::on_confirm_character)
+            .add_systems(
+                Update,
+                (
+                    update_required::route_to_update_required
+                        .run_if(in_state(GameState::LoginScreen)),
+                    form::resolve_deferred_login.run_if(resource_exists::<form::DeferredLogin>),
+                ),
+            )
+            .add_systems(
+                OnEnter(LoginPhase::UpdateRequired),
+                update_required::spawn_update_required,
+            )
+            .add_systems(
+                OnExit(LoginPhase::UpdateRequired),
+                update_required::despawn_update_required,
+            )
+            .add_observer(update_required::on_update_required_button)
             .add_observer(on_login_error)
             .add_observer(on_connection_lost)
             .add_observer(on_end_game_session);

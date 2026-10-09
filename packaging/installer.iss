@@ -54,15 +54,11 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "{#StageDir}\{#AppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#StageDir}\assets\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubdirs createallsubdirs
-; onlyifdoesntexist + uninsneveruninstall: this is the one file a player edits to
-; reach a different server, so an upgrade must not overwrite it and an uninstall
-; must not throw the edit away.
-Source: "{#StageDir}\client_conf.yaml"; DestDir: "{app}"; Flags: onlyifdoesntexist uninsneveruninstall
 
 [Icons]
-Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
+Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"
 Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent

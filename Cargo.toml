@@ -34,6 +34,7 @@ smallvec = "1.15.1"
 # Per-phase animation durations that carry a [min, max] range are sampled, so a
 # room full of torches does not flicker in lockstep. No transitive dependencies.
 fastrand = "2.3"
+webbrowser = "1"
 
 [features]
 debug = []

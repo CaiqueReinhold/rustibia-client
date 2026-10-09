@@ -15,6 +15,7 @@ use crate::game_ui::{
     DialogButton, DialogButtonId, DialogButtonPressed, GameUiAssets, ModalDialog, ModalOrder,
 };
 use crate::network::login::FetchCharacters;
+use crate::network::version::{CheckVersion, VersionCheck};
 
 /// Both fields must be non-blank. Values are otherwise unchecked —
 /// the login is fake until the server has real accounts.
@@ -53,6 +54,12 @@ pub struct LoginErrorModal;
 
 #[derive(Event, Debug)]
 pub struct AttemptLogin;
+
+#[derive(Resource)]
+pub(super) struct DeferredLogin {
+    email: String,
+    password: String,
+}
 
 pub(super) fn spawn_login_form(
     mut commands: Commands,
@@ -283,6 +290,7 @@ pub(super) fn on_attempt_login(
     ui_assets: Res<GameUiAssets>,
     mut order: ResMut<ModalOrder>,
     mut input_focus: ResMut<InputFocus>,
+    check: Res<VersionCheck>,
     mut commands: Commands,
 ) {
     // An error popup is already up — ignore repeat submits so Enter
@@ -294,10 +302,13 @@ pub(super) fn on_attempt_login(
         return;
     };
     if is_valid(email.get(), password.get()) {
-        commands.trigger(FetchCharacters {
+        commands.insert_resource(DeferredLogin {
             email: email.get().to_owned(),
             password: password.get().to_owned(),
         });
+        if *check == VersionCheck::Unreachable {
+            commands.trigger(CheckVersion);
+        }
         commands.set_state(LoginPhase::LoadingCharacters);
     } else {
         let root = ModalDialog::message(
@@ -397,6 +408,30 @@ fn set_bullets(text: &mut Text, count: usize) {
     if text.0.chars().count() != count {
         text.0 = "\u{2022}".repeat(count);
     }
+}
+
+pub(super) fn resolve_deferred_login(
+    login: Res<DeferredLogin>,
+    check: Res<VersionCheck>,
+    mut pending: ResMut<PendingLoginError>,
+    mut commands: Commands,
+) {
+    match *check {
+        VersionCheck::Pending => return,
+        VersionCheck::Current => commands.trigger(FetchCharacters {
+            email: login.email.clone(),
+            password: login.password.clone(),
+        }),
+        VersionCheck::Outdated { .. } => {}
+        VersionCheck::Unreachable => {
+            pending.0 = Some((
+                "Connection Error".to_owned(),
+                "Cannot reach the Rustibia site. Try again later.".to_owned(),
+            ));
+            commands.set_state(LoginPhase::EnterGame);
+        }
+    }
+    commands.remove_resource::<DeferredLogin>();
 }
 
 #[cfg(test)]

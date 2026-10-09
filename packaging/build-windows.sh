@@ -8,11 +8,7 @@
 #   ./packaging/build-windows.sh --toolchain gnu
 #   ./packaging/build-windows.sh --skip-build   # repackage what is already built
 #
-#   # point the shipped client_conf.yaml at a real host
-#   ./packaging/build-windows.sh --server play.example.com:5555 \
-#                                --site http://play.example.com:8080
-#
-# Output: dist/windows/SetupRustibia-<version>.exe
+# Output: dist/windows/RustibiaSetup-<version>.exe
 
 set -euo pipefail
 
@@ -26,8 +22,6 @@ TOOLCHAIN="msvc"
 DO_SETUP=0
 SKIP_BUILD=0
 VERSION=""
-SERVER_ADDRESS=""
-SITE_URL=""
 
 # Inno Setup 6 rather than 7: it is the version that runs reliably under wine.
 INNO_DL_PAGE="https://jrsoftware.org/isdl.php"
@@ -48,10 +42,6 @@ while [[ $# -gt 0 ]]; do
         --toolchain=*) TOOLCHAIN="${1#*=}"; shift ;;
         --version) VERSION="${2:-}"; shift 2 ;;
         --version=*) VERSION="${1#*=}"; shift ;;
-        --server) SERVER_ADDRESS="${2:-}"; shift 2 ;;
-        --server=*) SERVER_ADDRESS="${1#*=}"; shift ;;
-        --site) SITE_URL="${2:-}"; shift 2 ;;
-        --site=*) SITE_URL="${1#*=}"; shift ;;
         --setup) DO_SETUP=1; shift ;;
         --skip-build) SKIP_BUILD=1; shift ;;
         -h|--help) usage 0 ;;
@@ -210,23 +200,7 @@ stage() {
     mkdir -p "$STAGE_DIR"
     cp "$exe" "$STAGE_DIR/"
     cp -r "$ROOT/assets" "$STAGE_DIR/assets"
-    stage_config
     log "staged $(du -sh "$STAGE_DIR" | cut -f1)"
-}
-
-# The client reads client_conf.yaml from its install directory, so the address a
-# tester connects to is decided here rather than at compile time. They can still
-# edit the installed file afterwards -- the installer leaves an existing one alone.
-stage_config() {
-    local dest="$STAGE_DIR/client_conf.yaml"
-    cp "$PKG_DIR/client_conf.yaml" "$dest"
-    if [[ -n "$SERVER_ADDRESS" ]]; then
-        sed -i "s|^server_address:.*|server_address: \"$SERVER_ADDRESS\"|" "$dest"
-    fi
-    if [[ -n "$SITE_URL" ]]; then
-        sed -i "s|^site_url:.*|site_url: \"$SITE_URL\"|" "$dest"
-    fi
-    log "shipping $(grep -E '^(server_address|site_url):' "$dest" | tr '\n' ' ')"
 }
 
 package() {
@@ -243,7 +217,7 @@ package() {
         "/DOutputDir=." \
         installer.iss )
 
-    local setup="$OUT_DIR/SetupRustibia-$VERSION.exe"
+    local setup="$OUT_DIR/RustibiaSetup-$VERSION.exe"
     [[ -f "$setup" ]] || die "ISCC reported success but $setup is missing"
     log "installer ready: $setup ($(du -h "$setup" | cut -f1))"
 }

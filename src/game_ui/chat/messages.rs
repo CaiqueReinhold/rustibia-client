@@ -184,6 +184,7 @@ fn spawn_message_row(
     text_color: Color,
     ui_assets: &GameUiAssets,
 ) {
+    let text_color = stored.message.color.unwrap_or(text_color);
     let prefix = format!("[{}] ", stored.timestamp.format("%H:%M"));
     let row = commands
         .spawn((

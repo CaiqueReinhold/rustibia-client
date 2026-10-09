@@ -605,6 +605,21 @@ mod tests {
         }
     }
 
+    /// An agent's material is bound to its still sheet, and walking only swaps
+    /// sprite ids, so moving ids on another sheet draw arbitrary cells.
+    #[test]
+    fn every_outfit_walks_on_the_sheet_it_stands_on() {
+        let configs = read_sprites_config();
+
+        for (id, outfit) in &configs.outfits {
+            assert_eq!(
+                outfit.still_sprite.group, outfit.moving_sprite.group,
+                "outfit {} stands and walks on different sheets",
+                id.0
+            );
+        }
+    }
+
     fn animation_json(body: &str) -> SpriteAnimation {
         read_animation(&serde_json::from_str::<Value>(body).unwrap())
     }

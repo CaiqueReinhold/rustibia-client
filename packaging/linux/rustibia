@@ -1,0 +1,2 @@
+#!/bin/sh
+cd /opt/rustibia && exec ./rustibia-client "$@"

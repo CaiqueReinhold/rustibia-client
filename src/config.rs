@@ -38,6 +38,10 @@ impl ClientConfig {
         format!("{}/api/characters/{}/token", self.site(), character_id)
     }
 
+    pub fn client_version_endpoint(&self) -> String {
+        format!("{}/api/client-version", self.site())
+    }
+
     fn site(&self) -> &str {
         self.site_url.trim_end_matches('/')
     }
@@ -124,8 +128,8 @@ site_url: "https://play.example.com"
         );
     }
 
-    /// The shipped template has to be a file the client can actually read back,
-    /// not just a valid-looking one -- it is what the installer puts on disk.
+    /// The debugging template has to be a file the client can actually read back,
+    /// not just a valid-looking one.
     #[test]
     fn the_packaged_template_loads() {
         let template = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -194,6 +198,19 @@ site_url: "https://play.example.com"
         assert_eq!(
             config.game_token_endpoint(7),
             "http://example.com/api/characters/7/token"
+        );
+    }
+
+    #[test]
+    fn the_version_endpoint_hangs_off_the_site() {
+        let config = ClientConfig {
+            site_url: "http://example.com/".to_string(),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            config.client_version_endpoint(),
+            "http://example.com/api/client-version"
         );
     }
 }

@@ -11,6 +11,7 @@ mod messages;
 mod session;
 mod systems;
 mod tls;
+pub mod version;
 
 pub use messages::{ClientMessage, ItemStack, ServerMessage};
 pub use systems::{LoginCredentials, LogoutRequested, RequestLogout, SendMessage};
@@ -18,7 +19,14 @@ pub struct NetworkPlugin;
 
 impl Plugin for NetworkPlugin {
     fn build(&self, app: &mut App) {
-        app.add_observer(systems::on_connect)
+        app.init_resource::<version::VersionCheck>()
+            .add_observer(version::on_check_version)
+            .add_systems(Startup, version::start_version_check)
+            .add_systems(
+                Update,
+                version::poll_version_check.run_if(resource_exists::<version::VersionCheckTask>),
+            )
+            .add_observer(systems::on_connect)
             .add_observer(systems::on_send_message)
             .add_observer(systems::on_login_error_cleanup)
             .add_observer(systems::on_connection_lost_cleanup)

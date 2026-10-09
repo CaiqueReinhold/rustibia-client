@@ -1,12 +1,12 @@
 use bevy::prelude::*;
 
-use crate::conf::ui::chat as conf;
-use crate::core::{ChatMessageType, FloatingTextType};
+use crate::conf::ui::{chat as conf, ui_colors};
+use crate::core::{ChatMessageType, FloatingTextType, TextMessageType};
 use crate::game_ui::chat::events::{AppendChatMessage, CloseChannel, OpenChannel};
 use crate::game_ui::chat::routing::channel_for;
 use crate::game_ui::chat::state::{ChannelConfig, ChannelId, ChatMessage, ChatState};
 use crate::network::events::{
-    ChannelListReceived, ChatMessageReceived, PrivateChatOpened, ShowFloatingText,
+    ChannelListReceived, ChatMessageReceived, PrivateChatOpened, ShowFloatingText, ShowTextMessage,
 };
 use crate::network::{ClientMessage, SendMessage};
 
@@ -87,8 +87,22 @@ pub fn on_chat_message_received(
             text: event.text.clone(),
             channel_id: Some(channel_id),
             author: Some(event.author.clone()),
+            color: None,
         },
     });
+}
+
+pub fn on_look_message_logged(event: On<ShowTextMessage>, mut commands: Commands) {
+    if event.message_type == TextMessageType::Look {
+        commands.trigger(AppendChatMessage {
+            message: ChatMessage {
+                text: event.text.clone(),
+                channel_id: Some(ChannelId::Local),
+                author: None,
+                color: Some(ui_colors::FONT_COLOR_LOOK_MSG.into()),
+            },
+        });
+    }
 }
 
 /// Wire sends live on the state events rather than the click sites: there is no case
@@ -103,5 +117,41 @@ pub fn on_open_channel_wire(event: On<OpenChannel>, mut commands: Commands) {
 pub fn on_close_channel_wire(event: On<CloseChannel>, mut commands: Commands) {
     if let ChannelId::Server(id) = event.channel_id {
         commands.trigger(SendMessage(ClientMessage::CloseChannel { channel: id }));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::game_ui::chat::state::on_append_chat_message;
+
+    fn local_lines(message_type: TextMessageType) -> Vec<Option<Color>> {
+        let mut world = World::new();
+        world.init_resource::<ChatState>();
+        world.add_observer(on_look_message_logged);
+        world.add_observer(on_append_chat_message);
+        world.trigger(ShowTextMessage {
+            text: "You see a rat.".to_owned(),
+            message_type,
+        });
+        world.flush();
+        world
+            .resource::<ChatState>()
+            .channel(ChannelId::Local)
+            .unwrap()
+            .messages
+            .iter()
+            .map(|m| m.message.color)
+            .collect()
+    }
+
+    #[test]
+    fn only_a_look_message_is_logged_to_local_chat_in_its_colour() {
+        assert_eq!(
+            local_lines(TextMessageType::Look),
+            [Some(ui_colors::FONT_COLOR_LOOK_MSG.into())]
+        );
+        assert!(local_lines(TextMessageType::ServerMessage).is_empty());
+        assert!(local_lines(TextMessageType::ActionDenied).is_empty());
     }
 }

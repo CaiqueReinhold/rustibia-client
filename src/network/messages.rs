@@ -869,6 +869,7 @@ fn decode_text_type(b: u8) -> Result<TextMessageType, MessageDecodeError> {
     match b {
         1 => Ok(TextMessageType::ActionDenied),
         2 => Ok(TextMessageType::Look),
+        3 => Ok(TextMessageType::ServerMessage),
         _ => Err(MessageDecodeError::WrongSequence),
     }
 }
