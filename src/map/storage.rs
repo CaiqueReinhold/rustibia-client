@@ -233,6 +233,7 @@ mod tests {
         Arc::new(Item::new(
             Arc::new(ItemConfig {
                 id,
+                name: None,
                 flags,
                 friction,
                 slot: None,

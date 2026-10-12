@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use crate::core::SessionEnding;
 use crate::game_ui::chat::{ChatMode, ChatState};
 use crate::game_ui::modal::ModalOrder;
+use crate::game_ui::shop::ShopState;
 use crate::game_ui::skills::SkillsState;
 use crate::game_ui::toppanel::BarEntities;
 use crate::game_ui::window::CurrentDockHover;
@@ -19,6 +20,7 @@ pub(super) fn cleanup_session(mut commands: Commands) {
     commands.insert_resource(ModalOrder::default());
     commands.insert_resource(CurrentDockHover::default());
     commands.insert_resource(SkillsState::default());
+    commands.insert_resource(ShopState::default());
     commands.remove_resource::<BarEntities>();
     commands.remove_resource::<SessionEnding>();
 }
@@ -35,6 +37,7 @@ mod tests {
         world.init_resource::<ModalOrder>();
         world.init_resource::<CurrentDockHover>();
         world.init_resource::<SkillsState>();
+        world.init_resource::<ShopState>();
         world
     }
 
@@ -110,5 +113,22 @@ mod tests {
         let state = world.resource::<SkillsState>();
         assert_eq!(state.experience, 0);
         assert!(state.skills.is_empty());
+    }
+
+    /// A shop belongs to one conversation; carried into the next login it would open a window
+    /// for an NPC that is not talking to anyone.
+    #[test]
+    fn cleanup_forgets_the_open_shop() {
+        let mut world = seeded_world();
+        world.resource_mut::<ShopState>().0 = Some(crate::game_ui::shop::state::Shop {
+            npc_name: "Xodet".to_string(),
+            money: 0,
+            offers: Vec::new(),
+            goods: Default::default(),
+        });
+
+        world.run_system_once(cleanup_session).unwrap();
+
+        assert!(world.resource::<ShopState>().0.is_none());
     }
 }

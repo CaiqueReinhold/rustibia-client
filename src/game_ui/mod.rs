@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
 use bevy::window::CursorIcon;
 use bevy::{camera::visibility::RenderLayers, time::common_conditions::on_timer};
@@ -13,6 +14,8 @@ pub mod context_menu;
 mod cooldown;
 mod death;
 mod disconnect;
+mod files;
+mod floating;
 mod game_overlay;
 mod leftpanel;
 mod login;
@@ -21,6 +24,8 @@ mod outdated;
 mod rightpanel;
 pub mod scaling;
 mod session;
+mod settings;
+mod shop;
 mod skills;
 mod status_bar;
 mod toppanel;
@@ -30,12 +35,15 @@ pub use action_bar::ActionSlotActivated;
 pub use assets::GameUiAssets;
 pub use chat::{ChatMode, events::EnterChatMode};
 pub use context_menu::{ContextMenu, ContextMenuEntry, ContextMenuPicked, ContextMenuRoot};
+pub use floating::{FloatingDialog, FloatingDialogClosed};
 pub use game_overlay::GameViewport;
 pub use login::{LoginPhase, PendingLoginError};
 pub use modal::{
     DialogButton, DialogButtonId, DialogButtonPressed, ModalDialog, ModalDialogRoot, ModalOrder,
 };
 pub use rightpanel::RightPanelDock;
+pub use settings::Settings;
+pub use shop::ShopOffer;
 pub use skills::{SkillProgress, SkillType};
 pub use window::{
     AddUIWindow, CloseUIWindow, Index, ReplaceUIWindowContent, UIWindow, UIWindowDock, UiWindowRef,
@@ -43,6 +51,7 @@ pub use window::{
 };
 
 use crate::camera::{GameRenderTexture, HudRenderTexture};
+use crate::conf::ui::options::FPS_REFRESH_MS;
 use crate::conf::ui::{SEPARATOR_HEIGHT, ui_colors};
 use crate::core::{GameState, PingState, SessionCleanup};
 use crate::game_ui::chat::ChatRoot;
@@ -52,6 +61,9 @@ pub struct MainUI;
 
 #[derive(Component)]
 pub struct PingView;
+
+#[derive(Component)]
+pub struct FpsView;
 
 pub struct GameUiPlugin;
 
@@ -63,7 +75,9 @@ impl Plugin for GameUiPlugin {
                 chat::ChatPlugin,
                 login::LoginPlugin,
                 skills::SkillsPlugin,
+                shop::ShopPlugin,
                 action_bar::ActionBarPlugin,
+                settings::SettingsPlugin,
             ))
             .add_systems(OnEnter(GameState::InGame), spawn_main_ui)
             .add_systems(
@@ -94,6 +108,14 @@ impl Plugin for GameUiPlugin {
                 game_overlay::update_viewport_size.run_if(in_state(GameState::InGame)),
             )
             .add_systems(Update, update_ping.run_if(on_timer(Duration::from_secs(1))))
+            .add_systems(
+                Update,
+                update_fps.run_if(on_timer(Duration::from_millis(FPS_REFRESH_MS))),
+            )
+            .add_systems(
+                Update,
+                apply_overlay_text_settings.run_if(resource_changed::<Settings>),
+            )
             .init_resource::<modal::ModalOrder>()
             .add_systems(Update, (modal::modal_keyboard, button::panel_button_hover))
             .add_observer(context_menu::close_other_context_menus)
@@ -126,6 +148,7 @@ pub(crate) fn spawn_main_ui(
     cooldown_assets: Res<cooldown::CooldownAssets>,
     status_assets: Res<status_bar::StatusAssets>,
     chat_state: Res<chat::ChatState>,
+    settings: Res<Settings>,
 ) {
     let main_ui = commands
         .spawn((
@@ -233,18 +256,13 @@ pub(crate) fn spawn_main_ui(
                 position_type: PositionType::Absolute,
                 top: Val::Px(10.0),
                 left: Val::Px(15.0),
+                flex_direction: FlexDirection::Column,
                 ..default()
             },
-            Children::spawn(Spawn((
-                PingView,
-                Text::new(""),
-                TextFont {
-                    font: ui_assets.font.clone(),
-                    font_size: 11.0,
-                    ..default()
-                },
-                TextColor(Color::WHITE),
-            ))),
+            Children::spawn((
+                Spawn(overlay_text(PingView, &ui_assets, settings.show_ping)),
+                Spawn(overlay_text(FpsView, &ui_assets, settings.show_fps)),
+            )),
         ))
         .id();
     commands.entity(gameview).add_child(ping_view);
@@ -253,4 +271,84 @@ pub(crate) fn spawn_main_ui(
 pub fn update_ping(mut ping_text: Single<&mut Text, With<PingView>>, ping_state: Res<PingState>) {
     let text = format!("Ping: {}ms", ping_state.current().as_millis());
     ping_text.0 = text;
+}
+
+fn overlay_text(marker: impl Component, ui_assets: &GameUiAssets, shown: bool) -> impl Bundle {
+    (
+        marker,
+        Text::new(""),
+        TextFont {
+            font: ui_assets.font.clone(),
+            font_size: 11.0,
+            ..default()
+        },
+        TextColor(Color::WHITE),
+        Node {
+            display: display_for(shown),
+            ..default()
+        },
+    )
+}
+
+fn display_for(shown: bool) -> Display {
+    if shown { Display::Flex } else { Display::None }
+}
+
+pub fn apply_overlay_text_settings(
+    settings: Res<Settings>,
+    mut ping_q: Query<&mut Node, (With<PingView>, Without<FpsView>)>,
+    mut fps_q: Query<&mut Node, (With<FpsView>, Without<PingView>)>,
+) {
+    for mut node in &mut ping_q {
+        node.display = display_for(settings.show_ping);
+    }
+    for mut node in &mut fps_q {
+        node.display = display_for(settings.show_fps);
+    }
+}
+
+pub fn update_fps(
+    mut fps_text: Single<&mut Text, With<FpsView>>,
+    diagnostics: Res<DiagnosticsStore>,
+) {
+    let fps = diagnostics
+        .get(&FrameTimeDiagnosticsPlugin::FPS)
+        .and_then(|fps| fps.smoothed());
+    fps_text.0 = fps_label(fps);
+}
+
+fn fps_label(fps: Option<f64>) -> String {
+    match fps {
+        Some(fps) => format!("FPS: {fps:.0}"),
+        None => "FPS: -".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::ecs::system::RunSystemOnce;
+
+    #[test]
+    fn the_fps_label_rounds_and_handles_no_reading() {
+        assert_eq!(fps_label(Some(143.6)), "FPS: 144");
+        assert_eq!(fps_label(None), "FPS: -");
+    }
+
+    #[test]
+    fn each_overlay_text_follows_its_own_setting() {
+        let mut world = World::new();
+        world.insert_resource(Settings {
+            show_ping: false,
+            show_fps: true,
+            ..default()
+        });
+        let ping = world.spawn((PingView, Node::default())).id();
+        let fps = world.spawn((FpsView, Node::default())).id();
+
+        world.run_system_once(apply_overlay_text_settings).unwrap();
+
+        assert_eq!(world.get::<Node>(ping).unwrap().display, Display::None);
+        assert_eq!(world.get::<Node>(fps).unwrap().display, Display::Flex);
+    }
 }

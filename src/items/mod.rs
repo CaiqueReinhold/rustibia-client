@@ -18,9 +18,11 @@ mod ui_item;
 
 pub use container::{ContainerId, LootContainerUI};
 pub use events::*;
-pub use fluid::fluid_cell;
+pub use fluid::{fluid_cell, fluid_name};
 pub use instancing::ChangedTileQueue;
 pub use item::{InventorySlot, Item, ItemConfig, ItemFlag, ItemId, ItemPlacement};
+pub use split_dialog::{slider_amount, thumb_left};
+pub use ui_item::spawn_ui_item;
 
 pub struct ItemsPlugin;
 

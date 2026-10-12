@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use bevy::sprite_render::Material2dPlugin;
 
 use crate::core::{AnimationSet, GameState, InstanceManager, SessionCleanup};
+use crate::network::ReceiveMessages;
 
 // mod colors;
 mod components;
@@ -18,7 +19,7 @@ mod world_hud;
 pub use crate::agent::components::*;
 pub use crate::agent::instancing::{LoadedMaterials, spawn_agent};
 pub use crate::agent::material::{AgentInstance, AgentMaterial};
-pub use crate::agent::movement::{MoveQueue, Moving, StartAgentMove, UpdateElevation};
+pub use crate::agent::movement::{MoveQueue, Moving, QueuedMove, StartAgentMove, UpdateElevation};
 
 pub struct AgentPlugin;
 
@@ -36,6 +37,7 @@ impl Plugin for AgentPlugin {
                     movement::teleport_agents,
                 )
                     .chain()
+                    .after(ReceiveMessages)
                     .run_if(in_state(GameState::InGame)),
             )
             .add_systems(
@@ -64,6 +66,10 @@ impl Plugin for AgentPlugin {
                 movement::sync_agent_draw_order
                     .before(crate::map::DrawOrderSet)
                     .run_if(in_state(GameState::InGame)),
+            )
+            .add_systems(
+                Update,
+                hud::apply_hud_settings.run_if(in_state(GameState::InGame)),
             )
             .add_systems(
                 Update,

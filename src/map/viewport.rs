@@ -177,6 +177,7 @@ mod tests {
     fn a_world_with_tiles(tiles: &[Position], center: Option<Position>) -> World {
         let ground = Arc::new(ItemConfig {
             id: ItemId(1),
+            name: None,
             flags: vec![ItemFlag::Ground],
             friction: None,
             slot: None,

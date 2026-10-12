@@ -180,12 +180,30 @@ pub fn on_open_split_dialog(
         .add_children(&[caption, slider, readout]);
 }
 
+/// Where the thumb sits: travel is the track minus the thumb, the convention the widget's own
+/// click and drag maths assumes — anything else and the thumb stops tracking the mouse.
+pub fn thumb_left(
+    range: &SliderRange,
+    value: f32,
+    slider: &ComputedNode,
+    thumb: &ComputedNode,
+) -> Val {
+    let travel = (logical_size(slider).x - logical_size(thumb).x).max(0.0);
+    Val::Px(thumb_fraction(range, value) * travel)
+}
+
+/// `SliderRange::thumb_position`, except that a range with nothing to choose from puts the thumb
+/// at its start rather than in the middle.
+fn thumb_fraction(range: &SliderRange, value: f32) -> f32 {
+    if range.end() > range.start() {
+        range.thumb_position(value)
+    } else {
+        0.0
+    }
+}
+
 /// The widget is headless: it owns the value and nothing else, so the thumb's
 /// position and the readout are ours to write.
-///
-/// Travel is the track minus the thumb, which is the convention the widget's own
-/// click and drag maths assumes — anything else and the thumb stops tracking the
-/// mouse.
 ///
 /// **Not gated on `Changed<SliderValue>`.** The value is set on the frame the
 /// dialog spawns, when the track still measures `(0, 0)`, so a gate would place
@@ -201,10 +219,7 @@ pub fn sync_split_slider(
             let Ok((mut thumb, thumb_node)) = thumb_q.get_mut(child) else {
                 continue;
             };
-            // `Node.left` is logical and `ComputedNode::size` is physical; see
-            // `game_ui::scaling`.
-            let travel = (logical_size(slider_node).x - logical_size(thumb_node).x).max(0.0);
-            let left = Val::Px(range.thumb_position(value.0) * travel);
+            let left = thumb_left(range, value.0, slider_node, thumb_node);
             if thumb.left != left {
                 thumb.left = left;
             }
@@ -253,6 +268,7 @@ mod tests {
         Item::new(
             Arc::new(ItemConfig {
                 id: ItemId(2148),
+                name: None,
                 flags,
                 friction: None,
                 slot: None,
@@ -289,5 +305,11 @@ mod tests {
     fn a_stack_wider_than_the_wire_is_capped() {
         assert_eq!(wire_amount(&item(vec![ItemFlag::Cumulative], 260)), 255);
         assert_eq!(wire_amount(&item(vec![ItemFlag::Cumulative], 50)), 50);
+    }
+
+    #[test]
+    fn a_range_of_one_value_puts_the_thumb_at_the_start() {
+        assert_eq!(thumb_fraction(&SliderRange::new(1.0, 1.0), 1.0), 0.0);
+        assert_eq!(thumb_fraction(&SliderRange::new(1.0, 5.0), 5.0), 1.0);
     }
 }

@@ -73,6 +73,34 @@ fn fluid_colour(fluid: u8) -> u32 {
     }
 }
 
+/// What a container holding `fluid` is "of"; `None` for no fluid and for one this client does not
+/// know. The server's look text names fluids the same way.
+pub fn fluid_name(fluid: u8) -> Option<&'static str> {
+    Some(match fluid {
+        f if f == FluidType::Water as u8 => "water",
+        f if f == FluidType::Mana as u8 => "manafluid",
+        f if f == FluidType::Beer as u8 => "beer",
+        f if f == FluidType::Oil as u8 => "oil",
+        f if f == FluidType::Blood as u8 => "blood",
+        f if f == FluidType::Slime as u8 => "slime",
+        f if f == FluidType::Mud as u8 => "mud",
+        f if f == FluidType::Lemonade as u8 => "lemonade",
+        f if f == FluidType::Milk as u8 => "milk",
+        f if f == FluidType::Wine as u8 => "wine",
+        f if f == FluidType::Health as u8 => "lifefluid",
+        f if f == FluidType::Urine as u8 => "urine",
+        f if f == FluidType::Rum as u8 => "rum",
+        f if f == FluidType::FruitJuice as u8 => "fruit juice",
+        f if f == FluidType::CoconutMilk as u8 => "coconut milk",
+        f if f == FluidType::Tea as u8 => "tea",
+        f if f == FluidType::Mead as u8 => "mead",
+        f if f == FluidType::Ink as u8 => "ink",
+        f if f == FluidType::Candy as u8 => "candyfluid",
+        f if f == FluidType::Chocolate as u8 => "chocolate",
+        _ => return None,
+    })
+}
+
 /// The pattern cell a fluid draws: `(colour % 4, colour / 4)`, bounded by the
 /// appearance's own grid.
 ///
@@ -90,6 +118,13 @@ pub fn fluid_cell(fluid: u8, pattern_x: u32, pattern_y: u32) -> (u32, u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_fluid_has_a_name_and_no_fluid_has_none() {
+        assert_eq!(fluid_name(FluidType::Milk as u8), Some("milk"));
+        assert_eq!(fluid_name(FluidType::None as u8), None);
+        assert_eq!(fluid_name(200), None);
+    }
 
     /// The server repeats this enum with the same discriminants, and nothing
     /// links the two -- they are separate repositories. This literal is the pin:

@@ -3,7 +3,7 @@ use bevy::{mesh::MeshTag, prelude::*, render::storage::ShaderStorageBuffer};
 use crate::{
     agent::{
         Agent, AgentInstance, AgentMaterial, Health, LoadedMaterials, Mana, MoveQueue, Moving,
-        StartAgentMove, spawn_agent,
+        QueuedMove, StartAgentMove, spawn_agent,
     },
     conf::agent::{ADDON_1_FLAG, ADDON_2_FLAG},
     core::{Appearances, InstanceManager},
@@ -84,10 +84,16 @@ pub fn on_move_agent(
         return;
     };
 
-    if moving_q.get(agent_entity).is_ok() {
-        if let Ok(mut queue) = queue_q.get_mut(agent_entity) {
-            queue.0.push_back((event.from.clone(), event.direction));
-        }
+    let moving = moving_q.get(agent_entity).is_ok();
+    if let Ok(mut queue) = queue_q.get_mut(agent_entity)
+        && (moving || !queue.0.is_empty())
+    {
+        queue
+            .0
+            .push_back(QueuedMove::Step(event.from.clone(), event.direction));
+        return;
+    }
+    if moving {
         return;
     }
 

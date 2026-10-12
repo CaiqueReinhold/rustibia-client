@@ -398,6 +398,7 @@ mod tests {
                 *id,
                 Arc::new(crate::items::ItemConfig {
                     id: *id,
+                    name: None,
                     flags: Vec::new(),
                     friction: None,
                     slot: None,

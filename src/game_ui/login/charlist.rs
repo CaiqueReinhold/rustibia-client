@@ -200,11 +200,41 @@ pub(super) fn on_confirm_character(
     commands.trigger(GenerateLoginToken {
         character_id: char.id,
     });
+    commands.set_state(LoginPhase::EnteringGame);
 }
 
 #[cfg(test)]
 mod tests {
-    use super::step_selection;
+    use super::*;
+    use crate::network::login::CharacterSummary;
+
+    #[test]
+    fn confirming_a_character_moves_to_entering_game() {
+        let mut world = World::new();
+        world.init_resource::<NextState<LoginPhase>>();
+        world.insert_resource(CharacterList {
+            characters: vec![CharacterSummary {
+                id: 7,
+                name: "Knight".to_string(),
+                level: 8,
+                vocation: "Knight".to_string(),
+            }],
+            session_token: String::new(),
+        });
+        world.spawn(CharacterListDialog {
+            selected: 0,
+            last_click: None,
+        });
+        world.add_observer(on_confirm_character);
+
+        world.trigger(ConfirmCharacter);
+        world.flush();
+
+        assert!(matches!(
+            world.resource::<NextState<LoginPhase>>(),
+            NextState::Pending(LoginPhase::EnteringGame)
+        ));
+    }
 
     #[test]
     fn steps_down() {

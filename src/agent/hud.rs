@@ -2,6 +2,7 @@ use bevy::prelude::*;
 
 use crate::agent::components::{Agent, AgentHud, HealthState};
 use crate::agent::{DisplayName, Health, HudBar, Mana};
+use crate::game_ui::Settings;
 use crate::map::{Position, ViewportCenter, viewport::is_kept};
 use crate::player::components::Player;
 
@@ -26,6 +27,36 @@ pub fn update_hud_visibility(
         };
         if let Ok(mut visibility) = visibility_q.get_mut(hud.root) {
             visibility.set_if_neq(wanted);
+        }
+    }
+}
+
+pub fn apply_hud_settings(
+    settings: Res<Settings>,
+    huds_q: Query<Ref<AgentHud>>,
+    parents_q: Query<&ChildOf>,
+    mut visibility_q: Query<&mut Visibility>,
+) {
+    let mut show = |entity: Entity, shown: bool| {
+        if let Ok(mut visibility) = visibility_q.get_mut(entity) {
+            visibility.set_if_neq(if shown {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            });
+        }
+    };
+    for hud in &huds_q {
+        if !settings.is_changed() && !hud.is_added() {
+            continue;
+        }
+        show(hud.name, settings.show_names);
+        for fill in [hud.health_bar, hud.mana_bar].into_iter().flatten() {
+            // The bar entities are the fills; `world_hud::spawn_bar` puts each inside a black frame.
+            let frame = parents_q
+                .get(fill)
+                .map_or(fill, |child_of| child_of.parent());
+            show(frame, settings.show_health_bars);
         }
     }
 }
@@ -257,5 +288,91 @@ mod tests {
             *world.get::<Visibility>(hud.root).unwrap(),
             Visibility::Visible
         );
+    }
+
+    fn a_framed_hud(world: &mut World) -> AgentHud {
+        let root = world.spawn(Visibility::Hidden).id();
+        let name = world
+            .spawn((DisplayName, Visibility::Inherited, ChildOf(root)))
+            .id();
+        let bar = |world: &mut World| {
+            let frame = world.spawn((Visibility::Inherited, ChildOf(root))).id();
+            world
+                .spawn((HudBar { ratio: 1.0 }, Visibility::Inherited, ChildOf(frame)))
+                .id()
+        };
+        let health_bar = Some(bar(world));
+        let mana_bar = Some(bar(world));
+        let hud = AgentHud {
+            root,
+            name,
+            health_bar,
+            mana_bar,
+        };
+        world.spawn(hud.clone());
+        hud
+    }
+
+    fn frame_of(world: &World, fill: Option<Entity>) -> Entity {
+        world.get::<ChildOf>(fill.unwrap()).unwrap().parent()
+    }
+
+    fn visibility(world: &World, entity: Entity) -> Visibility {
+        *world.get::<Visibility>(entity).unwrap()
+    }
+
+    fn a_settings_schedule() -> Schedule {
+        let mut schedule = Schedule::default();
+        schedule.add_systems(apply_hud_settings);
+        schedule
+    }
+
+    #[test]
+    fn names_and_bars_follow_their_own_setting() {
+        let mut world = World::new();
+        world.init_resource::<Settings>();
+        let hud = a_framed_hud(&mut world);
+        let mut schedule = a_settings_schedule();
+        schedule.run(&mut world);
+
+        world.resource_mut::<Settings>().show_names = false;
+        schedule.run(&mut world);
+
+        assert_eq!(visibility(&world, hud.name), Visibility::Hidden);
+        assert_eq!(
+            visibility(&world, frame_of(&world, hud.health_bar)),
+            Visibility::Inherited
+        );
+
+        {
+            let mut settings = world.resource_mut::<Settings>();
+            settings.show_names = true;
+            settings.show_health_bars = false;
+        }
+        schedule.run(&mut world);
+
+        assert_eq!(visibility(&world, hud.name), Visibility::Inherited);
+        assert_eq!(
+            visibility(&world, frame_of(&world, hud.health_bar)),
+            Visibility::Hidden
+        );
+        assert_eq!(
+            visibility(&world, frame_of(&world, hud.mana_bar)),
+            Visibility::Hidden
+        );
+    }
+
+    #[test]
+    fn a_hud_spawned_after_the_change_starts_hidden() {
+        let mut world = World::new();
+        world.init_resource::<Settings>();
+        let mut schedule = a_settings_schedule();
+        world.resource_mut::<Settings>().show_names = false;
+        schedule.run(&mut world);
+
+        let hud = a_framed_hud(&mut world);
+        schedule.run(&mut world);
+
+        assert_eq!(visibility(&world, hud.name), Visibility::Hidden);
     }
 }

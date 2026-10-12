@@ -137,6 +137,7 @@ mod tests {
             vec![Arc::new(Item::new(
                 Arc::new(ItemConfig {
                     id: ItemId(100),
+                    name: None,
                     flags: vec![ItemFlag::Ground],
                     friction: Some(150),
                     slot: None,
@@ -153,6 +154,7 @@ mod tests {
         Arc::new(Item::new(
             Arc::new(ItemConfig {
                 id: ItemId(100),
+                name: None,
                 flags,
                 friction: None,
                 slot: None,

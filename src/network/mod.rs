@@ -17,6 +17,9 @@ pub use messages::{ClientMessage, ItemStack, ServerMessage};
 pub use systems::{LoginCredentials, LogoutRequested, RequestLogout, SendMessage};
 pub struct NetworkPlugin;
 
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ReceiveMessages;
+
 impl Plugin for NetworkPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<version::VersionCheck>()
@@ -36,7 +39,9 @@ impl Plugin for NetworkPlugin {
             .add_observer(login::on_generate_game_token)
             .add_systems(
                 Update,
-                systems::receive_messages.run_if(resource_exists::<ConnectionState>),
+                systems::receive_messages
+                    .in_set(ReceiveMessages)
+                    .run_if(resource_exists::<ConnectionState>),
             )
             .add_systems(
                 Update,

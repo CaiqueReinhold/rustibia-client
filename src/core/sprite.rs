@@ -518,7 +518,7 @@ mod tests {
         let configs = read_sprites_config();
 
         assert_eq!(configs.items.len(), 41846);
-        assert_eq!(configs.outfits.len(), 1404);
+        assert_eq!(configs.outfits.len(), 1429);
         assert_eq!(configs.effects.len(), 207);
         assert_eq!(configs.missiles.len(), 56);
 
@@ -542,6 +542,16 @@ mod tests {
         assert!(matches!(missile.animation, SpriteAnimation::Static));
         assert_eq!(missile.pattern_x, 3);
         assert_eq!(missile.boxes.len(), 3);
+
+        // Outfit 26 is the rotworm: a single frame group, drawn standing and walking.
+        let rotworm = configs
+            .outfits
+            .get(&OutfitId(26))
+            .expect("outfit 26 is present");
+        assert_eq!(
+            rotworm.still_sprite.sprite_ids,
+            rotworm.moving_sprite.sprite_ids
+        );
     }
 
     /// Three assumptions the effect renderer is built on, all read off the

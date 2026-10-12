@@ -12,7 +12,7 @@ use crate::{
         ChatMessageType, EffectId, FloatingTextType, MissileId, OutfitColors, OutfitId, SayTarget,
         SpellGroup, SpellId, SpellInfo, SpellTarget, TextMessageType,
     },
-    game_ui::{SkillProgress, SkillType},
+    game_ui::{ShopOffer, SkillProgress, SkillType},
     items::{ContainerId, InventorySlot, ItemId},
     map::Position,
 };
@@ -39,6 +39,9 @@ const CLI_CLOSE_CHANNEL: u8 = 15;
 const CLI_OPEN_PM_CHAT: u8 = 16;
 const CLI_SET_TARGET: u8 = 17;
 const CLI_CAST_SPELL: u8 = 18;
+const CLI_SHOP_BUY: u8 = 19;
+const CLI_SHOP_SELL: u8 = 20;
+const CLI_CLOSE_SHOP: u8 = 21;
 
 #[derive(Clone, Debug)]
 pub enum ClientMessage {
@@ -107,6 +110,17 @@ pub enum ClientMessage {
         target: SpellTarget,
         param: Option<String>,
     },
+    ShopBuy {
+        item_id: ItemId,
+        subtype: u8,
+        amount: u8,
+    },
+    ShopSell {
+        item_id: ItemId,
+        subtype: u8,
+        amount: u8,
+    },
+    CloseShop,
 }
 
 // server
@@ -147,6 +161,8 @@ const SRV_AGENT_SPEED_UPDATED: u8 = 33;
 const SRV_PLAYER_STATUS: u8 = 34;
 const SRV_DAMAGED_BY: u8 = 35;
 const SRV_DIED: u8 = 36;
+const SRV_SHOP: u8 = 37;
+const SRV_SHOP_CLOSED: u8 = 38;
 
 #[derive(Clone, Debug)]
 pub enum ServerMessage {
@@ -313,6 +329,13 @@ pub enum ServerMessage {
         status: u32,
     },
     PlayerDied,
+    Shop {
+        npc_name: String,
+        money: u64,
+        offers: Vec<ShopOffer>,
+        goods: Vec<(ItemId, u8, u16)>,
+    },
+    ShopClosed,
 }
 
 impl Display for ServerMessage {
@@ -803,6 +826,38 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
             status: buf.read_u32_le()?,
         }),
         SRV_DIED => Ok(ServerMessage::PlayerDied),
+        SRV_SHOP => {
+            let name_len = buf.read_u16_le()? as usize;
+            let npc_name = buf.read_string(name_len)?;
+            let money = buf.read_u64_le()?;
+            let offer_count = buf.read_u16_le()?;
+            let mut offers = Vec::with_capacity(offer_count as usize);
+            for _ in 0..offer_count {
+                offers.push(ShopOffer {
+                    item_id: ItemId(buf.read_u16_le()?),
+                    subtype: buf.read_u8()?,
+                    weight: buf.read_u32_le()?,
+                    buy: buf.read_u32_le()?,
+                    sell: buf.read_u32_le()?,
+                });
+            }
+            let goods_count = buf.read_u16_le()?;
+            let mut goods = Vec::with_capacity(goods_count as usize);
+            for _ in 0..goods_count {
+                goods.push((
+                    ItemId(buf.read_u16_le()?),
+                    buf.read_u8()?,
+                    buf.read_u16_le()?,
+                ));
+            }
+            Ok(ServerMessage::Shop {
+                npc_name,
+                money,
+                offers,
+                goods,
+            })
+        }
+        SRV_SHOP_CLOSED => Ok(ServerMessage::ShopClosed),
         _ => Err(MessageDecodeError::WrongSequence),
     }
 }
@@ -1079,6 +1134,27 @@ impl Encoder for GameMessageCodec {
                 encode_spell_target(target, dst);
                 encode_param(param.as_deref(), dst);
             }
+            ClientMessage::ShopBuy {
+                item_id,
+                subtype,
+                amount,
+            } => {
+                dst.put_u8(CLI_SHOP_BUY);
+                dst.put_u16_le(item_id.0);
+                dst.put_u8(subtype);
+                dst.put_u8(amount);
+            }
+            ClientMessage::ShopSell {
+                item_id,
+                subtype,
+                amount,
+            } => {
+                dst.put_u8(CLI_SHOP_SELL);
+                dst.put_u16_le(item_id.0);
+                dst.put_u8(subtype);
+                dst.put_u8(amount);
+            }
+            ClientMessage::CloseShop => dst.put_u8(CLI_CLOSE_SHOP),
         }
 
         let payload_len = (dst.len() - len_offset - 2) as u16;
@@ -2012,5 +2088,71 @@ mod tests {
         buf.extend_from_slice(&frame);
 
         assert!((GameMessageCodec {}).decode(&mut buf).is_err());
+    }
+
+    /// The literal frame the server's `shop_encodes_a_known_frame`
+    /// (rustibia-server, crates/server/src/messages.rs) writes.
+    #[test]
+    fn shop_decodes_the_servers_frame() {
+        let mut buf = frame(&[
+            37, 2, 0, b'X', b'o', 0xD8, 0x04, 0, 0, 0, 0, 0, 0, 1, 0, 0x3A, 0x0B, 9, 180, 0, 0, 0,
+            8, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0x3A, 0x0B, 9, 2, 0,
+        ]);
+
+        match (GameMessageCodec {}).decode(&mut buf).unwrap().unwrap() {
+            ServerMessage::Shop {
+                npc_name,
+                money,
+                offers,
+                goods,
+            } => {
+                assert_eq!(npc_name, "Xo");
+                assert_eq!(money, 1240);
+                assert_eq!(
+                    offers,
+                    vec![ShopOffer {
+                        item_id: ItemId(2874),
+                        subtype: 9,
+                        weight: 180,
+                        buy: 8,
+                        sell: 0,
+                    }]
+                );
+                assert_eq!(goods, vec![(ItemId(2874), 9, 2)]);
+            }
+            other => panic!("expected Shop, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn shop_closed_decodes_from_its_bare_opcode() {
+        let mut buf = frame(&[38]);
+
+        assert!(matches!(
+            (GameMessageCodec {}).decode(&mut buf).unwrap().unwrap(),
+            ServerMessage::ShopClosed
+        ));
+    }
+
+    /// The frames the server's `shop_requests_decode` reads; the opcodes are numbers on purpose.
+    #[test]
+    fn shop_requests_encode() {
+        assert_eq!(
+            payload_of(ClientMessage::ShopBuy {
+                item_id: ItemId(2874),
+                subtype: 9,
+                amount: 7,
+            }),
+            vec![19, 0x3A, 0x0B, 9, 7]
+        );
+        assert_eq!(
+            payload_of(ClientMessage::ShopSell {
+                item_id: ItemId(3003),
+                subtype: 0,
+                amount: 100,
+            }),
+            vec![20, 0xBB, 0x0B, 0, 100]
+        );
+        assert_eq!(payload_of(ClientMessage::CloseShop), vec![21]);
     }
 }

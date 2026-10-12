@@ -8,6 +8,7 @@ use thiserror::Error;
 
 use crate::conf::paths::data_dir;
 use crate::core::{ActiveCharacter, ItemConfigs, SpellBook};
+use crate::game_ui::files::write_atomically;
 use crate::player::Keybinds;
 
 use super::state::{ActionBar, ActionSlot, SlotAction};
@@ -137,22 +138,9 @@ pub(super) fn prune_unknown_spells(
     bar.set_changed();
 }
 
-/// Writes through a temporary file and renames it over the destination. A write cut short would
-/// otherwise leave a file that loads as an empty bar and is overwritten by the next change.
 fn write_slots(path: &Path, contents: &str) {
-    if let Some(parent) = path.parent()
-        && let Err(error) = std::fs::create_dir_all(parent)
-    {
-        warn!("action bar: failed to create {parent:?}: {error}");
-        return;
-    }
-    let staged = path.with_extension("tmp");
-    if let Err(error) = std::fs::write(&staged, contents) {
-        warn!("action bar: failed to write {staged:?}: {error}");
-        return;
-    }
-    if let Err(error) = std::fs::rename(&staged, path) {
-        warn!("action bar: failed to replace {path:?}: {error}");
+    if let Err(error) = write_atomically(path, contents) {
+        warn!("action bar: failed to write {path:?}: {error}");
     }
 }
 

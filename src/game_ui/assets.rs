@@ -24,6 +24,7 @@ pub struct UiInventory {
 pub struct UiButtons {
     pub logout: Handle<Image>,
     pub skills: Handle<Image>,
+    pub options: Handle<Image>,
 }
 
 #[derive(Resource)]
@@ -61,6 +62,7 @@ pub fn setup_game_ui_assets(mut commands: Commands, asset_server: Res<AssetServe
     let buttons = UiButtons {
         logout: asset_server.load("ui/logout.png"),
         skills: asset_server.load("ui/skills.png"),
+        options: asset_server.load("ui/options.png"),
     };
 
     commands.insert_resource(GameUiAssets {

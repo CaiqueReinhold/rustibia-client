@@ -194,6 +194,14 @@ pub mod ui {
         pub const BUTTON_HEIGHT: f32 = 22.0;
         pub const BUTTON_MIN_WIDTH: f32 = 64.0;
         pub const Z_MODAL_BASE: i32 = 100;
+        pub const Z_FLOATING: i32 = 90;
+        pub const CLOSE_BUTTON_SIZE: f32 = 10.0;
+        pub const SHOP_WIDTH: f32 = 190.0;
+        pub const SHOP_TOP: f32 = 60.0;
+        pub const SHOP_ROW_HEIGHT: f32 = 36.0;
+        pub const SHOP_VISIBLE_ROWS: f32 = 3.0;
+        pub const SHOP_CURRENCY_ITEM: u16 = 3031;
+        pub const SHOP_DIM_TEXT_COLOR: Srgba = Srgba::new(0.45, 0.45, 0.45, 1.0);
         pub const DOUBLE_CLICK_SECS: f32 = 0.4;
 
         pub const BUTTON_COLOR: Srgba = Srgba::new(0.34, 0.34, 0.34, 1.0);
@@ -202,6 +210,20 @@ pub mod ui {
 
         pub const HOTKEY_DIALOG_WIDTH: f32 = 400.0;
         pub const WARNING_COLOR: Srgba = Srgba::new(0.95, 0.30, 0.30, 1.0);
+    }
+
+    pub mod options {
+        pub const WIDTH: f32 = 320.0;
+        pub const TAB_HEIGHT: f32 = 20.0;
+        pub const ROW_HEIGHT: f32 = 18.0;
+        pub const BOX_SIZE: f32 = 12.0;
+        pub const FONT_SIZE: f32 = 11.0;
+        pub const PAGE_MIN_HEIGHT: f32 = 110.0;
+        pub const KEY_REPEAT_MS_MIN: u16 = 50;
+        pub const KEY_REPEAT_MS_MAX: u16 = 500;
+        pub const KEY_REPEAT_MS_STEP: u16 = 10;
+        pub const KEY_REPEAT_MS_DEFAULT: u16 = 200;
+        pub const FPS_REFRESH_MS: u64 = 500;
     }
 
     pub mod context_menu {
@@ -254,6 +276,16 @@ pub mod ui {
         pub const LOGO_COLOR: Srgba = Srgba::new(0.91, 0.78, 0.38, 1.0);
         pub const LOGO_FONT_SIZE: f32 = 56.0;
         pub const LOGO_TOP_MARGIN: f32 = 40.0;
+
+        pub const SPINNER_SIZE: f32 = 52.0;
+        pub const SPINNER_RING_RADIUS: f32 = 15.0;
+        pub const SPINNER_DOT_SIZE: f32 = 7.0;
+        pub const SPINNER_DOTS: usize = 10;
+        pub const SPINNER_PERIOD_SECS: f32 = 1.0;
+        pub const SPINNER_COLOR: Srgba = LOGO_COLOR;
+        pub const SPINNER_MIN_ALPHA: f32 = 0.2;
+        pub const SPINNER_MIN_SCALE: f32 = 0.4;
+        pub const SPINNER_DISC_COLOR: Srgba = Srgba::new(0.0, 0.0, 0.0, 0.45);
     }
 }
 

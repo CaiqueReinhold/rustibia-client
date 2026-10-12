@@ -376,6 +376,7 @@ mod tests {
     fn config(flags: Vec<ItemFlag>) -> ItemConfig {
         ItemConfig {
             id: ItemId(1),
+            name: None,
             flags,
             friction: None,
             slot: None,

@@ -381,6 +381,7 @@ mod tests {
     fn a_world_ready_to_walk() -> (World, Entity) {
         let ground = Arc::new(ItemConfig {
             id: ItemId(1),
+            name: None,
             flags: vec![ItemFlag::Ground],
             friction: Some(150),
             slot: None,

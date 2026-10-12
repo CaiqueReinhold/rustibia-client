@@ -99,6 +99,139 @@ pub struct ModalDialog {
     buttons: Vec<DialogButton>,
 }
 
+pub(super) struct Frame {
+    pub panel: Entity,
+    pub title_bar: Entity,
+    pub body: Entity,
+    pub content: Entity,
+}
+
+/// The stone panel, its title bar and an empty content area; `panel_node` places it.
+pub(super) fn spawn_frame(
+    commands: &mut Commands,
+    ui_assets: &GameUiAssets,
+    title: String,
+    panel_node: Node,
+) -> Frame {
+    let panel = commands
+        .spawn((
+            panel_node,
+            BorderColor {
+                top: ui_colors::LIGHT_BORDER_COLOR.into(),
+                right: ui_colors::DARK_BORDER_COLOR.into(),
+                bottom: ui_colors::DARK_BORDER_COLOR.into(),
+                left: ui_colors::LIGHT_BORDER_COLOR.into(),
+            },
+        ))
+        .id();
+
+    let panel_inner = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                ..default()
+            },
+            ImageNode {
+                image: ui_assets.background_light.clone(),
+                image_mode: NodeImageMode::Tiled {
+                    tile_x: true,
+                    tile_y: true,
+                    stretch_value: 1.0,
+                },
+                ..default()
+            },
+        ))
+        .id();
+    commands.entity(panel).add_child(panel_inner);
+
+    let title_bar = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(conf::TITLE_BAR_HEIGHT),
+                padding: UiRect::horizontal(Val::Px(6.0)),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::SpaceBetween,
+                flex_shrink: 0.0,
+                ..default()
+            },
+            ImageNode {
+                image: ui_assets.background_dark.clone(),
+                image_mode: NodeImageMode::Tiled {
+                    tile_x: true,
+                    tile_y: true,
+                    stretch_value: 1.0,
+                },
+                ..default()
+            },
+        ))
+        .with_child((
+            Text::new(title),
+            TextFont {
+                font: ui_assets.font.clone(),
+                font_size: 11.0,
+                ..default()
+            },
+            TextColor(Color::WHITE),
+        ))
+        .id();
+
+    let content_outer = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                border: UiRect::new(Val::Px(2.0), Val::Px(2.0), Val::Px(0.0), Val::Px(2.0)),
+                flex_direction: FlexDirection::Column,
+                ..default()
+            },
+            BorderColor::all(ui_colors::DARK_BORDER_COLOR),
+        ))
+        .id();
+
+    let body = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                border: UiRect::all(Val::Px(1.0)),
+                flex_direction: FlexDirection::Column,
+                ..default()
+            },
+            BorderColor {
+                top: ui_colors::DARK_BORDER_COLOR.into(),
+                right: ui_colors::LIGHT_BORDER_COLOR.into(),
+                bottom: ui_colors::LIGHT_BORDER_COLOR.into(),
+                left: ui_colors::DARK_BORDER_COLOR.into(),
+            },
+        ))
+        .id();
+    commands.entity(content_outer).add_child(body);
+
+    let content = commands
+        .spawn((
+            ModalContent,
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                padding: UiRect::all(Val::Px(conf::PADDING)),
+                ..default()
+            },
+        ))
+        .id();
+    commands.entity(body).add_child(content);
+
+    commands
+        .entity(panel_inner)
+        .add_children(&[title_bar, content_outer]);
+
+    Frame {
+        panel,
+        title_bar,
+        body,
+        content,
+    }
+}
+
 impl ModalDialog {
     pub fn new(title: impl Into<String>) -> Self {
         Self {
@@ -147,117 +280,18 @@ impl ModalDialog {
             ))
             .id();
 
-        let panel = commands
-            .spawn((
-                Node {
-                    width: self.width,
-                    flex_direction: FlexDirection::Column,
-                    border: UiRect::all(Val::Px(2.0)),
-                    ..default()
-                },
-                BorderColor {
-                    top: ui_colors::LIGHT_BORDER_COLOR.into(),
-                    right: ui_colors::DARK_BORDER_COLOR.into(),
-                    bottom: ui_colors::DARK_BORDER_COLOR.into(),
-                    left: ui_colors::LIGHT_BORDER_COLOR.into(),
-                },
-            ))
-            .id();
-        commands.entity(root).add_child(panel);
-
-        let panel_inner = commands
-            .spawn((
-                Node {
-                    width: Val::Percent(100.0),
-                    flex_direction: FlexDirection::Column,
-                    ..default()
-                },
-                ImageNode {
-                    image: ui_assets.background_light.clone(),
-                    image_mode: NodeImageMode::Tiled {
-                        tile_x: true,
-                        tile_y: true,
-                        stretch_value: 1.0,
-                    },
-                    ..default()
-                },
-            ))
-            .id();
-        commands.entity(panel).add_child(panel_inner);
-
-        let title_bar = commands
-            .spawn((
-                Node {
-                    width: Val::Percent(100.0),
-                    height: Val::Px(conf::TITLE_BAR_HEIGHT),
-                    padding: UiRect::horizontal(Val::Px(6.0)),
-                    align_items: AlignItems::Center,
-                    flex_shrink: 0.0,
-                    ..default()
-                },
-                ImageNode {
-                    image: ui_assets.background_dark.clone(),
-                    image_mode: NodeImageMode::Tiled {
-                        tile_x: true,
-                        tile_y: true,
-                        stretch_value: 1.0,
-                    },
-                    ..default()
-                },
-            ))
-            .with_child((
-                Text::new(self.title),
-                TextFont {
-                    font: ui_assets.font.clone(),
-                    font_size: 11.0,
-                    ..default()
-                },
-                TextColor(Color::WHITE),
-            ))
-            .id();
-
-        let content_outer = commands
-            .spawn((
-                Node {
-                    width: Val::Percent(100.0),
-                    border: UiRect::new(Val::Px(2.0), Val::Px(2.0), Val::Px(0.0), Val::Px(2.0)),
-                    flex_direction: FlexDirection::Column,
-                    ..default()
-                },
-                BorderColor::all(ui_colors::DARK_BORDER_COLOR),
-            ))
-            .id();
-
-        let content_inner = commands
-            .spawn((
-                Node {
-                    width: Val::Percent(100.0),
-                    border: UiRect::all(Val::Px(1.0)),
-                    flex_direction: FlexDirection::Column,
-                    ..default()
-                },
-                BorderColor {
-                    top: ui_colors::DARK_BORDER_COLOR.into(),
-                    right: ui_colors::LIGHT_BORDER_COLOR.into(),
-                    bottom: ui_colors::LIGHT_BORDER_COLOR.into(),
-                    left: ui_colors::DARK_BORDER_COLOR.into(),
-                },
-            ))
-            .id();
-
-        commands.entity(content_outer).add_child(content_inner);
-
-        let content = commands
-            .spawn((
-                ModalContent,
-                Node {
-                    width: Val::Percent(100.0),
-                    flex_direction: FlexDirection::Column,
-                    padding: UiRect::all(Val::Px(conf::PADDING)),
-                    ..default()
-                },
-            ))
-            .id();
+        let frame = spawn_frame(
+            commands,
+            ui_assets,
+            self.title,
+            Node {
+                width: self.width,
+                flex_direction: FlexDirection::Column,
+                border: UiRect::all(Val::Px(2.0)),
+                ..default()
+            },
+        );
+        commands.entity(root).add_child(frame.panel);
 
         let button_row = commands
             .spawn(Node {
@@ -273,10 +307,7 @@ impl ModalDialog {
                 ..default()
             })
             .id();
-
-        commands
-            .entity(content_inner)
-            .add_children(&[content, button_row]);
+        commands.entity(frame.body).add_child(button_row);
 
         for button in &self.buttons {
             let id = button.id;
@@ -298,11 +329,10 @@ impl ModalDialog {
             commands.entity(button_row).add_child(button_entity);
         }
 
-        commands
-            .entity(panel_inner)
-            .add_children(&[title_bar, content_outer]);
-
-        ModalDialogHandle { root, content }
+        ModalDialogHandle {
+            root,
+            content: frame.content,
+        }
     }
 
     /// Convenience: title + wrapped message text + Ok button.

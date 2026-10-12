@@ -5,7 +5,7 @@ use bevy::window::PresentMode;
 
 use bevy_text_outline::TextOutlinePlugin;
 
-// use bevy::diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin};
+use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 
 mod agent;
 mod camera;
@@ -23,10 +23,7 @@ use crate::core::{GameAssetsLoaded, GameState};
 
 fn main() {
     App::new()
-        // .add_plugins((
-        //     FrameTimeDiagnosticsPlugin::default(),
-        //     LogDiagnosticsPlugin::default(),
-        // ))
+        .add_plugins(FrameTimeDiagnosticsPlugin::default())
         .add_plugins(
             DefaultPlugins
                 .set(ImagePlugin::default_nearest())

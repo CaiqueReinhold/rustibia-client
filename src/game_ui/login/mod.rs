@@ -1,13 +1,10 @@
-use bevy::camera::visibility::RenderLayers;
 use bevy::prelude::*;
-use bevy_text_outline::TextOutline;
 
-use crate::conf::ui::login as conf;
 use crate::core::{EndGameSession, GameState};
-use crate::game_ui::GameUiAssets;
 
 mod charlist;
 mod form;
+mod title;
 mod update_required;
 
 /// Which login dialog is showing. Exists only while
@@ -19,6 +16,7 @@ pub enum LoginPhase {
     EnterGame,
     LoadingCharacters,
     CharacterList,
+    EnteringGame,
     UpdateRequired,
 }
 
@@ -38,23 +36,15 @@ pub struct PendingLoginError(pub Option<(String, String)>);
 #[derive(Resource, Debug)]
 pub struct PendingLoginPhase(pub LoginPhase);
 
-#[derive(Component)]
-struct LoginBackdrop;
-
 pub struct LoginPlugin;
 
 impl Plugin for LoginPlugin {
     fn build(&self, app: &mut App) {
         app.add_sub_state::<LoginPhase>()
+            .add_plugins(title::TitleScreenPlugin)
             .init_resource::<PendingLoginError>()
-            .add_systems(
-                OnEnter(GameState::LoginScreen),
-                (spawn_backdrop, apply_pending_login_phase),
-            )
-            .add_systems(
-                OnExit(GameState::LoginScreen),
-                (despawn_backdrop, clear_pending_login_phase),
-            )
+            .add_systems(OnEnter(GameState::LoginScreen), apply_pending_login_phase)
+            .add_systems(OnExit(GameState::LoginScreen), clear_pending_login_phase)
             .add_systems(
                 OnEnter(LoginPhase::EnterGame),
                 (form::spawn_login_form, form::show_pending_error)
@@ -165,52 +155,6 @@ fn apply_pending_login_phase(pending: Option<Res<PendingLoginPhase>>, mut comman
 
 fn clear_pending_login_phase(mut commands: Commands) {
     commands.remove_resource::<PendingLoginPhase>();
-}
-
-fn spawn_backdrop(mut commands: Commands, ui_assets: Res<GameUiAssets>) {
-    commands
-        .spawn((
-            LoginBackdrop,
-            Node {
-                position_type: PositionType::Absolute,
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                justify_content: JustifyContent::Center,
-                ..default()
-            },
-            // Stretch-fills the window; non-16:9 ratios distort the art.
-            // Bevy 0.18 has no cover/contain image mode — don't "fix" this
-            // by switching to Stretch (identical) or chasing a mode that
-            // doesn't exist.
-            ImageNode {
-                image: ui_assets.title_background.clone(),
-                ..default()
-            },
-            RenderLayers::layer(1),
-        ))
-        .with_child((
-            Text::new("RUSTIBIA"),
-            TextFont {
-                font: ui_assets.font.clone(),
-                font_size: conf::LOGO_FONT_SIZE,
-                ..default()
-            },
-            TextColor(conf::LOGO_COLOR.into()),
-            TextOutline {
-                width: 3.0,
-                color: Color::BLACK,
-            },
-            Node {
-                margin: UiRect::top(Val::Px(conf::LOGO_TOP_MARGIN)),
-                ..default()
-            },
-        ));
-}
-
-fn despawn_backdrop(mut commands: Commands, backdrops: Query<Entity, With<LoginBackdrop>>) {
-    for entity in &backdrops {
-        commands.entity(entity).despawn();
-    }
 }
 
 #[cfg(test)]

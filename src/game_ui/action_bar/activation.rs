@@ -177,6 +177,7 @@ mod tests {
         let mut map = Map::default();
         let config = Arc::new(ItemConfig {
             id: ItemId(100),
+            name: None,
             flags: Vec::new(),
             friction: Some(150),
             slot: None,

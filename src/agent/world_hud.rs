@@ -207,12 +207,18 @@ mod tests {
 
     #[test]
     fn an_undisplaced_outfit_anchors_over_its_tiles_centre() {
-        assert_eq!(world_hud_anchor(Vec2::ZERO), Vec2::new(16.0, 2.0));
+        assert_eq!(
+            world_hud_anchor(Vec2::ZERO),
+            Vec2::new(16.0, HUD_TILE_CLEARANCE)
+        );
     }
 
     #[test]
     fn a_displaced_outfit_moves_its_anchor_up_and_left() {
-        assert_eq!(world_hud_anchor(Vec2::new(8.0, 8.0)), Vec2::new(8.0, 10.0));
+        assert_eq!(
+            world_hud_anchor(Vec2::new(8.0, 8.0)),
+            Vec2::new(8.0, 8.0 + HUD_TILE_CLEARANCE)
+        );
     }
 
     #[test]

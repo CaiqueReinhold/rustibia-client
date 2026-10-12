@@ -7,7 +7,7 @@ use crate::{
         ChatMessageType, EffectId, FloatingTextType, MissileId, OutfitColors, OutfitId, SpellId,
         SpellInfo, TextMessageType,
     },
-    game_ui::{SkillProgress, SkillType},
+    game_ui::{ShopOffer, SkillProgress, SkillType},
     items::{ContainerId, InventorySlot, ItemId},
     map::Position,
     network::{ServerMessage, messages::ItemStack},
@@ -263,6 +263,17 @@ pub struct AgentSpeedUpdated {
 pub struct PlayerStatusUpdated {
     pub status: u32,
 }
+
+#[derive(Event, Debug)]
+pub struct ShopReceived {
+    pub npc_name: String,
+    pub money: u64,
+    pub offers: Vec<ShopOffer>,
+    pub goods: Vec<(ItemId, u8, u16)>,
+}
+
+#[derive(Event, Debug)]
+pub struct ShopClosed;
 
 pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
     match msg {
@@ -529,6 +540,22 @@ pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
         }
         ServerMessage::PlayerDied => {
             commands.trigger(PlayerDied);
+        }
+        ServerMessage::Shop {
+            npc_name,
+            money,
+            offers,
+            goods,
+        } => {
+            commands.trigger(ShopReceived {
+                npc_name,
+                money,
+                offers,
+                goods,
+            });
+        }
+        ServerMessage::ShopClosed => {
+            commands.trigger(ShopClosed);
         }
     }
 }

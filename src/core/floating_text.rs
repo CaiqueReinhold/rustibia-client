@@ -17,7 +17,7 @@ use crate::conf::floating_text as ft;
 use crate::conf::map::TILE_SIZE;
 use crate::conf::ui::chat::CREATURE_SAY_COLOR;
 use crate::conf::ui::chat::LOCAL_CHANNEL_COLOR;
-use crate::game_ui::{GameUiAssets, GameViewport};
+use crate::game_ui::{GameUiAssets, GameViewport, Settings};
 use crate::map::Position;
 use crate::network::events::ShowFloatingText;
 use crate::overlay::{HudScaled, OVERLAY_TEXT_Z, on_overlay_layer, world_hud_scale};
@@ -476,8 +476,9 @@ pub fn resolve_speech_collisions(
 }
 
 /// Lifts every floating text by its collision push and rise, and hides text on
-/// other floors.
+/// other floors or of a kind the player turned off.
 pub fn position_floating_texts(
+    settings: Res<Settings>,
     player_pos_q: Query<&Position, With<Player>>,
     mut texts_q: Query<(
         &FloatingText,
@@ -490,7 +491,8 @@ pub fn position_floating_texts(
         return;
     };
     for (text, hp, mut transform, mut visibility) in &mut texts_q {
-        visibility.set_if_neq(if text.anchor.z == player_pos.z {
+        let shown = text.anchor.z == player_pos.z && shows_kind(&settings, text.kind);
+        visibility.set_if_neq(if shown {
             Visibility::Inherited
         } else {
             Visibility::Hidden
@@ -499,6 +501,13 @@ pub fn position_floating_texts(
         if transform.translation.y != lift {
             transform.translation.y = lift;
         }
+    }
+}
+
+fn shows_kind(settings: &Settings, kind: FloatingTextType) -> bool {
+    match kind {
+        FloatingTextType::HitPoints => settings.show_damage_numbers,
+        FloatingTextType::PlayerMessage | FloatingTextType::CreatureSay => settings.show_speech,
     }
 }
 
@@ -1501,6 +1510,7 @@ mod tests {
 
     fn placement_world(player_z: u8) -> World {
         let mut world = World::new();
+        world.init_resource::<crate::game_ui::Settings>();
         world.spawn((
             GameViewport,
             crate::overlay::a_viewport(Vec2::new(GAME_VIEW_WIDTH, GAME_VIEW_HEIGHT), 1.0),
@@ -1630,5 +1640,41 @@ mod tests {
 
         assert_eq!(world.query::<&FloatingText>().iter(&world).count(), 0);
         assert_eq!(world.query::<&FloatingTextRoot>().iter(&world).count(), 0);
+    }
+
+    fn a_speech_line(world: &mut World) -> Entity {
+        world
+            .spawn((
+                FloatingText {
+                    kind: FloatingTextType::CreatureSay,
+                    speaker: None,
+                    anchor: Position::new(100, 100, 7),
+                    spawned_at: Duration::ZERO,
+                    offset_y: 0.0,
+                },
+                Transform::default(),
+                Visibility::Hidden,
+            ))
+            .id()
+    }
+
+    #[test]
+    fn a_kind_turned_off_is_hidden_and_the_other_kind_is_not() {
+        for (damage, speech) in [(false, true), (true, false)] {
+            let mut world = placement_world(7);
+            {
+                let mut settings = world.resource_mut::<crate::game_ui::Settings>();
+                settings.show_damage_numbers = damage;
+                settings.show_speech = speech;
+            }
+            let number = a_number(&mut world, 0, 0.0);
+            let line = a_speech_line(&mut world);
+
+            world.run_system_once(position_floating_texts).unwrap();
+
+            let shown = |entity| *world.get::<Visibility>(entity).unwrap() == Visibility::Inherited;
+            assert_eq!(shown(number), damage, "damage numbers {damage}");
+            assert_eq!(shown(line), speech, "speech {speech}");
+        }
     }
 }

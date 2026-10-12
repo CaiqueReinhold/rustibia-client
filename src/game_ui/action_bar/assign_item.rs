@@ -59,6 +59,7 @@ mod tests {
         Arc::new(Item::new(
             Arc::new(ItemConfig {
                 id: ItemId(266),
+                name: None,
                 flags,
                 friction: None,
                 slot: None,

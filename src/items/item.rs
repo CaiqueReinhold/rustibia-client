@@ -138,6 +138,7 @@ pub enum ItemFlag {
 #[derive(Debug, Eq)]
 pub struct ItemConfig {
     pub id: ItemId,
+    pub name: Option<String>,
     pub flags: Vec<ItemFlag>,
     pub friction: Option<u16>,
     pub slot: Option<InventorySlot>,
@@ -251,6 +252,7 @@ mod tests {
     fn config_with(flags: Vec<ItemFlag>) -> Arc<ItemConfig> {
         Arc::new(ItemConfig {
             id: ItemId(2886),
+            name: None,
             flags,
             friction: None,
             slot: None,

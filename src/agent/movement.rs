@@ -21,8 +21,15 @@ pub struct ShouldTeleport {
     pub position: Position,
 }
 
+#[derive(Debug, PartialEq)]
+pub enum QueuedMove {
+    Step(Position, WalkingDirection),
+    Teleport(Position),
+}
+
+/// A creature's steps and teleports, in the order the server sent them.
 #[derive(Component, Debug, Default)]
-pub struct MoveQueue(pub VecDeque<(Position, WalkingDirection)>);
+pub struct MoveQueue(pub VecDeque<QueuedMove>);
 
 #[derive(Event, Debug)]
 pub struct StartAgentMove {
@@ -175,11 +182,24 @@ pub fn on_update_elevation(
     }
 }
 
-pub fn on_teleport_agent(event: On<TeleportAgent>, mut commands: Commands, map: Res<Map>) {
-    if let Some(agent) = map.get_agent(event.agent_id) {
-        commands.entity(agent).insert(ShouldTeleport {
-            position: event.position.clone(),
-        });
+pub fn on_teleport_agent(
+    event: On<TeleportAgent>,
+    mut commands: Commands,
+    map: Res<Map>,
+    mut queue_q: Query<&mut MoveQueue>,
+) {
+    let Some(agent) = map.get_agent(event.agent_id) else {
+        return;
+    };
+    match queue_q.get_mut(agent) {
+        Ok(mut queue) => queue
+            .0
+            .push_back(QueuedMove::Teleport(event.position.clone())),
+        Err(_) => {
+            commands.entity(agent).insert(ShouldTeleport {
+                position: event.position.clone(),
+            });
+        }
     }
 }
 
@@ -218,8 +238,17 @@ pub fn process_agent_move_queues(
     mut queue_q: Query<(Entity, &Agent, &Position, &mut MoveQueue), Without<Moving>>,
 ) {
     for (entity, agent, position, mut queue) in &mut queue_q {
-        let Some((move_from, direction)) = queue.0.pop_front() else {
+        let Some(next) = queue.0.pop_front() else {
             continue;
+        };
+        let (move_from, direction) = match next {
+            QueuedMove::Step(from, direction) => (from, direction),
+            QueuedMove::Teleport(position) => {
+                commands
+                    .entity(entity)
+                    .try_insert(ShouldTeleport { position });
+                continue;
+            }
         };
 
         if *position != move_from {
@@ -261,6 +290,7 @@ mod tests {
     use crate::items::ItemId;
     use crate::items::{Item, ItemConfig, ItemFlag};
     use crate::map::DrawRank;
+    use crate::network::events::MoveAgent;
     use bevy::ecs::schedule::{ExecutorKind, ScheduleBuildSettings};
     use bevy::ecs::system::{RunSystemOnce, ScheduleSystem};
     use std::sync::Arc;
@@ -274,6 +304,7 @@ mod tests {
     fn walkable_world() -> (World, Entity) {
         let ground = Arc::new(ItemConfig {
             id: ItemId(1),
+            name: None,
             flags: vec![ItemFlag::Ground],
             friction: Some(150),
             slot: None,
@@ -520,6 +551,7 @@ mod tests {
     fn finishing_a_step_leaves_the_draw_key_alone() {
         let ground = Arc::new(ItemConfig {
             id: ItemId(1),
+            name: None,
             flags: vec![ItemFlag::Ground],
             friction: Some(150),
             slot: None,
@@ -614,14 +646,94 @@ mod tests {
     #[test]
     fn a_queued_step_on_a_despawned_agent_is_dropped() {
         let (mut world, entity) = walkable_world();
-        world.entity_mut(entity).insert(MoveQueue(VecDeque::from([(
-            at(99, 100),
-            WalkingDirection::East,
-        )])));
+        world
+            .entity_mut(entity)
+            .insert(MoveQueue(VecDeque::from([QueuedMove::Step(
+                at(99, 100),
+                WalkingDirection::East,
+            )])));
 
         run_after_a_same_frame_despawn(&mut world, entity, process_agent_move_queues);
 
         assert!(world.get_entity(entity).is_err());
+    }
+
+    /// A creature as the server's messages reach it: the observers, then one frame of the
+    /// movement chain after each batch, a second apart so every step finishes.
+    fn a_creature_receiving_messages() -> (World, Entity) {
+        let (mut world, entity) = walkable_world();
+        let floors = std::array::from_fn(|_| world.spawn_empty().id());
+        world.insert_resource(FloorEntities { floors });
+        world.entity_mut(entity).insert(MoveQueue::default());
+        world.add_observer(on_start_agent_move);
+        world.add_observer(on_teleport_agent);
+        world.add_observer(crate::agent::events::on_move_agent);
+        (world, entity)
+    }
+
+    fn run_frames(world: &mut World, frames: usize) {
+        let mut schedule = Schedule::default();
+        schedule.add_systems((move_agent, process_agent_move_queues, teleport_agents).chain());
+        for _ in 0..frames {
+            schedule.run(world);
+            world
+                .resource_mut::<Time<()>>()
+                .advance_by(Duration::from_secs(1));
+        }
+    }
+
+    /// Walking onto a hole: the step plays out before the fall.
+    #[test]
+    fn a_teleport_during_a_step_waits_for_the_step() {
+        let (mut world, entity) = a_creature_receiving_messages();
+        world.trigger(MoveAgent {
+            agent_id: AgentId(1),
+            from: at(100, 100),
+            direction: WalkingDirection::South,
+        });
+        world.trigger(TeleportAgent {
+            agent_id: AgentId(1),
+            position: at(99, 99),
+        });
+
+        run_frames(&mut world, 1);
+        assert!(world.get::<Moving>(entity).is_some());
+        assert_eq!(*world.get::<Position>(entity).unwrap(), at(100, 101));
+
+        run_frames(&mut world, 3);
+        assert_eq!(*world.get::<Position>(entity).unwrap(), at(99, 99));
+    }
+
+    /// The teleport is older than the step, so applying it last would snap the creature back.
+    #[test]
+    fn a_step_sent_after_a_teleport_plays_after_it() {
+        let (mut world, entity) = a_creature_receiving_messages();
+        world.trigger(TeleportAgent {
+            agent_id: AgentId(1),
+            position: at(99, 99),
+        });
+        world.trigger(MoveAgent {
+            agent_id: AgentId(1),
+            from: at(99, 99),
+            direction: WalkingDirection::East,
+        });
+
+        run_frames(&mut world, 4);
+
+        assert_eq!(*world.get::<Position>(entity).unwrap(), at(100, 99));
+    }
+
+    #[test]
+    fn a_standing_creature_is_teleported_in_the_frame_it_is_told() {
+        let (mut world, entity) = a_creature_receiving_messages();
+        world.trigger(TeleportAgent {
+            agent_id: AgentId(1),
+            position: at(99, 99),
+        });
+
+        run_frames(&mut world, 1);
+
+        assert_eq!(*world.get::<Position>(entity).unwrap(), at(99, 99));
     }
 
     #[test]
@@ -675,6 +787,7 @@ mod tests {
     fn a_diagonal_is_drawn_at_cardinal_speed() {
         let ground = Arc::new(ItemConfig {
             id: ItemId(1),
+            name: None,
             flags: vec![ItemFlag::Ground],
             friction: Some(150),
             slot: None,

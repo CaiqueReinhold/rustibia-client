@@ -96,7 +96,7 @@ mod tests {
     use super::*;
 
     /// Pins the file's shape. The field names are what a player edits, so renaming
-    /// one silently falls back to a default that points at localhost.
+    /// one silently falls back to the built-in default.
     #[test]
     fn parses_a_full_config_file() {
         let config: ClientConfig = serde_yaml::from_str(
@@ -136,12 +136,9 @@ site_url: "https://play.example.com"
             .join("packaging")
             .join(CONFIG_FILE_NAME);
 
-        let config = read_from(std::slice::from_ref(&template));
+        let contents = fs::read_to_string(&template).unwrap();
 
-        assert_eq!(
-            config.server_address,
-            ClientConfig::default().server_address
-        );
+        serde_yaml::from_str::<ClientConfig>(&contents).unwrap();
     }
 
     /// The first readable file wins, and a later one is not consulted -- that is

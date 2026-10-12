@@ -1,8 +1,8 @@
 # client configuration.
 #
 # Edit this file to point the client at a different game world, then restart it.
-# Both entries are optional -- a missing one falls back to the localhost default
-# baked into the client.
+# Every entry is optional -- a missing one falls back to the default baked into
+# the client, which is the public server.
 
 # host:port of the game server's TCP listener.
 server_address: "127.0.0.1:5555"

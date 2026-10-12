@@ -1,11 +1,10 @@
 use std::collections::HashMap;
-use std::time::Duration;
 
 use bevy::prelude::*;
 
 use crate::{
     agent::{FacingDirection, WalkingDirection},
-    game_ui::{ActionSlotActivated, ContextMenuRoot, EnterChatMode, ModalDialogRoot},
+    game_ui::{ActionSlotActivated, ContextMenuRoot, EnterChatMode, ModalDialogRoot, Settings},
     map::Map,
     player::Hotkey,
     player::interaction::InteractionIntent,
@@ -107,11 +106,15 @@ pub struct KeyRepeatState {
     timer: Timer,
 }
 
-pub fn init_repeat_state(mut commands: Commands) {
+pub fn init_repeat_state(mut commands: Commands, settings: Res<Settings>) {
     commands.insert_resource(KeyRepeatState {
         pressed_key: None,
-        timer: Timer::new(Duration::from_millis(200), TimerMode::Repeating),
+        timer: Timer::new(settings.key_repeat(), TimerMode::Repeating),
     });
+}
+
+pub fn apply_key_repeat(settings: Res<Settings>, mut key_repeat: ResMut<KeyRepeatState>) {
+    key_repeat.timer.set_duration(settings.key_repeat());
 }
 
 pub fn read_player_input(
@@ -223,6 +226,7 @@ mod tests {
     use crate::player::InteractionMode;
     use crate::player::TargetingSource;
     use bevy::ecs::system::RunSystemOnce;
+    use std::time::Duration;
 
     fn seeded_world() -> World {
         let mut world = World::new();
@@ -361,6 +365,7 @@ mod tests {
         world.init_resource::<crate::game_ui::ChatMode>();
         world.init_resource::<bevy::input_focus::InputFocus>();
         world.init_resource::<Fired>();
+        world.init_resource::<crate::game_ui::Settings>();
         world.run_system_once(init_repeat_state).unwrap();
         world.add_observer(|_: On<MovePlayer>, mut fired: ResMut<Fired>| fired.walks += 1);
         world.add_observer(|event: On<ActionSlotActivated>, mut fired: ResMut<Fired>| {
@@ -440,5 +445,43 @@ mod tests {
         let mut closed = input_world(&[KeyCode::KeyW]);
         closed.run_system_once(read_player_input).unwrap();
         assert_eq!(closed.resource::<Fired>().walks, 1);
+    }
+
+    fn hold_for(world: &mut World, elapsed: Duration) {
+        world.resource_mut::<ButtonInput<KeyCode>>().clear();
+        world.resource_mut::<Time>().advance_by(elapsed);
+        world.run_system_once(read_player_input).unwrap();
+    }
+
+    #[test]
+    fn a_held_key_repeats_at_the_configured_interval() {
+        for (ms, expected_walks) in [(50, 2), (200, 1)] {
+            let mut world = input_world(&[KeyCode::KeyW]);
+            world
+                .resource_mut::<crate::game_ui::Settings>()
+                .key_repeat_ms = ms;
+            world.run_system_once(apply_key_repeat).unwrap();
+
+            world.run_system_once(read_player_input).unwrap();
+            hold_for(&mut world, Duration::from_millis(60));
+
+            assert_eq!(world.resource::<Fired>().walks, expected_walks, "{ms} ms");
+        }
+    }
+
+    #[test]
+    fn a_new_session_keeps_the_configured_interval() {
+        let mut world = World::new();
+        world.insert_resource(crate::game_ui::Settings {
+            key_repeat_ms: 120,
+            ..default()
+        });
+
+        world.run_system_once(init_repeat_state).unwrap();
+
+        assert_eq!(
+            world.resource::<KeyRepeatState>().timer.duration(),
+            Duration::from_millis(120)
+        );
     }
 }

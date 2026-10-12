@@ -133,7 +133,7 @@ fn read_item_config(config: &Value) -> Option<Arc<ItemConfig>> {
     }
     Some(Arc::new(ItemConfig {
         id,
-        // name,
+        name: config["name"].as_str().map(str::to_owned),
         flags,
         friction,
         slot,
@@ -266,5 +266,20 @@ mod tests {
             .remove("dont_hide");
 
         assert!(read_item_config(&config).is_none());
+    }
+
+    #[test]
+    fn a_name_is_read_and_a_missing_one_is_none() {
+        let mut named = item_json(false, json!(0));
+        named["name"] = json!("gold coin");
+
+        assert_eq!(
+            read_item_config(&named).unwrap().name.as_deref(),
+            Some("gold coin")
+        );
+        assert_eq!(
+            read_item_config(&item_json(false, json!(0))).unwrap().name,
+            None
+        );
     }
 }

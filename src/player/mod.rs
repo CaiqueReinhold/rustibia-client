@@ -34,6 +34,12 @@ impl Plugin for PlayerPlugin {
             .init_resource::<target::CombatTarget>()
             .add_systems(Startup, keyboard::init_repeat_state)
             .add_systems(
+                PreUpdate,
+                keyboard::apply_key_repeat
+                    .before(keyboard::read_player_input)
+                    .run_if(resource_changed::<crate::game_ui::Settings>),
+            )
+            .add_systems(
                 OnExit(GameState::InGame),
                 (session::cleanup_session, keyboard::init_repeat_state).in_set(SessionCleanup),
             )
