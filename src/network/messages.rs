@@ -6,7 +6,7 @@ use bytes::{Buf, BufMut, BytesMut};
 use thiserror::Error;
 
 use crate::{
-    agent::{AgentId, FacingDirection, Health, Mana, WalkingDirection},
+    agent::{AgentId, AgentKind, FacingDirection, Health, Mana, WalkingDirection},
     conf::map::{STACK_MAX_VISIBLE_ITEMS, TILES_X, TILES_Y},
     core::{
         ChatMessageType, EffectId, FloatingTextType, MissileId, OutfitColors, OutfitId, SayTarget,
@@ -252,6 +252,7 @@ pub enum ServerMessage {
         name: String,
         health: u32,
         speed: u16,
+        kind: AgentKind,
     },
     TeleportAgent {
         agent_id: AgentId,
@@ -651,6 +652,8 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
                 buf.read_u8()?,
             );
             let speed = buf.read_u16_le()?;
+            let kind =
+                AgentKind::from_id(buf.read_u8()?).ok_or(MessageDecodeError::WrongSequence)?;
             Ok(ServerMessage::SpawnAgent {
                 agent_id,
                 outfit: (outfit_id, colors),
@@ -659,6 +662,7 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
                 name,
                 health,
                 speed,
+                kind,
             })
         }
         SRV_TELEPORT_AGENT => Ok(ServerMessage::TeleportAgent {
@@ -1500,6 +1504,55 @@ mod tests {
         buf.extend_from_slice(&(payload.len() as u16).to_le_bytes());
         buf.extend_from_slice(payload);
         buf
+    }
+
+    /// Its twin is `the_agent_kind_wire_ids_are_pinned` in the server's `entities/agent.rs`. If
+    /// the two disagree, the menu offers to message a rat and to attack an NPC, and nothing
+    /// errors.
+    #[test]
+    fn agent_kind_ids_match_the_server() {
+        assert_eq!(AgentKind::from_id(0), Some(AgentKind::Player));
+        assert_eq!(AgentKind::from_id(1), Some(AgentKind::Creature));
+        assert_eq!(AgentKind::from_id(2), Some(AgentKind::Npc));
+        assert_eq!(AgentKind::from_id(3), None);
+    }
+
+    #[rustfmt::skip]
+    fn spawn_agent_frame(kind: u8) -> BytesMut {
+        frame(&[
+            SRV_SPAWN_AGENT,
+            7, 0,
+            100, 0, 100, 0, 7,
+            3,
+            3, 0, b'R', b'a', b't',
+            20, 0, 0, 0,
+            21, 0, 1, 2, 3, 4,
+            100, 0,
+            kind,
+        ])
+    }
+
+    #[test]
+    fn spawn_agent_decodes_its_kind() {
+        let mut buf = spawn_agent_frame(2);
+
+        match (GameMessageCodec {}).decode(&mut buf).unwrap().unwrap() {
+            ServerMessage::SpawnAgent {
+                name, speed, kind, ..
+            } => {
+                assert_eq!(name, "Rat");
+                assert_eq!(speed, 100);
+                assert_eq!(kind, AgentKind::Npc);
+            }
+            other => panic!("expected SpawnAgent, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn an_unknown_agent_kind_is_a_decode_error() {
+        let mut buf = spawn_agent_frame(3);
+
+        assert!((GameMessageCodec {}).decode(&mut buf).is_err());
     }
 
     #[test]

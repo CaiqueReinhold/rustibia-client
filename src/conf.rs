@@ -235,6 +235,7 @@ pub mod ui {
         pub const ROW_PADDING_Y: f32 = 3.0;
         pub const HOVER_COLOR: Srgba = Srgba::new(0.25, 0.32, 0.45, 1.0);
         pub const DISABLED_COLOR: Srgba = Srgba::new(0.45, 0.45, 0.45, 1.0);
+        pub const SEPARATOR_MARGIN_Y: f32 = 2.0;
     }
 
     pub mod action_bar {

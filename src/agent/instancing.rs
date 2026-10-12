@@ -8,7 +8,7 @@ use bevy::render::storage::ShaderStorageBuffer;
 
 use crate::agent::components::{Agent, AgentAnimConfigs, Hovered};
 use crate::agent::world_hud::{spawn_world_hud, world_hud_anchor};
-use crate::agent::{AgentId, FacingDirection, Health, Mana};
+use crate::agent::{AgentId, AgentKind, FacingDirection, Health, Mana};
 use crate::conf::hover::{PULSE_AMPLITUDE, PULSE_BASE, PULSE_PERIOD_SECS};
 use crate::core::OutfitColors;
 use crate::core::OutfitId;
@@ -99,6 +99,7 @@ pub fn spawn_agent(
     addons: u8,
     position: Position,
     name: String,
+    kind: AgentKind,
     health: Option<Health>,
     mana: Option<Mana>,
     agent_id: AgentId,
@@ -122,6 +123,8 @@ pub fn spawn_agent(
 
     let agent = Agent {
         agent_id,
+        name: name.clone(),
+        kind,
         direction: facing,
         addons,
         outfit_colors,

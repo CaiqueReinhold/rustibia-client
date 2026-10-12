@@ -33,10 +33,31 @@ impl From<Mounted> for u32 {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum AgentKind {
+    Player,
+    #[default]
+    Creature,
+    Npc,
+}
+
+impl AgentKind {
+    pub fn from_id(id: u8) -> Option<Self> {
+        match id {
+            0 => Some(AgentKind::Player),
+            1 => Some(AgentKind::Creature),
+            2 => Some(AgentKind::Npc),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Component, Debug, Default)]
 pub struct Agent {
     // pub outfit_id: u32,
     pub agent_id: AgentId,
+    pub name: String,
+    pub kind: AgentKind,
     pub direction: FacingDirection,
     pub addons: u8,
     pub mounted: Mounted,

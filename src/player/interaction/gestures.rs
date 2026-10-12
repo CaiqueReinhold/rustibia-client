@@ -1,13 +1,11 @@
 use bevy::prelude::*;
 
 use crate::{
-    agent::AgentId,
+    agent::{Agent, AgentId},
     conf::ui::MIN_DRAG_THRESHOLD,
     core::{SpellId, SpellTarget},
     game_ui::{MainUI, UiWindowRef},
-    items::{
-        ItemDragEnded, ItemDragStarted, ItemFlag, ItemPlacement, LootContainerUI, OpenSplitDialog,
-    },
+    items::{ItemDragEnded, ItemDragStarted, ItemFlag, LootContainerUI, OpenSplitDialog},
     map::{Map, Position},
     player::components::{Player, PlayerInventory},
     player::spells::CastSpellRequested,
@@ -17,6 +15,8 @@ use crate::{
 use super::hover::{MapPick, MouseHoverState, cursor_target, valid_drop_target};
 use super::intent::InteractionIntent;
 use super::mode::{InteractionMode, ObjectPicked, TargetingSource};
+use super::thing_menu::{MenuAgent, OpenThingMenu, ThingMenuTarget};
+use super::use_kind::{start_use, use_kind};
 
 pub fn attach_observers(event: On<Add, MainUI>, mut commands: Commands) {
     commands
@@ -169,6 +169,7 @@ fn on_click(
     mut combat_target: ResMut<CombatTarget>,
     square_q: Query<Entity, With<TargetSquare>>,
     player_q: Query<&Player>,
+    agent_q: Query<&Agent>,
 ) {
     let player_agent_id = player_q.single().ok().map(|p| p.agent_id);
 
@@ -248,6 +249,24 @@ fn on_click(
     }
 
     if event.button == PointerButton::Secondary {
+        if keyboard.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]) {
+            let Some(target) =
+                cursor_target(&hover_state, &map, &container_q, &inventory, MapPick::Top)
+            else {
+                return;
+            };
+            let agent = hover_state
+                .agent
+                .and_then(|agent_id| map.get_agent(agent_id))
+                .and_then(|entity| agent_q.get(entity).ok())
+                .map(|agent| MenuAgent::of(agent, player_agent_id));
+            commands.trigger(OpenThingMenu {
+                target: ThingMenuTarget::new(&target, agent),
+                at: hover_state.screen_position,
+            });
+            return;
+        }
+
         // An agent on the tile takes the click; otherwise it falls through to the
         // normal use / multi-use path below, unchanged.
         if let Some(tile) = &hover_state.tile_position
@@ -266,30 +285,17 @@ fn on_click(
             return;
         };
 
-        if target.item.config.has_flag(ItemFlag::MultiUse) {
-            *mode = InteractionMode::Targeting(TargetingSource::Item {
-                placement: target.placement.clone(),
-                item_id: target.item.config.id,
-            });
+        let Some(kind) = use_kind(&target.item.config) else {
             return;
-        }
-
-        if !target.item.config.has_flag(ItemFlag::Usable) {
-            return;
-        }
-
-        let window_id = if matches!(target.placement, ItemPlacement::Container { .. })
-            && target.item.config.has_flag(ItemFlag::Container)
-        {
-            target.window_id
-        } else {
-            None
         };
-        commands.trigger(InteractionIntent::UseItem {
-            target: target.placement,
-            item_id: target.item.config.id,
-            window_id,
-        });
+        start_use(
+            kind,
+            target.placement,
+            target.item.config.id,
+            target.window_id,
+            &mut commands,
+            &mut mode,
+        );
     }
 }
 

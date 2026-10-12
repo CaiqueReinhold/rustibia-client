@@ -46,6 +46,13 @@ impl CombatTarget {
         (next, self.seq)
     }
 
+    /// Targets `agent_id` whatever was targeted before, and returns the seq to send with it.
+    pub fn set(&mut self, agent_id: AgentId) -> u32 {
+        self.target = Some(agent_id);
+        self.seq += 1;
+        self.seq
+    }
+
     /// Drops the target locally and returns the seq to send with the clear.
     pub fn clear_locally(&mut self) -> u32 {
         self.target = None;
@@ -105,6 +112,17 @@ pub fn refresh_target_square(
 mod tests {
     use super::*;
     use bevy::ecs::system::RunSystemOnce;
+
+    #[test]
+    fn set_targets_the_agent_even_when_it_already_was() {
+        let mut target = CombatTarget::default();
+
+        let first = target.set(AgentId(7));
+        let second = target.set(AgentId(7));
+
+        assert_eq!(target.target, Some(AgentId(7)));
+        assert_eq!((first, second), (1, 2));
+    }
 
     #[test]
     fn combat_target_starts_empty() {

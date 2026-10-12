@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use crate::{
-    agent::{AgentId, FacingDirection, Health, Mana, WalkingDirection},
+    agent::{AgentId, AgentKind, FacingDirection, Health, Mana, WalkingDirection},
     conf::map::{TILES_X, TILES_Y},
     core::{
         ChatMessageType, EffectId, FloatingTextType, MissileId, OutfitColors, OutfitId, SpellId,
@@ -172,6 +172,7 @@ pub struct SpawnAgent {
     pub name: String,
     pub health: u32,
     pub speed: u16,
+    pub kind: AgentKind,
 }
 
 #[derive(Event, Debug)]
@@ -416,6 +417,7 @@ pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
             name,
             health,
             speed,
+            kind,
         } => {
             commands.trigger(SpawnAgent {
                 agent_id,
@@ -425,6 +427,7 @@ pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
                 name,
                 health,
                 speed,
+                kind,
             });
         }
         ServerMessage::TeleportAgent { agent_id, position } => {

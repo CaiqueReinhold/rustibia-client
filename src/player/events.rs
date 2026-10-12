@@ -4,7 +4,9 @@ use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::render::storage::ShaderStorageBuffer;
 
-use crate::agent::{AgentInstance, AgentMaterial, LoadedMaterials, MoveQueue, spawn_agent};
+use crate::agent::{
+    AgentInstance, AgentKind, AgentMaterial, LoadedMaterials, MoveQueue, spawn_agent,
+};
 use crate::conf::agent::{ADDON_1_FLAG, ADDON_2_FLAG};
 use crate::core::{Appearances, GameState, InstanceManager, ItemConfigs};
 
@@ -83,6 +85,7 @@ pub fn spawn_player(
         ADDON_1_FLAG | ADDON_2_FLAG,
         event.position.clone(),
         event.name.clone(),
+        AgentKind::Player,
         Some(event.health.clone()),
         Some(event.mana.clone()),
         event.agent_id,

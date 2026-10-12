@@ -55,6 +55,7 @@ pub fn on_spawn_agent(
         ADDON_1_FLAG | ADDON_2_FLAG,
         event.position.clone(),
         event.name.clone(),
+        event.kind,
         Some(Health {
             current: event.health,
             max: 100,

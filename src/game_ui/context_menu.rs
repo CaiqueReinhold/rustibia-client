@@ -6,15 +6,29 @@ use crate::core::GameState;
 use crate::game_ui::GameUiAssets;
 use crate::game_ui::scaling::logical_size;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct ContextMenuEntry {
-    pub label: &'static str,
+    pub label: String,
     pub enabled: bool,
+    separator: bool,
 }
 
 impl ContextMenuEntry {
-    pub fn new(label: &'static str, enabled: bool) -> Self {
-        Self { label, enabled }
+    pub fn new(label: impl Into<String>, enabled: bool) -> Self {
+        Self {
+            label: label.into(),
+            enabled,
+            separator: false,
+        }
+    }
+
+    /// A rule between groups. It takes an index like any entry and is never picked.
+    pub fn separator() -> Self {
+        Self {
+            label: String::new(),
+            enabled: false,
+            separator: true,
+        }
     }
 }
 
@@ -32,6 +46,14 @@ pub struct ContextMenuRoot;
 
 #[derive(Component)]
 pub(super) struct ContextMenuPanel;
+
+#[derive(Component)]
+pub(super) struct ContextMenuRow {
+    pub index: usize,
+}
+
+#[derive(Component)]
+pub(super) struct ContextMenuSeparator;
 
 pub struct ContextMenu {
     entries: Vec<ContextMenuEntry>,
@@ -101,7 +123,11 @@ impl ContextMenu {
         commands.entity(root).add_child(panel);
 
         for (index, entry) in self.entries.into_iter().enumerate() {
-            let row = spawn_row(commands, ui_assets, root, index, entry);
+            let row = if entry.separator {
+                spawn_separator(commands)
+            } else {
+                spawn_row(commands, ui_assets, root, index, entry)
+            };
             commands.entity(panel).add_child(row);
         }
 
@@ -123,6 +149,7 @@ fn spawn_row(
     };
     let row = commands
         .spawn((
+            ContextMenuRow { index },
             Node {
                 width: Val::Percent(100.0),
                 padding: UiRect::axes(Val::Px(conf::ROW_PADDING_X), Val::Px(conf::ROW_PADDING_Y)),
@@ -160,17 +187,37 @@ fn spawn_row(
                 },
             )
             .observe(
-                move |mut click: On<Pointer<Click>>, mut commands: Commands| {
+                move |mut click: On<Pointer<Click>>,
+                      rows: Query<&ContextMenuRow>,
+                      mut commands: Commands| {
                     click.propagate(false);
                     if click.button != PointerButton::Primary {
                         return;
                     }
+                    let Ok(&ContextMenuRow { index }) = rows.get(row) else {
+                        return;
+                    };
                     commands.trigger(ContextMenuPicked { menu, index });
                     commands.entity(menu).despawn();
                 },
             );
     }
     row
+}
+
+fn spawn_separator(commands: &mut Commands) -> Entity {
+    commands
+        .spawn((
+            ContextMenuSeparator,
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(1.0),
+                margin: UiRect::vertical(Val::Px(conf::SEPARATOR_MARGIN_Y)),
+                ..default()
+            },
+            BackgroundColor(ui_colors::DARK_BORDER_COLOR.into()),
+        ))
+        .id()
 }
 
 pub(super) fn close_other_context_menus(
@@ -224,6 +271,46 @@ pub(super) fn keep_context_menus_on_screen(
 mod tests {
     use super::*;
     use bevy::ecs::system::RunSystemOnce;
+    use bevy::ecs::world::CommandQueue;
+
+    use crate::game_ui::assets::{UiButtons, UiInventory, UiWindow};
+
+    fn assets() -> GameUiAssets {
+        GameUiAssets {
+            font: Handle::default(),
+            name_font: Handle::default(),
+            window: UiWindow::default(),
+            inventory: UiInventory::default(),
+            background_dark: Handle::default(),
+            background_light: Handle::default(),
+            bar_overlay: Handle::default(),
+            title_background: Handle::default(),
+            buttons: UiButtons::default(),
+        }
+    }
+
+    #[test]
+    fn a_separator_is_not_a_row_and_does_not_shift_the_rows_after_it() {
+        let mut world = World::new();
+        let mut queue = CommandQueue::default();
+        let mut commands = Commands::new(&mut queue, &world);
+        let menu = ContextMenu::new([
+            ContextMenuEntry::new("Look", true),
+            ContextMenuEntry::separator(),
+            ContextMenuEntry::new(format!("Message to {}", "Bob"), true),
+        ])
+        .spawn(&mut commands, &assets(), Vec2::ZERO);
+        queue.apply(&mut world);
+
+        let panel = world.get::<Children>(menu).unwrap()[0];
+        let rows = world.get::<Children>(panel).unwrap().to_vec();
+
+        assert_eq!(rows.len(), 3);
+        assert!(world.get::<ContextMenuSeparator>(rows[1]).is_some());
+        assert!(world.get::<ContextMenuRow>(rows[1]).is_none());
+        assert_eq!(world.get::<ContextMenuRow>(rows[0]).unwrap().index, 0);
+        assert_eq!(world.get::<ContextMenuRow>(rows[2]).unwrap().index, 2);
+    }
 
     #[test]
     fn a_menu_that_would_leave_the_window_is_pulled_back_in() {
