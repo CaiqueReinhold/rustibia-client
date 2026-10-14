@@ -51,10 +51,15 @@ pub use window::{
 };
 
 use crate::camera::{GameRenderTexture, HudRenderTexture};
-use crate::conf::ui::options::FPS_REFRESH_MS;
-use crate::conf::ui::{SEPARATOR_HEIGHT, ui_colors};
+use crate::conf::ui::{
+    CHAT_BOX_MIN_HEIGHT, GAME_VIEWPORT_FRAME, GAME_VIEWPORT_MIN_HEIGHT, SEPARATOR_HEIGHT, ui_colors,
+};
 use crate::core::{GameState, PingState, SessionCleanup};
 use crate::game_ui::chat::ChatRoot;
+use crate::game_ui::game_overlay::GameViewportContainer;
+use crate::game_ui::scaling::logical_size;
+
+const FPS_REFRESH_MS: u64 = 500;
 
 #[derive(Component)]
 pub struct MainUI;
@@ -193,6 +198,7 @@ pub(crate) fn spawn_main_ui(
             Node {
                 width: Val::Percent(100.0),
                 height: Val::Px(SEPARATOR_HEIGHT),
+                flex_shrink: 0.0,
                 border: UiRect::axes(Val::ZERO, Val::Px(1.0)),
                 ..default()
             },
@@ -235,14 +241,20 @@ pub(crate) fn spawn_main_ui(
             },
         )
         .observe(
-            |event: On<Pointer<Drag>>, mut chat_q: Query<&mut Node, With<ChatRoot>>| {
-                if let Ok(mut node) = chat_q.single_mut() {
-                    let height = match &node.height {
-                        Val::Px(px) => *px,
-                        _ => 0.0,
-                    };
-                    node.height = Val::Px(height - event.delta.y);
-                }
+            |event: On<Pointer<Drag>>,
+             mut chat_q: Query<(&mut Node, &ComputedNode), With<ChatRoot>>,
+             viewport_q: Query<&ComputedNode, With<GameViewportContainer>>| {
+                let (Ok((mut node, chat)), Ok(viewport)) =
+                    (chat_q.single_mut(), viewport_q.single())
+                else {
+                    return;
+                };
+                let height = match &node.height {
+                    Val::Px(px) => *px,
+                    _ => 0.0,
+                };
+                let shared = logical_size(chat).y + logical_size(viewport).y;
+                node.height = Val::Px(dragged_chat_height(height, event.delta.y, shared));
             },
         )
         .id();
@@ -266,6 +278,13 @@ pub(crate) fn spawn_main_ui(
         ))
         .id();
     commands.entity(gameview).add_child(ping_view);
+}
+
+/// The chat's height after the separator moves `drag` pixels down. `shared` is
+/// the height the chat and the game viewport's container divide between them.
+fn dragged_chat_height(height: f32, drag: f32, shared: f32) -> f32 {
+    let max = shared - GAME_VIEWPORT_MIN_HEIGHT - GAME_VIEWPORT_FRAME;
+    (height - drag).clamp(CHAT_BOX_MIN_HEIGHT, max.max(CHAT_BOX_MIN_HEIGHT))
 }
 
 pub fn update_ping(mut ping_text: Single<&mut Text, With<PingView>>, ping_state: Res<PingState>) {
@@ -333,6 +352,24 @@ mod tests {
     fn the_fps_label_rounds_and_handles_no_reading() {
         assert_eq!(fps_label(Some(143.6)), "FPS: 144");
         assert_eq!(fps_label(None), "FPS: -");
+    }
+
+    #[test]
+    fn a_chat_drag_stops_at_the_viewport_and_chat_minimums() {
+        let shared = 600.0;
+        let max = shared - GAME_VIEWPORT_MIN_HEIGHT - GAME_VIEWPORT_FRAME;
+
+        assert_eq!(dragged_chat_height(170.0, -30.0, shared), 200.0);
+        assert_eq!(dragged_chat_height(170.0, -900.0, shared), max);
+        assert_eq!(
+            dragged_chat_height(170.0, 900.0, shared),
+            CHAT_BOX_MIN_HEIGHT
+        );
+        assert_eq!(dragged_chat_height(900.0, 0.0, shared), max);
+        assert_eq!(
+            dragged_chat_height(170.0, -900.0, 100.0),
+            CHAT_BOX_MIN_HEIGHT
+        );
     }
 
     #[test]

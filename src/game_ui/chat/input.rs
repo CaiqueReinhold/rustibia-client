@@ -13,6 +13,8 @@ use crate::game_ui::GameUiAssets;
 use crate::game_ui::chat::events::{ExitChatMode, SubmitChatInput};
 use crate::game_ui::chat::state::{ChatMessage, ChatMode, ChatState};
 
+const INPUT_HEIGHT: f32 = 24.0;
+
 #[derive(Component)]
 pub struct ChatInputBar;
 
@@ -63,7 +65,7 @@ pub fn spawn_input(commands: &mut Commands, ui_assets: &GameUiAssets) -> Entity 
         .spawn((
             Node {
                 width: Val::Percent(100.0),
-                height: Val::Px(conf::INPUT_HEIGHT),
+                height: Val::Px(INPUT_HEIGHT),
                 padding: UiRect::all(Val::Px(3.0)),
                 border: UiRect::all(Val::Px(1.0)),
                 ..default()
@@ -94,12 +96,13 @@ pub fn spawn_input(commands: &mut Commands, ui_assets: &GameUiAssets) -> Entity 
             TextFont {
                 font: ui_assets.font.clone(),
                 font_size: 12.0,
+                weight: FontWeight::BOLD,
                 ..default()
             },
             TextColor(conf::TAB_TITLE_COLOR.into()),
             Node {
                 width: Val::Percent(100.0),
-                height: Val::Px(conf::INPUT_HEIGHT - 8.0),
+                height: Val::Px(INPUT_HEIGHT - 8.0),
                 ..default()
             },
         ))

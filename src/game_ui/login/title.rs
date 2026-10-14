@@ -2,10 +2,22 @@ use bevy::camera::visibility::RenderLayers;
 use bevy::prelude::*;
 use bevy_text_outline::TextOutline;
 
-use crate::conf::ui::login as conf;
 use crate::core::GameState;
 use crate::game_ui::GameUiAssets;
 use crate::game_ui::login::LoginPhase;
+
+const LOGO_COLOR: Srgba = Srgba::new(0.91, 0.78, 0.38, 1.0);
+const LOGO_FONT_SIZE: f32 = 56.0;
+const LOGO_TOP_MARGIN: f32 = 40.0;
+const SPINNER_SIZE: f32 = 52.0;
+const SPINNER_RING_RADIUS: f32 = 15.0;
+const SPINNER_DOT_SIZE: f32 = 7.0;
+const SPINNER_DOTS: usize = 10;
+const SPINNER_PERIOD_SECS: f32 = 1.0;
+const SPINNER_COLOR: Srgba = LOGO_COLOR;
+const SPINNER_MIN_ALPHA: f32 = 0.2;
+const SPINNER_MIN_SCALE: f32 = 0.4;
+const SPINNER_DISC_COLOR: Srgba = Srgba::new(0.0, 0.0, 0.0, 0.45);
 
 /// Exists while the title backdrop is on screen.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -79,16 +91,17 @@ fn spawn_backdrop(mut commands: Commands, ui_assets: Res<GameUiAssets>) {
             Text::new("RUSTIBIA"),
             TextFont {
                 font: ui_assets.font.clone(),
-                font_size: conf::LOGO_FONT_SIZE,
+                font_size: LOGO_FONT_SIZE,
+                weight: FontWeight::BOLD,
                 ..default()
             },
-            TextColor(conf::LOGO_COLOR.into()),
+            TextColor(LOGO_COLOR.into()),
             TextOutline {
                 width: 3.0,
                 color: Color::BLACK,
             },
             Node {
-                margin: UiRect::top(Val::Px(conf::LOGO_TOP_MARGIN)),
+                margin: UiRect::top(Val::Px(LOGO_TOP_MARGIN)),
                 ..default()
             },
         ));
@@ -101,7 +114,7 @@ struct LoginSpinner;
 struct SpinnerDot(usize);
 
 fn spawn_spinner(mut commands: Commands, backdrop: Single<Entity, With<LoginBackdrop>>) {
-    let centre = conf::SPINNER_SIZE / 2.0;
+    let centre = SPINNER_SIZE / 2.0;
     let spinner = commands
         .spawn((
             LoginSpinner,
@@ -110,8 +123,8 @@ fn spawn_spinner(mut commands: Commands, backdrop: Single<Entity, With<LoginBack
                 position_type: PositionType::Absolute,
                 left: Val::Percent(50.0),
                 top: Val::Percent(50.0),
-                width: Val::Px(conf::SPINNER_SIZE),
-                height: Val::Px(conf::SPINNER_SIZE),
+                width: Val::Px(SPINNER_SIZE),
+                height: Val::Px(SPINNER_SIZE),
                 margin: UiRect {
                     left: Val::Px(-centre),
                     top: Val::Px(-centre),
@@ -120,20 +133,20 @@ fn spawn_spinner(mut commands: Commands, backdrop: Single<Entity, With<LoginBack
                 border_radius: BorderRadius::MAX,
                 ..default()
             },
-            BackgroundColor(conf::SPINNER_DISC_COLOR.into()),
+            BackgroundColor(SPINNER_DISC_COLOR.into()),
         ))
         .with_children(|ring| {
-            for index in 0..conf::SPINNER_DOTS {
-                let angle = index as f32 / conf::SPINNER_DOTS as f32 * std::f32::consts::TAU;
-                let offset = centre - conf::SPINNER_DOT_SIZE / 2.0;
+            for index in 0..SPINNER_DOTS {
+                let angle = index as f32 / SPINNER_DOTS as f32 * std::f32::consts::TAU;
+                let offset = centre - SPINNER_DOT_SIZE / 2.0;
                 ring.spawn((
                     SpinnerDot(index),
                     Node {
                         position_type: PositionType::Absolute,
-                        left: Val::Px(offset + conf::SPINNER_RING_RADIUS * angle.cos()),
-                        top: Val::Px(offset + conf::SPINNER_RING_RADIUS * angle.sin()),
-                        width: Val::Px(conf::SPINNER_DOT_SIZE),
-                        height: Val::Px(conf::SPINNER_DOT_SIZE),
+                        left: Val::Px(offset + SPINNER_RING_RADIUS * angle.cos()),
+                        top: Val::Px(offset + SPINNER_RING_RADIUS * angle.sin()),
+                        width: Val::Px(SPINNER_DOT_SIZE),
+                        height: Val::Px(SPINNER_DOT_SIZE),
                         border_radius: BorderRadius::MAX,
                         ..default()
                     },
@@ -154,19 +167,19 @@ fn animate_spinner(
     for (dot, mut color, mut transform) in &mut dots {
         let intensity = dot_intensity(dot.0, elapsed);
         color.0 = Srgba {
-            alpha: conf::SPINNER_MIN_ALPHA.lerp(1.0, intensity),
-            ..conf::SPINNER_COLOR
+            alpha: SPINNER_MIN_ALPHA.lerp(1.0, intensity),
+            ..SPINNER_COLOR
         }
         .into();
-        transform.scale = Vec2::splat(conf::SPINNER_MIN_SCALE.lerp(1.0, intensity));
+        transform.scale = Vec2::splat(SPINNER_MIN_SCALE.lerp(1.0, intensity));
     }
 }
 
 /// 1.0 as the head passes a dot, fading to 0.0 along the tail behind it, then rising back to 1.0
 /// over the last step before the head returns. The head goes round once per `SPINNER_PERIOD_SECS`.
 fn dot_intensity(index: usize, elapsed_secs: f32) -> f32 {
-    let dots = conf::SPINNER_DOTS as f32;
-    let head = (elapsed_secs / conf::SPINNER_PERIOD_SECS).fract() * dots;
+    let dots = SPINNER_DOTS as f32;
+    let head = (elapsed_secs / SPINNER_PERIOD_SECS).fract() * dots;
     let behind = (head - index as f32).rem_euclid(dots);
     let tail = dots - 1.0;
     if behind <= tail {
@@ -277,13 +290,13 @@ mod tests {
     #[test]
     fn the_head_dot_is_at_full_intensity() {
         assert_eq!(dot_intensity(0, 0.0), 1.0);
-        let step = conf::SPINNER_PERIOD_SECS / conf::SPINNER_DOTS as f32;
+        let step = SPINNER_PERIOD_SECS / SPINNER_DOTS as f32;
         assert!((dot_intensity(3, step * 3.0) - 1.0).abs() < 1e-4);
     }
 
     #[test]
     fn the_tail_fades_away_from_the_head() {
-        let dots = conf::SPINNER_DOTS;
+        let dots = SPINNER_DOTS;
         for index in 2..dots {
             assert!(dot_intensity(index, 0.0) > dot_intensity(index - 1, 0.0));
         }
@@ -295,7 +308,7 @@ mod tests {
         let dt = 0.001;
         for frame in 0..3000 {
             let elapsed = frame as f32 * dt;
-            for dot in 0..conf::SPINNER_DOTS {
+            for dot in 0..SPINNER_DOTS {
                 let now = dot_intensity(dot, elapsed);
                 let next = dot_intensity(dot, elapsed + dt);
                 assert!((0.0..=1.0).contains(&now), "dot {dot} at {elapsed}s: {now}");

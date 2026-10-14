@@ -15,6 +15,14 @@ use crate::items::thumb_left;
 
 use super::state::Settings;
 
+const WIDTH: f32 = 320.0;
+const TAB_HEIGHT: f32 = 20.0;
+const ROW_HEIGHT: f32 = 18.0;
+const BOX_SIZE: f32 = 12.0;
+const FONT_SIZE: f32 = 11.0;
+const PAGE_MIN_HEIGHT: f32 = 110.0;
+const KEY_REPEAT_MS_STEP: u16 = 10;
+
 const THUMB_WIDTH: f32 = 10.0;
 const TRACK_HEIGHT: f32 = 12.0;
 const READOUT_WIDTH: f32 = 48.0;
@@ -143,7 +151,7 @@ fn label_text(ui_assets: &GameUiAssets, text: impl Into<String>, color: Color) -
         Text::new(text),
         TextFont {
             font: ui_assets.font.clone(),
-            font_size: conf::FONT_SIZE,
+            font_size: FONT_SIZE,
             ..default()
         },
         TextColor(color),
@@ -182,7 +190,7 @@ fn spawn_tab_strip(commands: &mut Commands, ui_assets: &GameUiAssets) -> Entity 
                 OptionsTab(page),
                 Button,
                 Node {
-                    height: Val::Px(conf::TAB_HEIGHT),
+                    height: Val::Px(TAB_HEIGHT),
                     padding: UiRect::horizontal(Val::Px(8.0)),
                     align_items: AlignItems::Center,
                     border: UiRect::all(Val::Px(1.0)),
@@ -216,7 +224,7 @@ fn spawn_page(commands: &mut Commands, page: Page) -> Entity {
                 display: page_display(page, Page::Interface),
                 flex_direction: FlexDirection::Column,
                 row_gap: Val::Px(4.0),
-                min_height: Val::Px(conf::PAGE_MIN_HEIGHT),
+                min_height: Val::Px(PAGE_MIN_HEIGHT),
                 padding: UiRect::top(Val::Px(8.0)),
                 ..default()
             },
@@ -234,7 +242,7 @@ fn spawn_toggle_row(
         .spawn((
             Button,
             Node {
-                height: Val::Px(conf::ROW_HEIGHT),
+                height: Val::Px(ROW_HEIGHT),
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
                 column_gap: Val::Px(6.0),
@@ -243,8 +251,8 @@ fn spawn_toggle_row(
             Children::spawn((
                 Spawn((
                     Node {
-                        width: Val::Px(conf::BOX_SIZE),
-                        height: Val::Px(conf::BOX_SIZE),
+                        width: Val::Px(BOX_SIZE),
+                        height: Val::Px(BOX_SIZE),
                         border: UiRect::all(Val::Px(1.0)),
                         padding: UiRect::all(Val::Px(2.0)),
                         ..default()
@@ -300,7 +308,7 @@ fn spawn_key_repeat_row(
                 conf::KEY_REPEAT_MS_MIN as f32,
                 conf::KEY_REPEAT_MS_MAX as f32,
             ),
-            SliderStep(conf::KEY_REPEAT_MS_STEP as f32),
+            SliderStep(KEY_REPEAT_MS_STEP as f32),
             SliderPrecision(0),
             Node {
                 flex_grow: 1.0,
@@ -383,7 +391,7 @@ pub(super) fn on_open_options_window(
     }
 
     let handle = ModalDialog::new("Options")
-        .with_width(Val::Px(conf::WIDTH))
+        .with_width(Val::Px(WIDTH))
         .with_buttons([DialogButton {
             id: DialogButtonId::Ok,
             label: "Close",

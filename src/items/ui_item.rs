@@ -4,12 +4,15 @@ use bevy::{camera::visibility::RenderLayers, prelude::*, text::FontSmoothing};
 use bevy_text_outline::TextOutline;
 
 use crate::{
-    conf::ui::{ITEM_COUNT_FONT_SIZE, UI_ITEM_SIZE, z_index::DRAGGED_ITEM_UI_Z},
+    conf::ui::UI_ITEM_SIZE,
     core::{Appearances, SheetUser, SpriteAnimator},
     game_ui::GameUiAssets,
     items::{Item, ItemDragEnded, ItemDragStarted, ItemPlacement, instancing::ItemState},
     player::MouseHoverState,
 };
+
+const ITEM_COUNT_FONT_SIZE: f32 = 10.0;
+const DRAGGED_ITEM_UI_Z: i32 = 100;
 
 #[derive(Component, Debug)]
 #[allow(dead_code)]

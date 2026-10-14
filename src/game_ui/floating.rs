@@ -1,9 +1,12 @@
 use bevy::camera::visibility::RenderLayers;
 use bevy::prelude::*;
 
-use crate::conf::ui::{dialog as conf, ui_colors};
+use crate::conf::ui::ui_colors;
 use crate::game_ui::GameUiAssets;
 use crate::game_ui::modal::{ModalDialogHandle, spawn_frame};
+
+const Z_FLOATING: i32 = 90;
+const CLOSE_BUTTON_SIZE: f32 = 10.0;
 
 #[derive(Component)]
 pub struct FloatingDialogRoot;
@@ -50,7 +53,7 @@ impl FloatingDialog {
         commands.entity(root).insert((
             FloatingDialogRoot,
             DespawnOnExit(crate::core::GameState::InGame),
-            GlobalZIndex(conf::Z_FLOATING),
+            GlobalZIndex(Z_FLOATING),
             RenderLayers::layer(1),
         ));
 
@@ -66,8 +69,8 @@ impl FloatingDialog {
         let close = commands
             .spawn((
                 Node {
-                    width: Val::Px(conf::CLOSE_BUTTON_SIZE),
-                    height: Val::Px(conf::CLOSE_BUTTON_SIZE),
+                    width: Val::Px(CLOSE_BUTTON_SIZE),
+                    height: Val::Px(CLOSE_BUTTON_SIZE),
                     border: UiRect::all(Val::Px(1.0)),
                     ..default()
                 },

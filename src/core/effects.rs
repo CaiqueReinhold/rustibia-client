@@ -10,7 +10,6 @@ use bevy::render::storage::ShaderStorageBuffer;
 use bevy::shader::ShaderRef;
 use bevy::sprite_render::{AlphaMode2d, Material2d};
 
-use crate::conf::effects::STATIC_DURATION;
 use crate::core::sprite::{AnimationLoop, SpriteAnimation, SpriteConfig};
 use crate::core::{
     Appearances, InstanceManager, SheetEvicted, SheetUser, SpriteAnimator, SpriteSheet,
@@ -19,6 +18,12 @@ use crate::map::FloorEntities;
 use crate::map::Position;
 use crate::map::{DrawLayer, DrawOrder, DrawRank};
 use crate::network::events::ShowEffect;
+
+/// How long a `Static` effect stays on screen. Effects 200, 211 and 212 have
+/// no animation at all, so nothing else would ever end them. OTClient gives a
+/// static effect one frame tick (75 ms), which at 60 fps reads as a glitch;
+/// 300 ms is a hair over the shortest animated effect's full pass (270 ms).
+const STATIC_DURATION: Duration = Duration::from_millis(300);
 
 /// One effect's slot in the shader storage buffer.
 ///

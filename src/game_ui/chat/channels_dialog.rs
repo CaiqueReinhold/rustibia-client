@@ -82,6 +82,7 @@ pub fn on_open_channels_dialog(
                 TextFont {
                     font: ui_assets.font.clone(),
                     font_size: 11.0,
+                    weight: FontWeight::BOLD,
                     ..default()
                 },
                 TextColor(ui_colors::FONT_COLOR_CONTENT.into()),
@@ -107,6 +108,7 @@ pub fn on_open_channels_dialog(
             TextFont {
                 font: ui_assets.font.clone(),
                 font_size: 11.0,
+                weight: FontWeight::BOLD,
                 ..default()
             },
             TextColor(ui_colors::FONT_COLOR_CONTENT.into()),
@@ -149,6 +151,7 @@ pub fn on_open_channels_dialog(
             TextFont {
                 font: ui_assets.font.clone(),
                 font_size: 11.0,
+                weight: FontWeight::BOLD,
                 ..default()
             },
             TextColor(chat_conf::TAB_TITLE_COLOR.into()),

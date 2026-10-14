@@ -2,7 +2,6 @@ use bevy::prelude::*;
 
 use crate::{
     agent::{Agent, AgentId},
-    conf::ui::MIN_DRAG_THRESHOLD,
     core::{SpellId, SpellTarget},
     game_ui::{MainUI, UiWindowRef},
     items::{ItemDragEnded, ItemDragStarted, ItemFlag, LootContainerUI, OpenSplitDialog},
@@ -17,6 +16,8 @@ use super::intent::InteractionIntent;
 use super::mode::{InteractionMode, ObjectPicked, TargetingSource};
 use super::thing_menu::{MenuAgent, OpenThingMenu, ThingMenuTarget};
 use super::use_kind::{start_use, use_kind};
+
+const MIN_DRAG_THRESHOLD: f32 = 1.0;
 
 pub fn attach_observers(event: On<Add, MainUI>, mut commands: Commands) {
     commands
@@ -309,8 +310,8 @@ mod tests {
     fn resolves_the_topmost_non_self_agent() {
         let mut map = Map::default();
         let tile = Position { x: 10, y: 10, z: 7 };
-        map.index_agent(AgentId(1), &tile);
-        map.index_agent(AgentId(2), &tile);
+        map.index_agent(AgentId(1), &tile, None);
+        map.index_agent(AgentId(2), &tile, None);
 
         assert_eq!(
             targetable_agent_on(&map, &tile, Some(AgentId(2))),
@@ -326,7 +327,7 @@ mod tests {
     fn a_tile_holding_only_the_player_has_no_target() {
         let mut map = Map::default();
         let tile = Position { x: 10, y: 10, z: 7 };
-        map.index_agent(AgentId(7), &tile);
+        map.index_agent(AgentId(7), &tile, None);
 
         assert_eq!(targetable_agent_on(&map, &tile, Some(AgentId(7))), None);
     }

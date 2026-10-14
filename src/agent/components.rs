@@ -2,11 +2,14 @@ use std::sync::Arc;
 
 use bevy::prelude::*;
 
-use crate::conf::{
-    agent::{DIAGONAL_STEP_FACTOR, SPEED_PARAM_A, SPEED_PARAM_B, SPEED_PARAM_C},
-    server::TICK_DURATION_MS,
-};
+use crate::conf::server::TICK_DURATION_MS;
 use crate::core::{OutfitColors, SpriteConfig};
+use crate::map::StackSlot;
+
+const SPEED_PARAM_A: f32 = 857.36;
+const SPEED_PARAM_B: f32 = 261.29;
+const SPEED_PARAM_C: f32 = -4795.009;
+const DIAGONAL_STEP_FACTOR: u32 = 3;
 
 /// An agent as this player's session names it. Session-local to the server, which reuses it — never a stable identity, and never comparable with a chat or container id.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
@@ -53,6 +56,7 @@ impl AgentKind {
 }
 
 #[derive(Component, Debug, Default)]
+#[require(StackSlot)]
 pub struct Agent {
     // pub outfit_id: u32,
     pub agent_id: AgentId,

@@ -11,6 +11,9 @@ use crate::game_ui::chat::events::{
     EnterChatMode, ExitChatMode, MessageAppendedUi, MessageTrimmedUi, OpenChannel,
 };
 
+const HISTORY_CAP_DEFAULT: usize = 500;
+const LOCAL_CHANNEL_NAME: &str = "Local";
+
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub enum ChannelId {
     /// Local speech — everything said in range. Always open, never closeable.
@@ -89,7 +92,7 @@ impl Default for ChatState {
         Self {
             channels: vec![Channel::new(local_channel_config())],
             active: ChannelId::Local,
-            history_cap: conf::HISTORY_CAP_DEFAULT,
+            history_cap: HISTORY_CAP_DEFAULT,
             available: Vec::new(),
             pm_names: Vec::new(),
         }
@@ -141,7 +144,7 @@ pub struct ChatMode {
 pub fn local_channel_config() -> ChannelConfig {
     ChannelConfig {
         id: ChannelId::Local,
-        name: conf::LOCAL_CHANNEL_NAME.to_owned(),
+        name: LOCAL_CHANNEL_NAME.to_owned(),
         closeable: false,
         text_color: Color::Srgba(conf::LOCAL_CHANNEL_COLOR),
     }

@@ -8,7 +8,7 @@ use crate::{
     conf::agent::{ADDON_1_FLAG, ADDON_2_FLAG},
     core::{Appearances, InstanceManager},
     game_ui::GameUiAssets,
-    map::{FloorEntities, Map, Position},
+    map::{FloorEntities, Map, Position, StackIndex},
     network::events::{
         AgentLifeChanged, AgentManaChanged, AgentSpeedUpdated, ClientOutdated, MoveAgent,
         RemoveAgent, SpawnAgent,
@@ -66,6 +66,7 @@ pub fn on_spawn_agent(
         commands.trigger(ClientOutdated);
         return;
     };
+    commands.entity(entity).insert(StackIndex(event.stack));
     map.add_agent(event.agent_id, entity);
 
     commands
@@ -89,9 +90,11 @@ pub fn on_move_agent(
     if let Ok(mut queue) = queue_q.get_mut(agent_entity)
         && (moving || !queue.0.is_empty())
     {
-        queue
-            .0
-            .push_back(QueuedMove::Step(event.from.clone(), event.direction));
+        queue.0.push_back(QueuedMove::Step(
+            event.from.clone(),
+            event.direction,
+            event.stack,
+        ));
         return;
     }
     if moving {
@@ -108,6 +111,7 @@ pub fn on_move_agent(
     commands.trigger(StartAgentMove {
         agent_id: event.agent_id,
         direction: event.direction,
+        stack: Some(event.stack),
     });
 }
 

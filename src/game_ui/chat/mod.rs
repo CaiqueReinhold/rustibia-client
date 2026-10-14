@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::conf::ui::CHAT_BOX_HEIGHT;
+use crate::conf::ui::CHAT_BOX_MIN_HEIGHT;
 use crate::core::GameState;
 use crate::game_ui::GameUiAssets;
 
@@ -14,6 +14,8 @@ pub mod state;
 pub mod tabs;
 
 pub use state::{ChatMode, ChatState};
+
+const CHAT_BOX_HEIGHT: f32 = 170.0;
 
 #[derive(Component)]
 pub struct ChatRoot;
@@ -72,7 +74,7 @@ pub fn spawn_chat_root(
                 position_type: PositionType::Relative,
                 width: Val::Percent(100.0),
                 height: Val::Px(CHAT_BOX_HEIGHT),
-                min_height: Val::Px(80.0),
+                min_height: Val::Px(CHAT_BOX_MIN_HEIGHT),
                 flex_direction: FlexDirection::Column,
                 ..default()
             },

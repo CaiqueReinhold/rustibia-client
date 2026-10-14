@@ -1,11 +1,13 @@
 use bevy::prelude::*;
 
 use crate::agent::Hovered;
-use crate::conf::hover::{OUTLINE_COLOR, OUTLINE_THICKNESS};
 use crate::conf::map::TILE_SIZE;
 use crate::map::{DrawLayer, DrawOrder, DrawRank, Map, Position};
 use crate::player::MouseHoverState;
 use crate::player::square::{square_bar_sprites, square_centre_offset};
+
+const OUTLINE_COLOR: Color = Color::WHITE;
+const OUTLINE_THICKNESS: f32 = 1.0;
 
 #[derive(Component)]
 pub struct HoverOutline;

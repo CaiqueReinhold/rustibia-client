@@ -4,10 +4,14 @@ use bevy::text::{FontSmoothing, LineHeight};
 use bevy_text_outline::TextOutline;
 
 use crate::agent::{AgentHud, DisplayName, Health, HealthState, HudBar, Mana, WorldHud};
-use crate::conf::agent::{HUD_BAR_GAP, HUD_BAR_HEIGHT, HUD_BAR_WIDTH, HUD_TILE_CLEARANCE};
 use crate::conf::map::TILE_SIZE;
 use crate::conf::ui::ui_colors;
 use crate::overlay::{HudScaled, on_overlay_layer};
+
+const HUD_BAR_WIDTH: f32 = 31.0;
+const HUD_BAR_HEIGHT: f32 = 4.0;
+const HUD_BAR_GAP: f32 = 1.0;
+const HUD_TILE_CLEARANCE: f32 = 4.0;
 
 pub const NAME_FONT_SIZE: f32 = 11.0;
 pub const NAME_LINE_HEIGHT: f32 = 13.0;

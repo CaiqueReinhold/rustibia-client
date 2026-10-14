@@ -2,7 +2,9 @@ use bevy::prelude::*;
 
 use crate::camera::{GameRenderTexture, HudRenderTexture};
 use crate::conf::ui::z_index::Z_MAIN_UI;
-use crate::conf::ui::{cooldown as cooldown_conf, ui_colors};
+use crate::conf::ui::{
+    GAME_VIEWPORT_FRAME, GAME_VIEWPORT_MIN_HEIGHT, GAME_VIEWPORT_MIN_WIDTH, ui_colors,
+};
 use crate::conf::viewport::{GAME_VIEW_HEIGHT, GAME_VIEW_WIDTH};
 use crate::core::SpellGroup;
 use crate::game_ui::GameUiAssets;
@@ -10,6 +12,10 @@ use crate::game_ui::cooldown::{
     CooldownAssets, CooldownOverlay, group_icon, spawn_cooldown_overlay,
 };
 use crate::game_ui::scaling::logical_size;
+
+const COOLDOWN_ICON_SIZE: f32 = 20.0;
+const COOLDOWN_ICON_GAP: f32 = 3.0;
+const COOLDOWN_GROUP_ROW_INSET: f32 = 4.0;
 
 #[derive(Component)]
 pub struct GameViewport;
@@ -21,8 +27,6 @@ pub(super) struct GameViewportContainer;
 pub(super) struct GameViewportBorder;
 
 const ASPECT_RATIO: f32 = GAME_VIEW_WIDTH / GAME_VIEW_HEIGHT;
-// border(1) + padding(1) + margin(2) = 4px per side, 8px per axis
-const BORDER_OVERHEAD: f32 = 8.0;
 
 pub(super) fn update_viewport_size(
     container_query: Query<&ComputedNode, (With<GameViewportContainer>, Changed<ComputedNode>)>,
@@ -36,7 +40,7 @@ pub(super) fn update_viewport_size(
     };
 
     // Logical: the results below are written back as `Val::Px`.
-    let avail = logical_size(computed) - Vec2::splat(BORDER_OVERHEAD);
+    let avail = logical_size(computed) - Vec2::splat(GAME_VIEWPORT_FRAME);
     let (avail_w, avail_h) = (avail.x, avail.y);
 
     let (w, h) = if avail_w / avail_h > ASPECT_RATIO {
@@ -71,8 +75,8 @@ pub fn spawn_gameviewport(
                 max_width: Val::Percent(100.0),
                 max_height: Val::Percent(100.0),
                 flex_grow: 1.0,
-                min_height: Val::Px(300.0),
-                min_width: Val::Px(300.0),
+                min_height: Val::Px(GAME_VIEWPORT_MIN_HEIGHT + GAME_VIEWPORT_FRAME),
+                min_width: Val::Px(GAME_VIEWPORT_MIN_WIDTH + GAME_VIEWPORT_FRAME),
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
                 overflow: Overflow::clip(),
@@ -106,26 +110,30 @@ pub fn spawn_gameviewport(
                 },
             ))
             .with_children(|border| {
-                border
-                    .spawn((
-                        GameViewport,
+                border.spawn((
+                    GameViewport,
+                    Node {
+                        height: Val::Percent(100.0),
+                        width: Val::Percent(100.0),
+                        ..default()
+                    },
+                    ImageNode::new(render_texture.0.clone()),
+                    children![(
                         Node {
-                            height: Val::Percent(100.0),
+                            position_type: PositionType::Absolute,
                             width: Val::Percent(100.0),
+                            height: Val::Percent(100.0),
                             ..default()
                         },
-                        ImageNode::new(render_texture.0.clone()),
-                        children![(
-                            Node {
-                                position_type: PositionType::Absolute,
-                                width: Val::Percent(100.0),
-                                height: Val::Percent(100.0),
-                                ..default()
-                            },
-                            ImageNode::new(hud_texture.0.clone()),
-                            Pickable::IGNORE,
-                        )],
-                    ))
+                        ImageNode::new(hud_texture.0.clone()),
+                        Pickable::IGNORE,
+                    )],
+                ));
+
+                let border_ent = border.target_entity();
+                border
+                    .commands_mut()
+                    .entity(border_ent)
                     .add_child(group_cooldowns);
             });
         })
@@ -137,10 +145,10 @@ fn spawn_group_cooldowns(commands: &mut Commands, assets: &CooldownAssets) -> En
         .spawn((
             Node {
                 position_type: PositionType::Absolute,
-                left: Val::Px(cooldown_conf::GROUP_ROW_INSET),
-                bottom: Val::Px(cooldown_conf::GROUP_ROW_INSET),
+                left: Val::Px(COOLDOWN_GROUP_ROW_INSET),
+                bottom: Val::Px(COOLDOWN_GROUP_ROW_INSET),
                 flex_direction: FlexDirection::Row,
-                column_gap: Val::Px(cooldown_conf::ICON_GAP),
+                column_gap: Val::Px(COOLDOWN_ICON_GAP),
                 ..default()
             },
             Pickable::IGNORE,
@@ -153,8 +161,8 @@ fn spawn_group_cooldowns(commands: &mut Commands, assets: &CooldownAssets) -> En
             .spawn((
                 group_icon(assets, group),
                 Node {
-                    width: Val::Px(cooldown_conf::ICON_SIZE),
-                    height: Val::Px(cooldown_conf::ICON_SIZE),
+                    width: Val::Px(COOLDOWN_ICON_SIZE),
+                    height: Val::Px(COOLDOWN_ICON_SIZE),
                     flex_shrink: 0.0,
                     ..default()
                 },

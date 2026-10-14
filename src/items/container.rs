@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bevy::prelude::*;
 
 use crate::{
-    conf::ui::{ITEM_SLOT_SIZE, LOOT_CONTAINER_DEFAULT_HEIGHT, ui_colors},
+    conf::ui::{ITEM_SLOT_SIZE, ui_colors},
     core::{Appearances, ItemConfigs},
     game_ui::{AddUIWindow, CloseUIWindow, GameUiAssets, ReplaceUIWindowContent, UiWindowRef},
     items::{Item, ItemId, OpenParentContainer, ui_item::spawn_ui_item},
@@ -13,6 +13,9 @@ use crate::{
     },
     player::{ContainerNavTarget, MouseHoverState},
 };
+
+const LOOT_CONTAINER_DEFAULT_HEIGHT: usize = 60;
+const ITEM_SLOT_OUTLINE: Srgba = Srgba::new(0.35, 0.35, 0.35, 1.0);
 
 /// An open container as this player's session names it. Session-local to the server, and reused.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
@@ -68,7 +71,7 @@ fn on_leave_slot(
     commands.entity(event.entity).insert(Outline {
         width: Val::Px(1.0),
         offset: Val::Px(0.0),
-        color: Color::from(ui_colors::ITEM_SLOT_OUTLINE),
+        color: Color::from(ITEM_SLOT_OUTLINE),
     });
     hover_state.container = None;
     hover_state.container_slot = None;

@@ -86,6 +86,7 @@ pub(super) fn spawn_character_list(
                 TextFont {
                     font: ui_assets.font.clone(),
                     font_size: 11.0,
+                    weight: FontWeight::BOLD,
                     ..default()
                 },
                 TextColor(ui_colors::FONT_COLOR_CONTENT.into()),

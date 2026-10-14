@@ -2,10 +2,12 @@ use bevy::prelude::*;
 
 use crate::agent::{Health, HealthState, HudBar, Mana};
 use crate::conf::ui::z_index::Z_MAIN_UI;
-use crate::conf::ui::{TOP_BAR_HEIGHT, UI_BAR_HEIGHT, ui_colors};
+use crate::conf::ui::{TOP_BAR_HEIGHT, ui_colors};
 use crate::game_ui::assets::GameUiAssets;
 use crate::game_ui::status_bar::{StatusAssets, spawn_status_bar};
 use crate::player::components::Player;
+
+const UI_BAR_HEIGHT: f32 = 15.0;
 
 #[derive(Component)]
 pub struct TopPanel;
@@ -157,6 +159,7 @@ fn spawn_ui_bar(
             TextFont {
                 font: ui_assets.font.clone(),
                 font_size: 11.0,
+                weight: FontWeight::BOLD,
                 ..default()
             },
             TextLayout::new_with_justify(Justify::Center),

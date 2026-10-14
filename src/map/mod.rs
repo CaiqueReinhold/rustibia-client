@@ -20,7 +20,7 @@ pub use draw_order::{
 };
 pub use floors::FloorEntities;
 pub use minimap::MinimapData;
-pub use tile_agents::sync_tile_agents;
+pub use tile_agents::{StackIndex, StackSlot, restack_tile_agents, sync_tile_agents};
 pub use viewport::{ViewportCenter, evict_outside_viewport};
 
 /// Everything that turns a `DrawOrder` into a z. Systems that write a
@@ -47,7 +47,9 @@ impl Plugin for MapPlugin {
             .add_systems(Startup, (minimap::load_from_disk, floors::setup_floors))
             .add_systems(
                 PreUpdate,
-                sync_tile_agents.run_if(in_state(GameState::InGame)),
+                (sync_tile_agents, restack_tile_agents)
+                    .chain()
+                    .run_if(in_state(GameState::InGame)),
             )
             .add_systems(
                 Update,

@@ -9,6 +9,10 @@ use crate::game_ui::chat::events::{
 };
 use crate::game_ui::chat::state::{ChannelId, ChatState};
 
+const TAB_HEIGHT: f32 = 22.0;
+const TAB_MAX_WIDTH: f32 = 90.0;
+const UNREAD_TAB_COLOR: Srgba = Srgba::new(0.85, 0.20, 0.20, 1.0);
+
 #[derive(Component)]
 pub struct TabStripRoot;
 
@@ -38,7 +42,7 @@ pub fn spawn_tab_strip(
             TabStripRoot,
             Node {
                 width: Val::Percent(100.0),
-                height: Val::Px(conf::TAB_HEIGHT),
+                height: Val::Px(TAB_HEIGHT),
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Stretch,
                 justify_content: JustifyContent::SpaceBetween,
@@ -85,7 +89,7 @@ pub fn spawn_tab_strip(
         .spawn((
             ChannelButtons,
             Node {
-                height: Val::Px(conf::TAB_HEIGHT - 4.0),
+                height: Val::Px(TAB_HEIGHT - 4.0),
                 flex_direction: FlexDirection::Row,
                 ..default()
             },
@@ -119,8 +123,8 @@ fn add_channel_buttons(
             .spawn((
                 Button,
                 Node {
-                    width: Val::Px(conf::TAB_HEIGHT - 4.0),
-                    height: Val::Px(conf::TAB_HEIGHT - 4.0),
+                    width: Val::Px(TAB_HEIGHT - 4.0),
+                    height: Val::Px(TAB_HEIGHT - 4.0),
                     justify_content: JustifyContent::Center,
                     align_items: AlignItems::Center,
                     border: UiRect::new(Val::Px(1.0), Val::Px(1.0), Val::Px(1.0), Val::ZERO),
@@ -177,8 +181,8 @@ fn add_channel_buttons(
         .spawn((
             Button,
             Node {
-                width: Val::Px(conf::TAB_HEIGHT - 4.0),
-                height: Val::Px(conf::TAB_HEIGHT - 4.0),
+                width: Val::Px(TAB_HEIGHT - 4.0),
+                height: Val::Px(TAB_HEIGHT - 4.0),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 border: UiRect::new(Val::Px(1.0), Val::Px(1.0), Val::Px(1.0), Val::ZERO),
@@ -341,7 +345,7 @@ fn spawn_tab_entity(
         ui_assets.background_dark.clone()
     };
     let title_color: Color = if unread && !active {
-        conf::UNREAD_TAB_COLOR.into()
+        UNREAD_TAB_COLOR.into()
     } else if active {
         conf::TAB_TITLE_COLOR.into()
     } else {
@@ -355,8 +359,8 @@ fn spawn_tab_entity(
             ChannelTab { channel_id: id },
             Button,
             Node {
-                height: Val::Px(conf::TAB_HEIGHT),
-                max_width: Val::Px(conf::TAB_MAX_WIDTH),
+                height: Val::Px(TAB_HEIGHT),
+                max_width: Val::Px(TAB_MAX_WIDTH),
                 flex_grow: 1.0,
                 flex_shrink: 1.0,
                 border: UiRect::new(
@@ -425,6 +429,7 @@ fn spawn_tab_entity(
             TextFont {
                 font: ui_assets.font.clone(),
                 font_size: 10.0,
+                weight: FontWeight::BOLD,
                 ..default()
             },
             TextLayout::new_with_justify(Justify::Center),
@@ -449,7 +454,7 @@ pub fn on_message_appended_ui_tabs(
     };
     let active = state.active == event.channel_id;
     let color: Color = if channel.unread && !active {
-        conf::UNREAD_TAB_COLOR.into()
+        UNREAD_TAB_COLOR.into()
     } else {
         conf::TAB_TITLE_COLOR.into()
     };

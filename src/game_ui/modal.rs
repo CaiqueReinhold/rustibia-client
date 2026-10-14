@@ -2,9 +2,15 @@ use bevy::camera::visibility::RenderLayers;
 use bevy::input_focus::InputFocus;
 use bevy::prelude::*;
 
-use crate::conf::ui::dialog::{BUTTON_HEIGHT, BUTTON_MIN_WIDTH};
-use crate::conf::ui::{dialog as conf, ui_colors};
+use crate::conf::ui::ui_colors;
 use crate::game_ui::GameUiAssets;
+
+const DEFAULT_WIDTH: f32 = 300.0;
+const TITLE_BAR_HEIGHT: f32 = 20.0;
+const PADDING: f32 = 10.0;
+const BUTTON_HEIGHT: f32 = 22.0;
+const BUTTON_MIN_WIDTH: f32 = 64.0;
+const Z_MODAL_BASE: i32 = 100;
 
 /// Identifies which button was pressed in a [`DialogButtonPressed`] event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -149,7 +155,7 @@ pub(super) fn spawn_frame(
         .spawn((
             Node {
                 width: Val::Percent(100.0),
-                height: Val::Px(conf::TITLE_BAR_HEIGHT),
+                height: Val::Px(TITLE_BAR_HEIGHT),
                 padding: UiRect::horizontal(Val::Px(6.0)),
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::SpaceBetween,
@@ -171,6 +177,7 @@ pub(super) fn spawn_frame(
             TextFont {
                 font: ui_assets.font.clone(),
                 font_size: 11.0,
+                weight: FontWeight::BOLD,
                 ..default()
             },
             TextColor(Color::WHITE),
@@ -213,7 +220,7 @@ pub(super) fn spawn_frame(
             Node {
                 width: Val::Percent(100.0),
                 flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(conf::PADDING)),
+                padding: UiRect::all(Val::Px(PADDING)),
                 ..default()
             },
         ))
@@ -236,7 +243,7 @@ impl ModalDialog {
     pub fn new(title: impl Into<String>) -> Self {
         Self {
             title: title.into(),
-            width: Val::Px(conf::DEFAULT_WIDTH),
+            width: Val::Px(DEFAULT_WIDTH),
             buttons: Vec::new(),
         }
     }
@@ -275,7 +282,7 @@ impl ModalDialog {
                     justify_content: JustifyContent::Center,
                     ..default()
                 },
-                GlobalZIndex(conf::Z_MODAL_BASE + order.0 as i32),
+                GlobalZIndex(Z_MODAL_BASE + order.0 as i32),
                 RenderLayers::layer(1),
             ))
             .id();
@@ -299,10 +306,10 @@ impl ModalDialog {
                 justify_content: JustifyContent::FlexEnd,
                 column_gap: Val::Px(6.0),
                 padding: UiRect::new(
-                    Val::Px(conf::PADDING),
-                    Val::Px(conf::PADDING),
+                    Val::Px(PADDING),
+                    Val::Px(PADDING),
                     Val::Px(0.0),
-                    Val::Px(conf::PADDING),
+                    Val::Px(PADDING),
                 ),
                 ..default()
             })

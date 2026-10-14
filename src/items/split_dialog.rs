@@ -95,6 +95,7 @@ pub fn on_open_split_dialog(
             TextFont {
                 font: ui_assets.font.clone(),
                 font_size: 11.0,
+                weight: FontWeight::BOLD,
                 ..default()
             },
             TextColor(ui_colors::FONT_COLOR_CONTENT.into()),
@@ -164,6 +165,7 @@ pub fn on_open_split_dialog(
             TextFont {
                 font: ui_assets.font.clone(),
                 font_size: 11.0,
+                weight: FontWeight::BOLD,
                 ..default()
             },
             TextLayout::new_with_justify(Justify::Center),

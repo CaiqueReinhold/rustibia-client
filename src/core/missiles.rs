@@ -4,13 +4,14 @@ use std::time::Duration;
 use bevy::mesh::MeshTag;
 use bevy::prelude::*;
 
-use crate::conf::missiles::FLIGHT_MS_PER_ROOT_TILE;
 use crate::core::effects::{
     EffectInstance, EffectMaterial, EffectMaterials, anchor, init_instance, init_material,
 };
 use crate::core::{Appearances, InstanceManager, SheetUser};
 use crate::map::{DrawLayer, DrawOrder, DrawRank, FloorEntities, Position};
 use crate::network::events::LaunchMissile;
+
+const FLIGHT_MS_PER_ROOT_TILE: f32 = 150.0;
 
 /// The pattern cell a missile draws, which is its flight direction.
 ///
@@ -45,8 +46,7 @@ fn missile_cell(from: &Position, to: &Position) -> (u32, u32) {
 }
 
 /// How long the flight takes: 150 ms times the SQUARE ROOT of the tile
-/// distance. See `conf::missiles::FLIGHT_MS_PER_ROOT_TILE` for why the root is
-/// there and what it does to the feel.
+/// distance.
 fn flight_duration(from: &Position, to: &Position) -> Duration {
     let dx = to.x as f32 - from.x as f32;
     let dy = to.y as f32 - from.y as f32;
@@ -202,6 +202,7 @@ pub fn fly_missiles(
             &mut order,
             &missile_tile(&missile.from, &missile.to, fraction),
             DrawLayer::Missile,
+            0,
         );
     }
 }

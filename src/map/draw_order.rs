@@ -28,10 +28,21 @@
 
 use bevy::prelude::*;
 
-use crate::conf::draw_order::{LAYER_COUNT, SLOT_COUNT, VIEW_MARGIN_TILES};
 use crate::conf::map::{MAX_FLOOR, TILE_SIZE, TILES_X, TILES_Y, VIEW_LEFT, VIEW_TOP};
 use crate::map::Position;
 use crate::player::components::Player;
+
+/// Tiles of slack on each side of the drawn window, so a creature or a
+/// missile at the edge still keys to its own tile instead of clamping onto
+/// its neighbour's.
+const VIEW_MARGIN_TILES: usize = 2;
+
+/// Keys reserved per tile for `map::DrawLayer` and for the stack slot
+/// within a layer. `LAYER_COUNT` must exceed the largest `DrawLayer`
+/// discriminant, and their product times the window size must stay under
+/// 2^24 — both pinned by tests below.
+const LAYER_COUNT: u32 = 16;
+const SLOT_COUNT: u32 = 16;
 
 /// Which whole-floor pass a drawable belongs to. The discriminants **are** the
 /// order, and this outranks the tile: everything in an earlier rank is drawn
@@ -136,8 +147,8 @@ impl DrawOrder {
     /// Leaves the component clean when neither argument changed. `move_agent`
     /// calls this every frame of every step, and a dirty `DrawOrder` costs a
     /// transform write and a hierarchy re-propagation.
-    pub fn move_to(this: &mut Mut<DrawOrder>, pos: &Position, layer: DrawLayer) {
-        let offset = layer_offset(layer, 0);
+    pub fn move_to(this: &mut Mut<DrawOrder>, pos: &Position, layer: DrawLayer, slot: u32) {
+        let offset = layer_offset(layer, slot);
         if this.pos != *pos || this.offset != offset {
             this.pos = pos.clone();
             this.offset = offset;

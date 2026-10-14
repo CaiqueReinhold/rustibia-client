@@ -10,14 +10,13 @@ use std::cmp::Reverse;
 use std::sync::Mutex;
 
 use crate::{
-    conf::ui::{
-        SIDE_PANEL_WIDTH, ui_colors,
-        z_index::{Z_DRAGGING_WINDOW, Z_WINDOW},
-    },
+    conf::ui::{SIDE_PANEL_WIDTH, ui_colors, z_index::Z_WINDOW},
     game_ui::assets::GameUiAssets,
     game_ui::scaling::{logical_center, logical_rect, logical_size, to_logical},
     player::InteractionMode,
 };
+
+const Z_DRAGGING_WINDOW: i32 = 20;
 
 const WINDOW_MIN_HEIGHT: f32 = 32.0;
 const WINDOW_TITLE_HEIGHT: f32 = 12.0;

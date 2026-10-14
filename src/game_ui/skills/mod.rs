@@ -9,10 +9,11 @@ use bevy::prelude::*;
 
 use window::SkillsWindow;
 
-use crate::conf::ui::SKILLS_WINDOW_HEIGHT;
 use crate::core::GameState;
 use crate::game_ui::skills::state::{on_player_spawned, on_speed_changed};
 use crate::game_ui::{AddUIWindow, CloseUIWindow, GameUiAssets, UiWindowRef};
+
+const SKILLS_WINDOW_HEIGHT: usize = 150;
 
 #[derive(Event, Debug)]
 pub struct ToggleSkillsWindow;

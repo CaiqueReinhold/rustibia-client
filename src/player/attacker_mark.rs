@@ -1,10 +1,13 @@
 use bevy::prelude::*;
 
 use crate::conf::map::TILE_SIZE;
-use crate::conf::target::{MARK_COLOR, MARK_DURATION, MARK_INSET};
 use crate::map::Map;
 use crate::network::events::PlayerDamagedBy;
 use crate::player::square::spawn_square;
+
+const MARK_INSET: f32 = 2.0;
+const MARK_COLOR: Color = Color::srgb(0.0, 0.0, 0.0);
+const MARK_DURATION: std::time::Duration = std::time::Duration::from_secs(1);
 
 #[derive(Component)]
 pub struct AttackerSquare {

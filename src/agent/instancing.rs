@@ -9,7 +9,6 @@ use bevy::render::storage::ShaderStorageBuffer;
 use crate::agent::components::{Agent, AgentAnimConfigs, Hovered};
 use crate::agent::world_hud::{spawn_world_hud, world_hud_anchor};
 use crate::agent::{AgentId, AgentKind, FacingDirection, Health, Mana};
-use crate::conf::hover::{PULSE_AMPLITUDE, PULSE_BASE, PULSE_PERIOD_SECS};
 use crate::core::OutfitColors;
 use crate::core::OutfitId;
 use crate::core::{
@@ -22,6 +21,10 @@ use crate::agent::{
     movement::{MoveQueue, Moving},
 };
 use crate::map::{DrawLayer, DrawOrder, DrawRank, Map, Position};
+
+const HOVER_PULSE_BASE: f32 = 0.08;
+const HOVER_PULSE_AMPLITUDE: f32 = 0.10;
+const HOVER_PULSE_PERIOD_SECS: f32 = 1.0;
 
 #[derive(Resource, Default, Debug)]
 pub struct LoadedMaterials {
@@ -208,9 +211,9 @@ fn init_material(
 ) {
     let params = AgentParams {
         atlas_grid: sheet.grid_size,
-        pulse_base: PULSE_BASE,
-        pulse_amplitude: PULSE_AMPLITUDE,
-        pulse_period: PULSE_PERIOD_SECS,
+        pulse_base: HOVER_PULSE_BASE,
+        pulse_amplitude: HOVER_PULSE_AMPLITUDE,
+        pulse_period: HOVER_PULSE_PERIOD_SECS,
     };
     let material_handle = materials.add(AgentMaterial {
         texture: sheet.texture(),

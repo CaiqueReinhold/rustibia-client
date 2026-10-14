@@ -2,7 +2,7 @@ use bevy::input::mouse::MouseScrollUnit;
 use bevy::picking::events::Scroll;
 use bevy::prelude::*;
 
-use crate::conf::ui::{UI_ITEM_SIZE, action_bar as bar_conf, dialog, ui_colors};
+use crate::conf::ui::{UI_ITEM_SIZE, dialog, ui_colors};
 use crate::core::{SpellBook, SpellId, SpellInfo};
 use crate::game_ui::{
     DialogButton, DialogButtonId, DialogButtonPressed, GameUiAssets, ModalDialog, ModalOrder,
@@ -11,6 +11,9 @@ use crate::game_ui::{
 use super::bar::{ActionBarAssets, icon_bundle, spell_image};
 use super::state::{ActionBar, SlotAction};
 use super::target_dialog::{OpenTargetDialog, PendingAssignment};
+
+const SPELL_LIST_MAX_HEIGHT: f32 = 220.0;
+const SPELL_ROW_HEIGHT: f32 = 36.0;
 
 #[derive(Event, Debug, Clone, Copy)]
 pub struct OpenAssignSpellDialog {
@@ -79,6 +82,7 @@ pub(super) fn on_open_assign_spell_dialog(
                 TextFont {
                     font: ui_assets.font.clone(),
                     font_size: 11.0,
+                    weight: FontWeight::BOLD,
                     ..default()
                 },
                 TextColor(ui_colors::FONT_COLOR_CONTENT.into()),
@@ -92,7 +96,7 @@ pub(super) fn on_open_assign_spell_dialog(
         .spawn((
             Node {
                 width: Val::Percent(100.0),
-                max_height: Val::Px(bar_conf::SPELL_LIST_MAX_HEIGHT),
+                max_height: Val::Px(SPELL_LIST_MAX_HEIGHT),
                 flex_direction: FlexDirection::Column,
                 overflow: Overflow::scroll_y(),
                 border: UiRect::all(Val::Px(1.0)),
@@ -120,7 +124,7 @@ pub(super) fn on_open_assign_spell_dialog(
             .y
             .max(0.0);
             let delta = match scroll.unit {
-                MouseScrollUnit::Line => scroll.y * bar_conf::SPELL_ROW_HEIGHT,
+                MouseScrollUnit::Line => scroll.y * SPELL_ROW_HEIGHT,
                 MouseScrollUnit::Pixel => scroll.y,
             };
             position.y = (position.y - delta).clamp(0.0, max);
@@ -160,6 +164,7 @@ fn spawn_spell_row(
             TextFont {
                 font: ui_assets.font.clone(),
                 font_size: 11.0,
+                weight: FontWeight::BOLD,
                 ..default()
             },
             TextColor(Color::WHITE),
@@ -172,6 +177,7 @@ fn spawn_spell_row(
             TextFont {
                 font: ui_assets.font.clone(),
                 font_size: 10.0,
+                weight: FontWeight::BOLD,
                 ..default()
             },
             TextColor(ui_colors::FONT_COLOR_CONTENT.into()),
@@ -195,7 +201,7 @@ fn spawn_spell_row(
         .spawn((
             SpellRow(spell_id),
             Node {
-                height: Val::Px(bar_conf::SPELL_ROW_HEIGHT),
+                height: Val::Px(SPELL_ROW_HEIGHT),
                 flex_shrink: 0.0,
                 column_gap: Val::Px(6.0),
                 padding: UiRect::axes(Val::Px(4.0), Val::Px(2.0)),

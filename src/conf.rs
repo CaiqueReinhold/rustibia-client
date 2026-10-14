@@ -20,48 +20,15 @@ pub mod map {
     pub const UNDERGROUND_REACH: u8 = 2;
 }
 
-pub mod draw_order {
-    /// Tiles of slack on each side of the drawn window, so a creature or a
-    /// missile at the edge still keys to its own tile instead of clamping onto
-    /// its neighbour's.
-    pub const VIEW_MARGIN_TILES: usize = 2;
-
-    /// Keys reserved per tile for `map::DrawLayer` and for the stack slot
-    /// within a layer. `LAYER_COUNT` must exceed the largest `DrawLayer`
-    /// discriminant, and their product times the window size must stay under
-    /// 2^24 — both pinned by tests in `map::draw_order`.
-    pub const LAYER_COUNT: u32 = 16;
-    pub const SLOT_COUNT: u32 = 16;
-}
-
 pub mod target {
     pub const SQUARE_THICKNESS: f32 = 2.0;
     pub const SQUARE_COLOR: bevy::color::Color = bevy::color::Color::srgb(1.0, 0.0, 0.0);
-    pub const MARK_INSET: f32 = 2.0;
-    pub const MARK_COLOR: bevy::color::Color = bevy::color::Color::srgb(0.0, 0.0, 0.0);
-    pub const MARK_DURATION: std::time::Duration = std::time::Duration::from_secs(1);
-}
-
-pub mod hover {
-    pub const OUTLINE_COLOR: bevy::color::Color = bevy::color::Color::WHITE;
-    pub const OUTLINE_THICKNESS: f32 = 1.0;
-    pub const PULSE_BASE: f32 = 0.08;
-    pub const PULSE_AMPLITUDE: f32 = 0.10;
-    pub const PULSE_PERIOD_SECS: f32 = 1.0;
 }
 
 pub mod agent {
     // pub const ADDONS_NONE: u8 = 0;
     pub const ADDON_1_FLAG: u8 = 0b1;
     pub const ADDON_2_FLAG: u8 = 0b10;
-    pub const SPEED_PARAM_A: f32 = 857.36;
-    pub const SPEED_PARAM_B: f32 = 261.29;
-    pub const SPEED_PARAM_C: f32 = -4795.009;
-    pub const DIAGONAL_STEP_FACTOR: u32 = 3;
-    pub const HUD_BAR_WIDTH: f32 = 31.0;
-    pub const HUD_BAR_HEIGHT: f32 = 4.0;
-    pub const HUD_BAR_GAP: f32 = 1.0;
-    pub const HUD_TILE_CLEARANCE: f32 = 4.0;
 }
 
 pub mod viewport {
@@ -71,61 +38,29 @@ pub mod viewport {
     // pub const GAME_VIEW_MIN_SIZE: f32 = 400.0;
 }
 
-pub mod floating_text {
-    pub const FONT_SIZE: f32 = 11.0;
-    pub const OUTLINE_WIDTH: f32 = 1.0;
-
-    pub const HP_DURATION_MS: u64 = 1000;
-    pub const HP_RISE_PX: f32 = 48.0;
-    pub const HP_FADE_START: f32 = 0.83;
-    pub const HP_MERGE_WINDOW: f32 = 0.4;
-    pub const HP_CLEARANCE_PX: f32 = 12.0;
-    pub const HP_MAX_STAGGER_PX: f32 = 36.0;
-
-    // --- PlayerMessage ---
-    pub const SPEECH_HEAD_OFFSET_WORLD: f32 = 24.0;
-    pub const SPEECH_MS_PER_CHAR: u64 = 60;
-    pub const SPEECH_MIN_MS: u64 = 3000;
-    pub const SPEECH_MAX_MS: u64 = 8000;
-    pub const SPEECH_MAX_LINES: usize = 5;
-    pub const SPEECH_MAX_WIDTH_PX: f32 = 180.0;
-    pub const SPEECH_GAP_PX: f32 = 2.0;
-}
-
-pub mod effects {
-    use std::time::Duration;
-
-    /// How long a `Static` effect stays on screen. Effects 200, 211 and 212 have
-    /// no animation at all, so nothing else would ever end them. OTClient gives a
-    /// static effect one frame tick (75 ms), which at 60 fps reads as a glitch;
-    /// 300 ms is a hair over the shortest animated effect's full pass (270 ms).
-    pub const STATIC_DURATION: Duration = Duration::from_millis(300);
-}
-
-pub mod missiles {
-    pub const FLIGHT_MS_PER_ROOT_TILE: f32 = 150.0;
-}
-
 pub mod ui {
     pub const TOP_BAR_HEIGHT: f32 = 50.0;
     pub const SIDE_PANEL_WIDTH: f32 = 180.0;
-    pub const CHAT_BOX_HEIGHT: f32 = 170.0;
+    pub const CHAT_BOX_MIN_HEIGHT: f32 = 80.0;
+    pub const GAME_VIEWPORT_MIN_WIDTH: f32 = 300.0;
+    pub const GAME_VIEWPORT_MIN_HEIGHT: f32 = 220.0;
+    /// Border, padding and margin around the game viewport, both sides of one axis.
+    pub const GAME_VIEWPORT_FRAME: f32 = 8.0;
+    pub const WINDOW_MIN_WIDTH: f32 =
+        2.0 * SIDE_PANEL_WIDTH + GAME_VIEWPORT_MIN_WIDTH + GAME_VIEWPORT_FRAME;
+    pub const WINDOW_MIN_HEIGHT: f32 = TOP_BAR_HEIGHT
+        + GAME_VIEWPORT_MIN_HEIGHT
+        + GAME_VIEWPORT_FRAME
+        + SEPARATOR_HEIGHT
+        + action_bar::HEIGHT
+        + CHAT_BOX_MIN_HEIGHT;
     pub const UI_ITEM_SIZE: f32 = 32.0;
-    pub const ITEM_COUNT_FONT_SIZE: f32 = 10.0;
-    pub const LOOT_CONTAINER_DEFAULT_HEIGHT: usize = 60;
-    pub const SKILLS_WINDOW_HEIGHT: usize = 150;
-    pub const INVENTORY_HEIGHT: f32 = 170.0;
     pub const ITEM_SLOT_SIZE: f32 = 36.0;
-    pub const UI_BAR_HEIGHT: f32 = 15.0;
-    pub const MIN_DRAG_THRESHOLD: f32 = 1.0;
     pub const SEPARATOR_HEIGHT: f32 = 5.0;
 
     pub mod z_index {
         pub const Z_MAIN_UI: i32 = 10;
         pub const Z_WINDOW: i32 = 11;
-        pub const Z_DRAGGING_WINDOW: i32 = 20;
-        pub const DRAGGED_ITEM_UI_Z: i32 = 100;
-        pub const Z_CONTEXT_MENU: i32 = 99;
     }
 
     pub mod ui_colors {
@@ -133,16 +68,12 @@ pub mod ui {
         pub const DARK_BORDER_COLOR: Srgba = Srgba::new(0.145098, 0.145098, 0.145098, 1.0);
         pub const LIGHT_BORDER_COLOR: Srgba = Srgba::new(0.4588235, 0.4588235, 0.4588235, 1.0);
 
-        pub const ITEM_SLOT_OUTLINE: Srgba = Srgba::new(0.35, 0.35, 0.35, 1.0);
         pub const ITEM_SLOT_OUTLINE_HOVERED: Srgba = Srgba::new(0.8, 0.8, 0.8, 1.0);
 
         pub const FONT_COLOR_CONTENT: Srgba = Srgba::new(0.75294, 0.75294, 0.75294, 1.0);
         pub const FONT_COLOR_LOOK_MSG: Srgba = Srgba::rgb(0.0, 0.7372549, 0.0);
 
         pub const MANA_BAR_COLOR: Srgba = Srgba::new(0.0, 0.0, 0.7, 1.0);
-        pub const COOLDOWN_SHADE: Srgba = Srgba::new(0.345098, 0.345098, 0.345098, 0.666667);
-
-        pub const BAR_FILL_COLOR: Srgba = Srgba::new(1.0, 0.0, 0.0, 1.0);
 
         pub const BG_COLOR: Srgba = Srgba::new(0.098, 0.102, 0.106, 1.0);
     }
@@ -150,157 +81,43 @@ pub mod ui {
     pub mod chat {
         use bevy::color::Srgba;
 
-        pub const TAB_HEIGHT: f32 = 22.0;
-        pub const TAB_MAX_WIDTH: f32 = 90.0;
-        pub const INPUT_HEIGHT: f32 = 24.0;
-        pub const HISTORY_CAP_DEFAULT: usize = 500;
-        pub const LINE_HEIGHT: f32 = 12.;
-
-        pub const UNREAD_TAB_COLOR: Srgba = Srgba::new(0.85, 0.20, 0.20, 1.0);
         pub const TAB_TITLE_COLOR: Srgba = Srgba::new(0.95, 0.95, 0.95, 1.0);
         pub const TAB_TITLE_COLOR_INACTIVE: Srgba = Srgba::new(0.5, 0.5, 0.5, 1.0);
         pub const INPUT_BG_COLOR: Srgba = Srgba::new(0.098, 0.102, 0.106, 1.0);
         pub const INPUT_PLACEHOLDER_COLOR: Srgba = Srgba::new(1.0, 1.0, 1.0, 0.2);
 
-        pub const LOCAL_CHANNEL_NAME: &str = "Local";
         pub const LOCAL_CHANNEL_COLOR: Srgba = Srgba::new(0.94, 0.94, 0.0, 1.0);
-        pub const CREATURE_SAY_COLOR: Srgba = Srgba::new(0.996, 0.396, 0.0, 1.0);
 
         pub const MAX_MESSAGE_LENGTH: usize = 255;
-    }
-
-    pub mod button_row {
-        /// One row of buttons plus the window's 2px borders.
-        pub const HEIGHT: f32 = 30.0;
-        pub const PADDING_X: f32 = 15.0;
-        pub const PADDING_Y: f32 = 4.0;
-    }
-
-    pub mod skills {
-        pub const PADDING: f32 = 4.0;
-        pub const ROW_GAP: f32 = 10.0;
-        pub const BAR_HEIGHT: f32 = 5.0;
-        pub const FONT_SIZE: f32 = 11.0;
-        pub const DIVIDER_HEIGHT: f32 = 1.0;
     }
 
     pub mod dialog {
         use bevy::color::Srgba;
 
-        pub const DEFAULT_WIDTH: f32 = 300.0;
-        pub const TITLE_BAR_HEIGHT: f32 = 20.0;
-        pub const PADDING: f32 = 10.0;
         pub const FIELD_HEIGHT: f32 = 24.0;
-        pub const BUTTON_HEIGHT: f32 = 22.0;
-        pub const BUTTON_MIN_WIDTH: f32 = 64.0;
-        pub const Z_MODAL_BASE: i32 = 100;
-        pub const Z_FLOATING: i32 = 90;
-        pub const CLOSE_BUTTON_SIZE: f32 = 10.0;
-        pub const SHOP_WIDTH: f32 = 190.0;
-        pub const SHOP_TOP: f32 = 60.0;
-        pub const SHOP_ROW_HEIGHT: f32 = 36.0;
-        pub const SHOP_VISIBLE_ROWS: f32 = 3.0;
-        pub const SHOP_CURRENCY_ITEM: u16 = 3031;
-        pub const SHOP_DIM_TEXT_COLOR: Srgba = Srgba::new(0.45, 0.45, 0.45, 1.0);
         pub const DOUBLE_CLICK_SECS: f32 = 0.4;
 
         pub const BUTTON_COLOR: Srgba = Srgba::new(0.34, 0.34, 0.34, 1.0);
         pub const FIELD_BG_COLOR: Srgba = Srgba::new(0.198, 0.202, 0.206, 1.0);
         pub const ROW_SELECTED_COLOR: Srgba = Srgba::new(0.25, 0.32, 0.45, 1.0);
-
-        pub const HOTKEY_DIALOG_WIDTH: f32 = 400.0;
-        pub const WARNING_COLOR: Srgba = Srgba::new(0.95, 0.30, 0.30, 1.0);
     }
 
     pub mod options {
-        pub const WIDTH: f32 = 320.0;
-        pub const TAB_HEIGHT: f32 = 20.0;
-        pub const ROW_HEIGHT: f32 = 18.0;
-        pub const BOX_SIZE: f32 = 12.0;
-        pub const FONT_SIZE: f32 = 11.0;
-        pub const PAGE_MIN_HEIGHT: f32 = 110.0;
         pub const KEY_REPEAT_MS_MIN: u16 = 50;
         pub const KEY_REPEAT_MS_MAX: u16 = 500;
-        pub const KEY_REPEAT_MS_STEP: u16 = 10;
         pub const KEY_REPEAT_MS_DEFAULT: u16 = 200;
-        pub const FPS_REFRESH_MS: u64 = 500;
-    }
-
-    pub mod context_menu {
-        use bevy::color::Srgba;
-
-        pub const MIN_WIDTH: f32 = 120.0;
-        pub const PADDING: f32 = 2.0;
-        pub const ROW_PADDING_X: f32 = 6.0;
-        pub const ROW_PADDING_Y: f32 = 3.0;
-        pub const HOVER_COLOR: Srgba = Srgba::new(0.25, 0.32, 0.45, 1.0);
-        pub const DISABLED_COLOR: Srgba = Srgba::new(0.45, 0.45, 0.45, 1.0);
-        pub const SEPARATOR_MARGIN_Y: f32 = 2.0;
     }
 
     pub mod action_bar {
         pub const SLOT_SIZE: f32 = 34.0;
-        pub const SLOT_GAP: f32 = 2.0;
         pub const PADDING: f32 = 3.0;
         pub const BORDER: f32 = 1.0;
         pub const HEIGHT: f32 = SLOT_SIZE + 2.0 * (PADDING + BORDER);
-        pub const HOTKEY_FONT_SIZE: f32 = 9.0;
-        pub const SPELL_ICON_SIZE: u32 = 30;
-        pub const SPELL_ICON_COLUMNS: u32 = 12;
-        pub const SPELL_ICON_ROWS: u32 = 11;
-        pub const SPELL_LIST_MAX_HEIGHT: f32 = 220.0;
-        pub const SPELL_ROW_HEIGHT: f32 = 36.0;
-    }
-
-    pub mod cooldown {
-        pub const FONT_SIZE: f32 = 10.0;
-        pub const ICON_SIZE: f32 = 20.0;
-        pub const ICON_GAP: f32 = 3.0;
-        pub const GROUP_ROW_INSET: f32 = 4.0;
-        pub const GROUP_SHEET_CELL: u32 = 20;
-        pub const GROUP_SHEET_COLUMNS: u32 = 4;
-        pub const GROUP_SHEET_ROWS: u32 = 2;
-    }
-
-    pub mod status {
-        pub const ICON_SIZE: f32 = 9.0;
-        pub const ICON_GAP: f32 = 1.0;
-        pub const PADDING: f32 = 2.0;
-        pub const BORDER: f32 = 1.0;
-        pub const SHEET_CELL: u32 = 9;
-        pub const SHEET_COLUMNS: u32 = 8;
-    }
-
-    pub mod login {
-        use bevy::color::Srgba;
-
-        pub const LOGO_COLOR: Srgba = Srgba::new(0.91, 0.78, 0.38, 1.0);
-        pub const LOGO_FONT_SIZE: f32 = 56.0;
-        pub const LOGO_TOP_MARGIN: f32 = 40.0;
-
-        pub const SPINNER_SIZE: f32 = 52.0;
-        pub const SPINNER_RING_RADIUS: f32 = 15.0;
-        pub const SPINNER_DOT_SIZE: f32 = 7.0;
-        pub const SPINNER_DOTS: usize = 10;
-        pub const SPINNER_PERIOD_SECS: f32 = 1.0;
-        pub const SPINNER_COLOR: Srgba = LOGO_COLOR;
-        pub const SPINNER_MIN_ALPHA: f32 = 0.2;
-        pub const SPINNER_MIN_SCALE: f32 = 0.4;
-        pub const SPINNER_DISC_COLOR: Srgba = Srgba::new(0.0, 0.0, 0.0, 0.45);
     }
 }
 
 pub mod server {
     pub const TICK_DURATION_MS: u32 = 50;
-}
-
-pub mod minimap {
-    pub const IMAGE_SIZE: u16 = 2048;
-    /// How close to the texture edge the player gets before the window re-centres.
-    pub const RECENTRE_MARGIN: u16 = 256;
-    /// Tiles visible per axis at each zoom level (index 0 = most zoomed in).
-    pub const ZOOM_LEVELS: [u8; 4] = [20, 40, 80, 160];
-    pub const DEFAULT_ZOOM: usize = 2; // 80×80 tiles
 }
 
 pub mod paths {

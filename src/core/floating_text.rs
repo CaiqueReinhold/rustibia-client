@@ -13,15 +13,30 @@ use bevy::sprite::Anchor;
 use bevy::text::{FontSmoothing, TextBounds, TextLayoutInfo};
 use bevy_text_outline::TextOutline;
 
-use crate::conf::floating_text as ft;
 use crate::conf::map::TILE_SIZE;
-use crate::conf::ui::chat::CREATURE_SAY_COLOR;
 use crate::conf::ui::chat::LOCAL_CHANNEL_COLOR;
 use crate::game_ui::{GameUiAssets, GameViewport, Settings};
 use crate::map::Position;
 use crate::network::events::ShowFloatingText;
 use crate::overlay::{HudScaled, OVERLAY_TEXT_Z, on_overlay_layer, world_hud_scale};
 use crate::player::components::Player;
+
+const FONT_SIZE: f32 = 11.0;
+const OUTLINE_WIDTH: f32 = 1.0;
+const HP_DURATION_MS: u64 = 1000;
+const HP_RISE_PX: f32 = 48.0;
+const HP_FADE_START: f32 = 0.83;
+const HP_MERGE_WINDOW: f32 = 0.4;
+const HP_CLEARANCE_PX: f32 = 12.0;
+const HP_MAX_STAGGER_PX: f32 = 36.0;
+const SPEECH_HEAD_OFFSET_WORLD: f32 = 24.0;
+const SPEECH_MS_PER_CHAR: u64 = 60;
+const SPEECH_MIN_MS: u64 = 3000;
+const SPEECH_MAX_MS: u64 = 8000;
+const SPEECH_MAX_LINES: usize = 5;
+const SPEECH_MAX_WIDTH_PX: f32 = 180.0;
+const SPEECH_GAP_PX: f32 = 2.0;
+const CREATURE_SAY_COLOR: Srgba = Srgba::new(0.996, 0.396, 0.0, 1.0);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FloatingTextType {
@@ -84,30 +99,30 @@ pub fn resolve_color(kind: FloatingTextType, color: Option<(u8, u8, u8)>) -> Col
 }
 
 pub fn line_duration(chars: usize) -> Duration {
-    let ms = (ft::SPEECH_MS_PER_CHAR * chars as u64).clamp(ft::SPEECH_MIN_MS, ft::SPEECH_MAX_MS);
+    let ms = (SPEECH_MS_PER_CHAR * chars as u64).clamp(SPEECH_MIN_MS, SPEECH_MAX_MS);
     Duration::from_millis(ms)
 }
 
 pub fn risen(fraction: f32) -> f32 {
-    ft::HP_RISE_PX * fraction
+    HP_RISE_PX * fraction
 }
 
 pub fn alpha(fraction: f32) -> f32 {
-    if fraction < ft::HP_FADE_START {
+    if fraction < HP_FADE_START {
         return 1.0;
     }
-    ((1.0 - fraction) / (1.0 - ft::HP_FADE_START)).clamp(0.0, 1.0)
+    ((1.0 - fraction) / (1.0 - HP_FADE_START)).clamp(0.0, 1.0)
 }
 
 /// Where to place an arriving damage number, given the current heights above the
 /// tile of every live number already there.
 pub fn stagger_offset(heights: &[f32]) -> f32 {
-    if heights.iter().all(|h| *h >= ft::HP_CLEARANCE_PX) {
+    if heights.iter().all(|h| *h >= HP_CLEARANCE_PX) {
         return 0.0;
     }
     let highest = heights.iter().copied().fold(0.0f32, f32::max);
-    let candidate = highest + ft::HP_CLEARANCE_PX;
-    if candidate > ft::HP_MAX_STAGGER_PX {
+    let candidate = highest + HP_CLEARANCE_PX;
+    if candidate > HP_MAX_STAGGER_PX {
         return 0.0;
     }
     candidate
@@ -141,7 +156,7 @@ pub fn plan_hit_points(live: &[LiveHitPoints], value: Option<i64>, color: Color)
         newest_first.sort_by_key(|o| std::cmp::Reverse(o.spawned_at));
         for other in newest_first {
             if other.color == color
-                && other.fraction < ft::HP_MERGE_WINDOW
+                && other.fraction < HP_MERGE_WINDOW
                 && let Some(existing) = other.value
             {
                 return HpArrival::Merge {
@@ -195,7 +210,7 @@ pub fn resolve_offsets(blocks: &[BlockLayout]) -> Vec<f32> {
             let Some(blocker) = placed.iter().find(|p| overlaps(&rect, p)) else {
                 break;
             };
-            offset_y += (rect.max.y - blocker.min.y) + ft::SPEECH_GAP_PX;
+            offset_y += (rect.max.y - blocker.min.y) + SPEECH_GAP_PX;
         }
         offsets[i] = offset_y;
         placed.push(block_rect(b, offset_y));
@@ -262,7 +277,7 @@ pub fn on_floating_text(
                                 value,
                                 color,
                                 timer: Timer::new(
-                                    Duration::from_millis(ft::HP_DURATION_MS),
+                                    Duration::from_millis(HP_DURATION_MS),
                                     TimerMode::Once,
                                 ),
                             },
@@ -291,7 +306,7 @@ pub fn on_floating_text(
                 && let Ok((_, _, mut block, mut text)) = speech_q.get_mut(entity)
             {
                 block.lines.push_back(line);
-                while block.lines.len() > ft::SPEECH_MAX_LINES {
+                while block.lines.len() > SPEECH_MAX_LINES {
                     block.lines.pop_front();
                 }
                 text.0 = block.compose();
@@ -322,7 +337,7 @@ pub fn on_floating_text(
                     block,
                     text,
                     TextLayout::new_with_justify(Justify::Center),
-                    TextBounds::new_horizontal(ft::SPEECH_MAX_WIDTH_PX),
+                    TextBounds::new_horizontal(SPEECH_MAX_WIDTH_PX),
                     text_font(&ui_assets),
                     TextColor(color),
                 ),
@@ -349,7 +364,7 @@ fn spawn_floating_text(commands: &mut Commands, text: FloatingText, kind_parts: 
         kind_parts,
         Anchor::BOTTOM_CENTER,
         TextOutline {
-            width: ft::OUTLINE_WIDTH,
+            width: OUTLINE_WIDTH,
             ..default()
         },
         on_overlay_layer(),
@@ -366,9 +381,7 @@ fn tile_centre(anchor: &Position) -> Vec2 {
 fn anchor_world(anchor: &Position, kind: FloatingTextType) -> Vec2 {
     let head_offset = match kind {
         FloatingTextType::HitPoints => 0.0,
-        FloatingTextType::PlayerMessage | FloatingTextType::CreatureSay => {
-            ft::SPEECH_HEAD_OFFSET_WORLD
-        }
+        FloatingTextType::PlayerMessage | FloatingTextType::CreatureSay => SPEECH_HEAD_OFFSET_WORLD,
     };
     tile_centre(anchor) + Vec2::new(0.0, head_offset)
 }
@@ -382,7 +395,7 @@ fn anchor_logical(anchor: &Position, kind: FloatingTextType, scale: f32) -> Vec2
 fn text_font(ui_assets: &GameUiAssets) -> TextFont {
     TextFont {
         font: ui_assets.font.clone(),
-        font_size: ft::FONT_SIZE,
+        font_size: FONT_SIZE,
         ..default()
     }
     .with_font_smoothing(FontSmoothing::AntiAliased)
@@ -565,8 +578,8 @@ mod tests {
 
     #[test]
     fn line_duration_is_clamped_at_both_ends() {
-        assert_eq!(line_duration(1), Duration::from_millis(ft::SPEECH_MIN_MS));
-        assert_eq!(line_duration(255), Duration::from_millis(ft::SPEECH_MAX_MS));
+        assert_eq!(line_duration(1), Duration::from_millis(SPEECH_MIN_MS));
+        assert_eq!(line_duration(255), Duration::from_millis(SPEECH_MAX_MS));
     }
 
     #[test]
@@ -582,14 +595,14 @@ mod tests {
     #[test]
     fn a_number_rises_the_full_distance_over_its_life() {
         assert_eq!(risen(0.0), 0.0);
-        assert_eq!(risen(0.5), ft::HP_RISE_PX / 2.0);
-        assert_eq!(risen(1.0), ft::HP_RISE_PX);
+        assert_eq!(risen(0.5), HP_RISE_PX / 2.0);
+        assert_eq!(risen(1.0), HP_RISE_PX);
     }
 
     #[test]
     fn alpha_is_opaque_until_the_fade_starts() {
         assert_eq!(alpha(0.0), 1.0);
-        assert_eq!(alpha(ft::HP_FADE_START - 0.01), 1.0);
+        assert_eq!(alpha(HP_FADE_START - 0.01), 1.0);
     }
 
     #[test]
@@ -605,7 +618,7 @@ mod tests {
 
     #[test]
     fn a_second_text_sits_one_clearance_above_the_first() {
-        assert_eq!(stagger_offset(&[0.0]), ft::HP_CLEARANCE_PX);
+        assert_eq!(stagger_offset(&[0.0]), HP_CLEARANCE_PX);
     }
 
     /// The property OTClient's formula loses. It computes `CLEARANCE - risen`,
@@ -615,10 +628,10 @@ mod tests {
     #[test]
     fn staggered_texts_keep_a_full_clearance_at_every_point_in_the_window() {
         let mut risen = 0.0;
-        while risen < ft::HP_CLEARANCE_PX {
+        while risen < HP_CLEARANCE_PX {
             let newcomer = stagger_offset(&[risen]);
             assert!(
-                (newcomer - risen) >= ft::HP_CLEARANCE_PX - f32::EPSILON,
+                (newcomer - risen) >= HP_CLEARANCE_PX - f32::EPSILON,
                 "gap collapsed to {} at risen {risen}",
                 newcomer - risen
             );
@@ -630,7 +643,7 @@ mod tests {
     /// the third back at zero, on top of the first.
     #[test]
     fn a_third_simultaneous_text_clears_both_predecessors() {
-        assert_eq!(stagger_offset(&[0.0, ft::HP_CLEARANCE_PX]), 24.0);
+        assert_eq!(stagger_offset(&[0.0, HP_CLEARANCE_PX]), 24.0);
     }
 
     /// The last slot the column is allowed to use: a candidate of *exactly*
@@ -638,7 +651,7 @@ mod tests {
     /// could be widened to `>=` and nothing would notice.
     #[test]
     fn the_last_slot_below_the_cap_is_still_used() {
-        assert_eq!(stagger_offset(&[0.0, 12.0, 24.0]), ft::HP_MAX_STAGGER_PX);
+        assert_eq!(stagger_offset(&[0.0, 12.0, 24.0]), HP_MAX_STAGGER_PX);
     }
 
     #[test]
@@ -703,7 +716,7 @@ mod tests {
         )];
         match plan_hit_points(&live, Some(8), Color::BLACK) {
             HpArrival::Spawn { offset_y } => {
-                assert_eq!(offset_y, ft::HP_CLEARANCE_PX, "must be staggered clear")
+                assert_eq!(offset_y, HP_CLEARANCE_PX, "must be staggered clear")
             }
             HpArrival::Merge { .. } => panic!("different colours must not merge"),
         }
@@ -745,7 +758,7 @@ mod tests {
             Entity::from_raw_u32(1).unwrap(),
             Some(12),
             Color::WHITE,
-            ft::HP_MERGE_WINDOW + 0.01,
+            HP_MERGE_WINDOW + 0.01,
             0,
         )];
         assert!(matches!(
@@ -829,7 +842,7 @@ mod tests {
         assert_eq!(offsets[0], 0.0, "the oldest block holds its position");
         assert_eq!(
             offsets[1],
-            12.0 + ft::SPEECH_GAP_PX,
+            12.0 + SPEECH_GAP_PX,
             "the newer block clears the older by its height plus the gap"
         );
     }
@@ -844,7 +857,7 @@ mod tests {
         ];
         let offsets = resolve_offsets(&blocks);
         assert_eq!(offsets[1], 0.0, "the older block is the anchor");
-        assert_eq!(offsets[0], 12.0 + ft::SPEECH_GAP_PX);
+        assert_eq!(offsets[0], 12.0 + SPEECH_GAP_PX);
     }
 
     #[test]
@@ -855,7 +868,7 @@ mod tests {
             block(100.0, 100.0, 40.0, 12.0, 2),
         ];
         let offsets = resolve_offsets(&blocks);
-        assert_eq!(offsets[2], 2.0 * (12.0 + ft::SPEECH_GAP_PX));
+        assert_eq!(offsets[2], 2.0 * (12.0 + SPEECH_GAP_PX));
     }
 
     /// Horizontally adjacent but not overlapping: touching edges must not count as
@@ -920,7 +933,7 @@ mod tests {
         ];
         let offsets = resolve_offsets(&blocks);
         assert_eq!(offsets[0], 0.0);
-        assert_eq!(offsets[1], 7.0 + ft::SPEECH_GAP_PX);
+        assert_eq!(offsets[1], 7.0 + SPEECH_GAP_PX);
     }
 
     /// A taller block (more queued lines) must be cleared by its real height.
@@ -931,7 +944,7 @@ mod tests {
             block(100.0, 100.0, 40.0, 12.0, 1),
         ];
         let offsets = resolve_offsets(&blocks);
-        assert_eq!(offsets[1], 36.0 + ft::SPEECH_GAP_PX);
+        assert_eq!(offsets[1], 36.0 + SPEECH_GAP_PX);
     }
 
     use crate::game_ui::{GameUiAssets, GameViewport};
@@ -1181,7 +1194,7 @@ mod tests {
     #[test]
     fn the_oldest_line_drops_at_the_cap() {
         let mut world = observer_world();
-        for i in 0..=ft::SPEECH_MAX_LINES {
+        for i in 0..=SPEECH_MAX_LINES {
             world.trigger(ShowFloatingText {
                 text: format!("line {i}"),
                 speaker: Some(SPEAKER.to_owned()),
@@ -1194,7 +1207,7 @@ mod tests {
 
         let mut q = world.query::<&SpeechBlock>();
         let block = q.single(&world).unwrap();
-        assert_eq!(block.lines.len(), ft::SPEECH_MAX_LINES);
+        assert_eq!(block.lines.len(), SPEECH_MAX_LINES);
         assert!(
             !block.compose().contains("line 0"),
             "the first line must have been evicted, got {:?}",
@@ -1311,7 +1324,7 @@ mod tests {
         });
         world.flush();
 
-        advance(&mut world, ft::HP_DURATION_MS + 1);
+        advance(&mut world, HP_DURATION_MS + 1);
         world.run_system_once(tick_hit_points).unwrap();
 
         assert_eq!(world.query::<&HitPointsText>().iter(&world).count(), 0);
@@ -1330,7 +1343,7 @@ mod tests {
         world.flush();
 
         // 95% through: past HP_FADE_START, not yet expired.
-        advance(&mut world, (ft::HP_DURATION_MS as f32 * 0.95) as u64);
+        advance(&mut world, (HP_DURATION_MS as f32 * 0.95) as u64);
         world.run_system_once(tick_hit_points).unwrap();
 
         let mut q = world.query::<&TextColor>();
@@ -1360,7 +1373,7 @@ mod tests {
         });
         world.flush();
 
-        advance(&mut world, ft::SPEECH_MIN_MS + 1);
+        advance(&mut world, SPEECH_MIN_MS + 1);
         world.run_system_once(tick_speech_blocks).unwrap();
 
         let mut q = world.query::<&SpeechBlock>();
@@ -1415,7 +1428,7 @@ mod tests {
         });
         world.flush();
 
-        advance(&mut world, ft::SPEECH_MAX_MS + 1);
+        advance(&mut world, SPEECH_MAX_MS + 1);
         world.run_system_once(tick_speech_blocks).unwrap();
 
         assert_eq!(world.query::<&SpeechBlock>().iter(&world).count(), 0);
@@ -1475,7 +1488,7 @@ mod tests {
 
         assert_eq!(
             gap(1.0),
-            ft::SPEECH_HEAD_OFFSET_WORLD,
+            SPEECH_HEAD_OFFSET_WORLD,
             "speech sits above the tile"
         );
         assert_eq!(gap(0.5), gap(1.0) * 2.0);
@@ -1525,7 +1538,7 @@ mod tests {
     }
 
     fn a_number(world: &mut World, elapsed_ms: u64, offset_y: f32) -> Entity {
-        let mut timer = Timer::new(Duration::from_millis(ft::HP_DURATION_MS), TimerMode::Once);
+        let mut timer = Timer::new(Duration::from_millis(HP_DURATION_MS), TimerMode::Once);
         timer.tick(Duration::from_millis(elapsed_ms));
         world
             .spawn((
@@ -1555,7 +1568,7 @@ mod tests {
     fn a_number_rises_as_its_timer_advances() {
         let mut world = placement_world(7);
         let at_rest = a_number(&mut world, 0, 0.0);
-        let halfway = a_number(&mut world, ft::HP_DURATION_MS / 2, 0.0);
+        let halfway = a_number(&mut world, HP_DURATION_MS / 2, 0.0);
 
         world.run_system_once(position_floating_texts).unwrap();
 
@@ -1620,7 +1633,7 @@ mod tests {
         assert_eq!(world.get::<FloatingText>(first).unwrap().offset_y, 0.0);
         assert_eq!(
             world.get::<FloatingText>(second).unwrap().offset_y,
-            size.y + ft::SPEECH_GAP_PX
+            size.y + SPEECH_GAP_PX
         );
     }
 

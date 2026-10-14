@@ -1,7 +1,14 @@
 use bevy::prelude::*;
 
-use crate::conf::ui::{status as conf, ui_colors};
+use crate::conf::ui::ui_colors;
 use crate::core::{PlayerStatus, PlayerStatuses};
+
+const ICON_SIZE: f32 = 9.0;
+const ICON_GAP: f32 = 1.0;
+const PADDING: f32 = 2.0;
+const BORDER: f32 = 1.0;
+const SHEET_CELL: u32 = 9;
+const SHEET_COLUMNS: u32 = 8;
 
 #[derive(Component, Clone, Copy, Debug)]
 pub(super) struct StatusIcon(PlayerStatus);
@@ -18,8 +25,8 @@ pub(super) fn setup_status_assets(
     mut layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
     let layout = layouts.add(TextureAtlasLayout::from_grid(
-        UVec2::splat(conf::SHEET_CELL),
-        conf::SHEET_COLUMNS,
+        UVec2::splat(SHEET_CELL),
+        SHEET_COLUMNS,
         1,
         None,
         None,
@@ -52,8 +59,8 @@ pub(super) fn spawn_status_bar(
                 height: Val::Percent(100.0),
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                column_gap: Val::Px(conf::ICON_GAP),
-                padding: UiRect::left(Val::Px(conf::PADDING)),
+                column_gap: Val::Px(ICON_GAP),
+                padding: UiRect::left(Val::Px(PADDING)),
                 ..default()
             },
             ImageNode {
@@ -74,8 +81,8 @@ pub(super) fn spawn_status_bar(
                 StatusIcon(status),
                 status_icon(assets, status),
                 Node {
-                    width: Val::Px(conf::ICON_SIZE),
-                    height: Val::Px(conf::ICON_SIZE),
+                    width: Val::Px(ICON_SIZE),
+                    height: Val::Px(ICON_SIZE),
                     flex_shrink: 0.0,
                     display: Display::None,
                     ..default()
@@ -91,7 +98,7 @@ pub(super) fn spawn_status_bar(
                 flex_grow: 1.0,
                 max_height: Val::Px(14.0),
                 max_width: Val::Px(150.0),
-                border: UiRect::all(Val::Px(conf::BORDER)),
+                border: UiRect::all(Val::Px(BORDER)),
                 ..default()
             },
             BorderColor {
@@ -135,7 +142,7 @@ mod tests {
 
     #[test]
     fn the_sheet_has_a_column_per_status() {
-        assert_eq!(conf::SHEET_COLUMNS as usize, PlayerStatus::ALL.len());
+        assert_eq!(SHEET_COLUMNS as usize, PlayerStatus::ALL.len());
     }
 
     #[test]

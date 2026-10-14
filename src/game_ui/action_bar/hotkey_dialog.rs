@@ -7,6 +7,9 @@ use crate::game_ui::{
 };
 use crate::player::{Hotkey, Keybinds, PlayerAction};
 
+const HOTKEY_DIALOG_WIDTH: f32 = 400.0;
+const WARNING_COLOR: Srgba = Srgba::new(0.95, 0.30, 0.30, 1.0);
+
 const CLEAR: &str = "clear";
 
 #[derive(Event, Debug, Clone, Copy)]
@@ -76,7 +79,7 @@ pub(super) fn on_open_hotkey_dialog(
     let handle = ModalDialog::new(format!(
         "Edit Hotkey for \"Action Bar: Action Button {button}\""
     ))
-    .with_width(Val::Px(dialog::HOTKEY_DIALOG_WIDTH))
+    .with_width(Val::Px(HOTKEY_DIALOG_WIDTH))
     .with_buttons([
         DialogButton::ok(),
         DialogButton::custom(CLEAR, "Clear"),
@@ -133,7 +136,7 @@ pub(super) fn on_open_hotkey_dialog(
             HotkeyWarningText,
             Text::new(verdict(captured, slot, &keybinds).warning()),
             font(11.0),
-            TextColor(dialog::WARNING_COLOR.into()),
+            TextColor(WARNING_COLOR.into()),
             Node {
                 margin: UiRect::top(Val::Px(8.0)),
                 ..default()

@@ -243,6 +243,7 @@ pub enum ServerMessage {
         agent_id: AgentId,
         direction: WalkingDirection,
         from: Position,
+        stack: u8,
     },
     SpawnAgent {
         agent_id: AgentId,
@@ -253,10 +254,12 @@ pub enum ServerMessage {
         health: u32,
         speed: u16,
         kind: AgentKind,
+        stack: u8,
     },
     TeleportAgent {
         agent_id: AgentId,
         position: Position,
+        stack: u8,
     },
     ChatMessage {
         author: String,
@@ -636,6 +639,7 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
             agent_id: AgentId(buf.read_u16_le()?),
             direction: decode_direction(buf)?,
             from: decode_position(buf)?,
+            stack: buf.read_u8()?,
         }),
         SRV_SPAWN_AGENT => {
             let agent_id = AgentId(buf.read_u16_le()?);
@@ -654,6 +658,7 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
             let speed = buf.read_u16_le()?;
             let kind =
                 AgentKind::from_id(buf.read_u8()?).ok_or(MessageDecodeError::WrongSequence)?;
+            let stack = buf.read_u8()?;
             Ok(ServerMessage::SpawnAgent {
                 agent_id,
                 outfit: (outfit_id, colors),
@@ -663,11 +668,13 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
                 health,
                 speed,
                 kind,
+                stack,
             })
         }
         SRV_TELEPORT_AGENT => Ok(ServerMessage::TeleportAgent {
             agent_id: AgentId(buf.read_u16_le()?),
             position: decode_position(buf)?,
+            stack: buf.read_u8()?,
         }),
         SRV_CHAT_MESSAGE => {
             let author_len = buf.read_u16_le()? as usize;
@@ -1518,7 +1525,7 @@ mod tests {
     }
 
     #[rustfmt::skip]
-    fn spawn_agent_frame(kind: u8) -> BytesMut {
+    fn spawn_agent_frame(kind: u8, stack: u8) -> BytesMut {
         frame(&[
             SRV_SPAWN_AGENT,
             7, 0,
@@ -1529,12 +1536,13 @@ mod tests {
             21, 0, 1, 2, 3, 4,
             100, 0,
             kind,
+            stack,
         ])
     }
 
     #[test]
     fn spawn_agent_decodes_its_kind() {
-        let mut buf = spawn_agent_frame(2);
+        let mut buf = spawn_agent_frame(2, 0);
 
         match (GameMessageCodec {}).decode(&mut buf).unwrap().unwrap() {
             ServerMessage::SpawnAgent {
@@ -1548,9 +1556,70 @@ mod tests {
         }
     }
 
+    /// The bytes the server's `encode_spawn_agent_frame` produces.
+    #[test]
+    fn decodes_a_spawn_agent_frame() {
+        let mut buf = spawn_agent_frame(2, 3);
+
+        match (GameMessageCodec {}).decode(&mut buf).unwrap().unwrap() {
+            ServerMessage::SpawnAgent { kind, stack, .. } => {
+                assert_eq!(kind, AgentKind::Npc);
+                assert_eq!(stack, 3);
+            }
+            other => panic!("expected SpawnAgent, got {other:?}"),
+        }
+        assert!(buf.is_empty(), "the frame must be fully consumed");
+    }
+
+    /// The bytes the server's `encode_move_agent_frame` produces.
+    #[rustfmt::skip]
+    #[test]
+    fn decodes_a_move_agent_frame() {
+        let mut buf = frame(&[
+            SRV_MOVE_AGENT,
+            7, 0,
+            0x01,
+            100, 0, 100, 0, 7,
+            2,
+        ]);
+
+        match (GameMessageCodec {}).decode(&mut buf).unwrap().unwrap() {
+            ServerMessage::MoveAgent { agent_id, direction, from, stack } => {
+                assert_eq!(agent_id, AgentId(7));
+                assert!(matches!(direction, WalkingDirection::East));
+                assert_eq!(from, Position::new(100, 100, 7));
+                assert_eq!(stack, 2);
+            }
+            other => panic!("expected MoveAgent, got {other:?}"),
+        }
+        assert!(buf.is_empty(), "the frame must be fully consumed");
+    }
+
+    /// The bytes the server's `encode_teleport_agent_frame` produces.
+    #[rustfmt::skip]
+    #[test]
+    fn decodes_a_teleport_agent_frame() {
+        let mut buf = frame(&[
+            SRV_TELEPORT_AGENT,
+            7, 0,
+            101, 0, 100, 0, 7,
+            1,
+        ]);
+
+        match (GameMessageCodec {}).decode(&mut buf).unwrap().unwrap() {
+            ServerMessage::TeleportAgent { agent_id, position, stack } => {
+                assert_eq!(agent_id, AgentId(7));
+                assert_eq!(position, Position::new(101, 100, 7));
+                assert_eq!(stack, 1);
+            }
+            other => panic!("expected TeleportAgent, got {other:?}"),
+        }
+        assert!(buf.is_empty(), "the frame must be fully consumed");
+    }
+
     #[test]
     fn an_unknown_agent_kind_is_a_decode_error() {
-        let mut buf = spawn_agent_frame(3);
+        let mut buf = spawn_agent_frame(3, 0);
 
         assert!((GameMessageCodec {}).decode(&mut buf).is_err());
     }

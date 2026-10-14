@@ -19,6 +19,12 @@ use super::activation::ActionSlotActivated;
 use super::menu::OpenSlotMenu;
 use super::state::{ActionBar, SlotAction};
 
+const SLOT_GAP: f32 = 2.0;
+const HOTKEY_FONT_SIZE: f32 = 9.0;
+const SPELL_ICON_SIZE: u32 = 30;
+const SPELL_ICON_COLUMNS: u32 = 12;
+const SPELL_ICON_ROWS: u32 = 11;
+
 #[derive(Resource)]
 pub struct ActionBarAssets {
     pub spells: Handle<Image>,
@@ -58,13 +64,13 @@ pub(super) struct ActionSlotCell(pub u16);
 pub(super) struct VisibleSlots(pub u16);
 
 pub fn visible_slot_count(content_width: f32) -> u16 {
-    ((content_width + conf::SLOT_GAP) / (conf::SLOT_SIZE + conf::SLOT_GAP)).floor() as u16
+    ((content_width + SLOT_GAP) / (conf::SLOT_SIZE + SLOT_GAP)).floor() as u16
 }
 
 /// The atlas index of a 1-based icon cell, if the sheet has that cell.
 pub fn spell_icon_index(icon: u16) -> Option<usize> {
     let index = usize::from(icon.checked_sub(1)?);
-    (index < (conf::SPELL_ICON_COLUMNS * conf::SPELL_ICON_ROWS) as usize).then_some(index)
+    (index < (SPELL_ICON_COLUMNS * SPELL_ICON_ROWS) as usize).then_some(index)
 }
 
 pub(super) fn setup_action_bar_assets(
@@ -73,9 +79,9 @@ pub(super) fn setup_action_bar_assets(
     mut layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
     let spell_layout = layouts.add(TextureAtlasLayout::from_grid(
-        UVec2::splat(conf::SPELL_ICON_SIZE),
-        conf::SPELL_ICON_COLUMNS,
-        conf::SPELL_ICON_ROWS,
+        UVec2::splat(SPELL_ICON_SIZE),
+        SPELL_ICON_COLUMNS,
+        SPELL_ICON_ROWS,
         None,
         None,
     ));
@@ -99,7 +105,7 @@ pub fn spawn_action_bar(commands: &mut Commands, ui_assets: &GameUiAssets) -> En
                 height: Val::Px(conf::HEIGHT),
                 flex_shrink: 0.0,
                 flex_direction: FlexDirection::Row,
-                column_gap: Val::Px(conf::SLOT_GAP),
+                column_gap: Val::Px(SLOT_GAP),
                 padding: UiRect::all(Val::Px(conf::PADDING)),
                 overflow: Overflow::clip(),
                 ..default()
@@ -257,7 +263,7 @@ fn hotkey_label(hotkey: &Hotkey, ui_assets: &GameUiAssets) -> impl Bundle {
         Text::new(hotkey.short_label()),
         TextFont {
             font: ui_assets.font.clone(),
-            font_size: conf::HOTKEY_FONT_SIZE,
+            font_size: HOTKEY_FONT_SIZE,
             ..default()
         }
         .with_font_smoothing(FontSmoothing::AntiAliased),

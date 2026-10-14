@@ -9,6 +9,8 @@ use crate::game_ui::GameUiAssets;
 use crate::game_ui::chat::events::{ActivateChannel, MessageAppendedUi, MessageTrimmedUi};
 use crate::game_ui::chat::state::{ChannelId, ChatState, StoredMessage};
 
+const LINE_HEIGHT: f32 = 12.;
+
 #[derive(Component)]
 pub struct MessagePanel;
 
@@ -30,7 +32,9 @@ pub fn spawn_message_panel(
         .spawn((
             Node {
                 width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
+                flex_grow: 1.0,
+                flex_basis: Val::Px(0.0),
+                min_height: Val::Px(0.0),
                 border: UiRect::new(Val::Px(2.0), Val::Px(2.0), Val::Px(2.0), Val::Px(0.0)),
                 ..default()
             },
@@ -208,6 +212,7 @@ fn spawn_message_row(
             TextFont {
                 font: ui_assets.font.clone(),
                 font_size: 11.0,
+                weight: FontWeight::BOLD,
                 ..default()
             },
         ));
@@ -218,6 +223,7 @@ fn spawn_message_row(
                 TextFont {
                     font: ui_assets.font.clone(),
                     font_size: 11.0,
+                    weight: FontWeight::BOLD,
                     ..default()
                 },
             ));
@@ -228,6 +234,7 @@ fn spawn_message_row(
             TextFont {
                 font: ui_assets.font.clone(),
                 font_size: 11.0,
+                weight: FontWeight::BOLD,
                 ..default()
             },
         ));
@@ -339,7 +346,7 @@ pub fn track_scroll_pinning(
         let mut delta = -Vec2::new(mouse_wheel.x, mouse_wheel.y);
 
         if mouse_wheel.unit == MouseScrollUnit::Line {
-            delta *= chat::LINE_HEIGHT;
+            delta *= LINE_HEIGHT;
         }
 
         if scroll.y + delta.y <= 0.0 {

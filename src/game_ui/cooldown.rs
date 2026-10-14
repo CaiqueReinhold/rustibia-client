@@ -5,8 +5,13 @@ use bevy::prelude::*;
 use bevy::text::FontSmoothing;
 use bevy_text_outline::TextOutline;
 
-use crate::conf::ui::{cooldown as conf, ui_colors};
 use crate::core::{CooldownState, SpellCooldowns, SpellGroup, SpellId};
+
+const COOLDOWN_SHADE: Srgba = Srgba::new(0.345098, 0.345098, 0.345098, 0.666667);
+const FONT_SIZE: f32 = 10.0;
+const GROUP_SHEET_CELL: u32 = 20;
+const GROUP_SHEET_COLUMNS: u32 = 4;
+const GROUP_SHEET_ROWS: u32 = 2;
 
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum CooldownOverlay {
@@ -38,9 +43,9 @@ pub(super) fn setup_cooldown_assets(
     mut layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
     let group_layout = layouts.add(TextureAtlasLayout::from_grid(
-        UVec2::splat(conf::GROUP_SHEET_CELL),
-        conf::GROUP_SHEET_COLUMNS,
-        conf::GROUP_SHEET_ROWS,
+        UVec2::splat(GROUP_SHEET_CELL),
+        GROUP_SHEET_COLUMNS,
+        GROUP_SHEET_ROWS,
         None,
         None,
     ));
@@ -62,7 +67,7 @@ pub(super) fn group_icon(assets: &CooldownAssets, group: SpellGroup) -> ImageNod
 
 /// The sheet's second row holds the coloured icons.
 fn group_icon_index(group: SpellGroup) -> usize {
-    conf::GROUP_SHEET_COLUMNS as usize + group.index()
+    GROUP_SHEET_COLUMNS as usize + group.index()
 }
 
 pub(super) fn spawn_cooldown_overlay(
@@ -92,7 +97,7 @@ pub(super) fn spawn_cooldown_overlay(
                 Text::default(),
                 TextFont {
                     font: font.clone(),
-                    font_size: conf::FONT_SIZE,
+                    font_size: FONT_SIZE,
                     ..default()
                 }
                 .with_font_smoothing(FontSmoothing::None),
@@ -117,7 +122,7 @@ fn timer_label(remaining: Duration) -> String {
 
 fn shade_gradient(recovered: f32) -> BackgroundGradient {
     let edge = recovered * TAU;
-    let shade = Color::from(ui_colors::COOLDOWN_SHADE);
+    let shade = Color::from(COOLDOWN_SHADE);
     ConicGradient::new(
         UiPosition::CENTER,
         vec![
@@ -187,7 +192,7 @@ mod tests {
             [Some(0.0), Some(TAU / 4.0), Some(TAU / 4.0), Some(TAU)]
         );
         assert_eq!(conic.stops[1].color, Color::NONE);
-        assert_eq!(conic.stops[2].color, Color::from(ui_colors::COOLDOWN_SHADE));
+        assert_eq!(conic.stops[2].color, Color::from(COOLDOWN_SHADE));
         assert_eq!(conic.start, 0.0);
     }
 

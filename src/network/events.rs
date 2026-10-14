@@ -139,6 +139,7 @@ pub struct AgentChangedDirection {
 pub struct TeleportAgent {
     pub agent_id: AgentId,
     pub position: Position,
+    pub stack: u8,
 }
 
 #[derive(Event, Debug)]
@@ -161,6 +162,7 @@ pub struct MoveAgent {
     pub agent_id: AgentId,
     pub from: Position,
     pub direction: WalkingDirection,
+    pub stack: u8,
 }
 
 #[derive(Event, Debug)]
@@ -173,6 +175,7 @@ pub struct SpawnAgent {
     pub health: u32,
     pub speed: u16,
     pub kind: AgentKind,
+    pub stack: u8,
 }
 
 #[derive(Event, Debug)]
@@ -402,11 +405,13 @@ pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
             agent_id,
             direction,
             from,
+            stack,
         } => {
             commands.trigger(MoveAgent {
                 agent_id,
                 direction,
                 from,
+                stack,
             });
         }
         ServerMessage::SpawnAgent {
@@ -418,6 +423,7 @@ pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
             health,
             speed,
             kind,
+            stack,
         } => {
             commands.trigger(SpawnAgent {
                 agent_id,
@@ -428,10 +434,19 @@ pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
                 health,
                 speed,
                 kind,
+                stack,
             });
         }
-        ServerMessage::TeleportAgent { agent_id, position } => {
-            commands.trigger(TeleportAgent { agent_id, position });
+        ServerMessage::TeleportAgent {
+            agent_id,
+            position,
+            stack,
+        } => {
+            commands.trigger(TeleportAgent {
+                agent_id,
+                position,
+                stack,
+            });
         }
         ServerMessage::ChatMessage {
             author,

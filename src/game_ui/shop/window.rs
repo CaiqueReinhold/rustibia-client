@@ -24,6 +24,13 @@ use crate::items::{Item, ItemFlag, ItemId, fluid_name, slider_amount, spawn_ui_i
 use crate::network::{ClientMessage, SendMessage};
 use crate::player::components::PlayerInventory;
 
+const SHOP_WIDTH: f32 = 190.0;
+const SHOP_TOP: f32 = 60.0;
+const SHOP_ROW_HEIGHT: f32 = 36.0;
+const SHOP_VISIBLE_ROWS: f32 = 3.0;
+const SHOP_CURRENCY_ITEM: u16 = 3031;
+const SHOP_DIM_TEXT_COLOR: Srgba = Srgba::new(0.45, 0.45, 0.45, 1.0);
+
 #[derive(Component, Debug)]
 pub(super) struct ShopWindow {
     npc_name: String,
@@ -124,10 +131,7 @@ pub(super) fn open_or_close_window(
             if let Some((entity, _)) = open {
                 commands.entity(entity).despawn();
             }
-            let at = Vec2::new(
-                ((window.width() - conf::SHOP_WIDTH) / 2.0).max(0.0),
-                conf::SHOP_TOP,
-            );
+            let at = Vec2::new(((window.width() - SHOP_WIDTH) / 2.0).max(0.0), SHOP_TOP);
             let icons = Icons {
                 ui_assets: &ui_assets,
                 configs: &configs,
@@ -219,11 +223,11 @@ fn spawn_window(
     at: Vec2,
 ) {
     let ui_assets = icons.ui_assets;
-    let handle = FloatingDialog::new("NPC Trade", conf::SHOP_WIDTH, at).spawn(commands, ui_assets);
+    let handle = FloatingDialog::new("NPC Trade", SHOP_WIDTH, at).spawn(commands, ui_assets);
     let root = handle.root;
     commands.entity(root).insert(ShopWindow::new(npc_name));
 
-    let currency_icon = icons.spawn(commands, atlases, ItemId(conf::SHOP_CURRENCY_ITEM), 100);
+    let currency_icon = icons.spawn(commands, atlases, ItemId(SHOP_CURRENCY_ITEM), 100);
     let currency = commands
         .spawn(Node {
             flex_direction: FlexDirection::Column,
@@ -279,7 +283,7 @@ fn spawn_window(
             .y
             .max(0.0);
             let delta = match scroll.unit {
-                MouseScrollUnit::Line => scroll.y * conf::SHOP_ROW_HEIGHT,
+                MouseScrollUnit::Line => scroll.y * SHOP_ROW_HEIGHT,
                 MouseScrollUnit::Pixel => scroll.y,
             };
             position.y = (position.y - delta).clamp(0.0, max);
@@ -310,7 +314,7 @@ fn spawn_window(
         .spawn((
             Node {
                 width: Val::Percent(100.0),
-                height: Val::Px(conf::SHOP_ROW_HEIGHT * conf::SHOP_VISIBLE_ROWS + 2.0),
+                height: Val::Px(SHOP_ROW_HEIGHT * SHOP_VISIBLE_ROWS + 2.0),
                 border: UiRect::all(Val::Px(1.0)),
                 overflow: Overflow::clip(),
                 ..default()
@@ -562,7 +566,7 @@ fn spawn_line(
     let color: Color = if row.max > 0 {
         Color::WHITE
     } else {
-        conf::SHOP_DIM_TEXT_COLOR.into()
+        SHOP_DIM_TEXT_COLOR.into()
     };
     let icon = icons.spawn_ware(commands, atlases, row.ware);
     let text = commands
@@ -602,7 +606,7 @@ fn spawn_line(
             OfferLine(ware),
             Node {
                 width: Val::Percent(100.0),
-                height: Val::Px(conf::SHOP_ROW_HEIGHT),
+                height: Val::Px(SHOP_ROW_HEIGHT),
                 flex_shrink: 0.0,
                 column_gap: Val::Px(4.0),
                 padding: UiRect::axes(Val::Px(2.0), Val::Px(2.0)),
@@ -785,6 +789,7 @@ fn font(ui_assets: &GameUiAssets, size: f32) -> TextFont {
     TextFont {
         font: ui_assets.font.clone(),
         font_size: size,
+        weight: FontWeight::BOLD,
         ..default()
     }
 }

@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::conf::ui::{SIDE_PANEL_WIDTH, button_row as conf, ui_colors, z_index::Z_WINDOW};
+use crate::conf::ui::{SIDE_PANEL_WIDTH, ui_colors, z_index::Z_WINDOW};
 use crate::game_ui::button::spawn_panel_button;
 use crate::game_ui::settings::OpenOptionsWindow;
 use crate::game_ui::skills::ToggleSkillsWindow;
@@ -8,6 +8,11 @@ use crate::game_ui::{
     GameUiAssets, Index, RightPanelDock, UIWindow, UIWindowDock, UiWindowRef, WindowId,
 };
 use crate::network::RequestLogout;
+
+/// One row of buttons plus the window's 2px borders.
+const HEIGHT: f32 = 30.0;
+const PADDING_X: f32 = 15.0;
+const PADDING_Y: f32 = 4.0;
 
 /// A headless window in the right dock, below the inventory.
 ///
@@ -74,8 +79,8 @@ pub(super) fn spawn_button_row(
             flex_direction: FlexDirection::Row,
             align_items: AlignItems::Center,
             justify_content: JustifyContent::Start,
-            column_gap: Val::Px(conf::PADDING_Y),
-            padding: UiRect::axes(Val::Px(conf::PADDING_X), Val::Px(conf::PADDING_Y)),
+            column_gap: Val::Px(PADDING_Y),
+            padding: UiRect::axes(Val::Px(PADDING_X), Val::Px(PADDING_Y)),
             ..default()
         })
         .add_child(options)
@@ -95,8 +100,8 @@ pub(super) fn spawn_button_row(
             Node {
                 left: Val::Px(-2.0),
                 width: Val::Px(SIDE_PANEL_WIDTH),
-                height: Val::Px(conf::HEIGHT),
-                min_height: Val::Px(conf::HEIGHT),
+                height: Val::Px(HEIGHT),
+                min_height: Val::Px(HEIGHT),
                 border: UiRect::all(Val::Px(2.0)),
                 flex_direction: FlexDirection::Column,
                 overflow: Overflow::hidden(),

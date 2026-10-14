@@ -5,7 +5,9 @@ use bevy::prelude::*;
 
 use crate::agent::components::Agent;
 use crate::agent::{AgentId, WalkingDirection};
-use crate::map::{DrawLayer, DrawOrder, FloorEntities, Map, Position, drawn_tile};
+use crate::map::{
+    DrawLayer, DrawOrder, FloorEntities, Map, Position, StackIndex, StackSlot, drawn_tile,
+};
 use crate::network::events::{AgentChangedDirection, TeleportAgent};
 use crate::player::components::Player;
 
@@ -19,12 +21,13 @@ pub struct Moving {
 #[derive(Component, Debug)]
 pub struct ShouldTeleport {
     pub position: Position,
+    pub stack: u8,
 }
 
 #[derive(Debug, PartialEq)]
 pub enum QueuedMove {
-    Step(Position, WalkingDirection),
-    Teleport(Position),
+    Step(Position, WalkingDirection, u8),
+    Teleport(Position, u8),
 }
 
 /// A creature's steps and teleports, in the order the server sent them.
@@ -35,6 +38,8 @@ pub struct MoveQueue(pub VecDeque<QueuedMove>);
 pub struct StartAgentMove {
     pub agent_id: AgentId,
     pub direction: WalkingDirection,
+    /// The server's stack index on the destination; `None` for the client's own prediction.
+    pub stack: Option<u8>,
 }
 
 #[derive(Event, Debug)]
@@ -57,15 +62,24 @@ fn place(transform: &mut Transform, pos: &Position, elevation: u8) {
 pub fn on_start_agent_move(
     event: On<StartAgentMove>,
     mut commands: Commands,
-    mut agent_q: Query<(&mut Agent, &Position, &mut Transform, &mut DrawOrder)>,
+    mut agent_q: Query<(
+        &mut Agent,
+        &Position,
+        &mut Transform,
+        &mut DrawOrder,
+        &StackSlot,
+    )>,
     map: Res<Map>,
 ) {
     let Some(entity) = map.get_agent(event.agent_id) else {
         return;
     };
-    let Ok((mut agent, position, mut transform, mut order)) = agent_q.get_mut(entity) else {
+    let Ok((mut agent, position, mut transform, mut order, slot)) = agent_q.get_mut(entity) else {
         return;
     };
+    if let Some(stack) = event.stack {
+        commands.entity(entity).insert(StackIndex(stack));
+    }
 
     let start_position = position.clone();
     let facing = event.direction.facing();
@@ -79,7 +93,7 @@ pub fn on_start_agent_move(
         // instead, the same way `move_agent` does when a step completes.
         let elevation = map.get_elevation(&end_position);
         place(&mut transform, &end_position, elevation);
-        DrawOrder::move_to(&mut order, &end_position, DrawLayer::Creature);
+        DrawOrder::move_to(&mut order, &end_position, DrawLayer::Creature, slot.0);
         commands.entity(entity).insert(end_position);
         return;
     };
@@ -113,12 +127,21 @@ pub fn on_agent_change_direction(
 
 pub fn move_agent(
     mut commands: Commands,
-    mut moving_q: Query<(Entity, &mut Transform, &mut Moving, &mut DrawOrder), With<Agent>>,
+    mut moving_q: Query<
+        (
+            Entity,
+            &mut Transform,
+            &mut Moving,
+            &mut DrawOrder,
+            &StackSlot,
+        ),
+        With<Agent>,
+    >,
     mut agent_q: Query<&mut Agent>,
     map: Res<Map>,
     time: Res<Time>,
 ) {
-    for (entity, mut transform, mut moving, mut order) in moving_q.iter_mut() {
+    for (entity, mut transform, mut moving, mut order, slot) in moving_q.iter_mut() {
         moving.timer.tick(time.delta());
         if moving.timer.is_finished() {
             let mut agent = agent_q.get_mut(entity).unwrap();
@@ -134,7 +157,7 @@ pub fn move_agent(
             // Not left to `sync_agent_draw_order`: a frame long enough to skip
             // the end of the step would strand the creature on a
             // `PassingThrough` corner until the next `PostUpdate`.
-            DrawOrder::move_to(&mut order, &moving.end, DrawLayer::Creature);
+            DrawOrder::move_to(&mut order, &moving.end, DrawLayer::Creature, slot.0);
             continue;
         }
 
@@ -162,7 +185,7 @@ pub fn move_agent(
         } else {
             DrawLayer::PassingThrough
         };
-        DrawOrder::move_to(&mut order, &tile, layer);
+        DrawOrder::move_to(&mut order, &tile, layer, slot.0);
     }
 }
 
@@ -194,10 +217,11 @@ pub fn on_teleport_agent(
     match queue_q.get_mut(agent) {
         Ok(mut queue) => queue
             .0
-            .push_back(QueuedMove::Teleport(event.position.clone())),
+            .push_back(QueuedMove::Teleport(event.position.clone(), event.stack)),
         Err(_) => {
             commands.entity(agent).insert(ShouldTeleport {
                 position: event.position.clone(),
+                stack: event.stack,
             });
         }
     }
@@ -221,7 +245,7 @@ pub fn teleport_agents(
             place(&mut transform, &teleport.position, elevation);
             commands
                 .entity(entity)
-                .try_insert(teleport.position.clone())
+                .try_insert((teleport.position.clone(), StackIndex(teleport.stack)))
                 .try_remove::<ShouldTeleport>();
 
             if player.is_none() {
@@ -241,12 +265,12 @@ pub fn process_agent_move_queues(
         let Some(next) = queue.0.pop_front() else {
             continue;
         };
-        let (move_from, direction) = match next {
-            QueuedMove::Step(from, direction) => (from, direction),
-            QueuedMove::Teleport(position) => {
+        let (move_from, direction, stack) = match next {
+            QueuedMove::Step(from, direction, stack) => (from, direction, stack),
+            QueuedMove::Teleport(position, stack) => {
                 commands
                     .entity(entity)
-                    .try_insert(ShouldTeleport { position });
+                    .try_insert(ShouldTeleport { position, stack });
                 continue;
             }
         };
@@ -262,6 +286,7 @@ pub fn process_agent_move_queues(
         commands.trigger(StartAgentMove {
             agent_id: agent.agent_id,
             direction,
+            stack: Some(stack),
         });
     }
 }
@@ -274,12 +299,16 @@ pub fn process_agent_move_queues(
 /// step disagrees with where the agent is.
 pub fn sync_agent_draw_order(
     mut agents_q: Query<
-        (&Position, &mut DrawOrder),
-        (With<Agent>, Without<Moving>, Changed<Position>),
+        (&Position, &StackSlot, &mut DrawOrder),
+        (
+            With<Agent>,
+            Without<Moving>,
+            Or<(Changed<Position>, Changed<StackSlot>)>,
+        ),
     >,
 ) {
-    for (position, mut order) in &mut agents_q {
-        DrawOrder::move_to(&mut order, position, DrawLayer::Creature);
+    for (position, slot, mut order) in &mut agents_q {
+        DrawOrder::move_to(&mut order, position, DrawLayer::Creature, slot.0);
     }
 }
 
@@ -289,7 +318,7 @@ mod tests {
     use crate::agent::FacingDirection;
     use crate::items::ItemId;
     use crate::items::{Item, ItemConfig, ItemFlag};
-    use crate::map::DrawRank;
+    use crate::map::{DrawOrigin, DrawRank, StackIndex};
     use crate::network::events::MoveAgent;
     use bevy::ecs::schedule::{ExecutorKind, ScheduleBuildSettings};
     use bevy::ecs::system::{RunSystemOnce, ScheduleSystem};
@@ -364,6 +393,7 @@ mod tests {
         world.trigger(StartAgentMove {
             agent_id: AgentId(1),
             direction: WalkingDirection::East,
+            stack: None,
         });
         world.flush();
 
@@ -395,6 +425,7 @@ mod tests {
         world.trigger(StartAgentMove {
             agent_id: AgentId(1),
             direction: WalkingDirection::South,
+            stack: None,
         });
         world.flush();
 
@@ -651,6 +682,7 @@ mod tests {
             .insert(MoveQueue(VecDeque::from([QueuedMove::Step(
                 at(99, 100),
                 WalkingDirection::East,
+                0,
             )])));
 
         run_after_a_same_frame_despawn(&mut world, entity, process_agent_move_queues);
@@ -682,6 +714,55 @@ mod tests {
         }
     }
 
+    #[test]
+    fn co_located_agents_draw_at_distinct_keys_with_the_top_one_last() {
+        let mut world = World::new();
+        world.insert_resource(Map::default());
+        let pos = at(100, 100);
+        let spawn = |world: &mut World, id: u16| {
+            let entity = world
+                .spawn((
+                    Agent {
+                        agent_id: AgentId(id),
+                        ..Default::default()
+                    },
+                    pos.clone(),
+                    DrawOrder::new(pos.clone(), DrawRank::Standing, DrawLayer::Creature, 0),
+                ))
+                .id();
+            world.resource_mut::<Map>().add_agent(AgentId(id), entity);
+            entity
+        };
+        let bottom = spawn(&mut world, 1);
+        let top = spawn(&mut world, 2);
+
+        world.run_system_once(crate::map::sync_tile_agents).unwrap();
+        world
+            .run_system_once(crate::map::restack_tile_agents)
+            .unwrap();
+        world.run_system_once(sync_agent_draw_order).unwrap();
+
+        let origin = DrawOrigin::around(&pos);
+        let key = |e: Entity| world.get::<DrawOrder>(e).unwrap().key(&origin);
+        assert!(key(top) > key(bottom));
+    }
+
+    #[test]
+    fn a_server_step_carries_its_stack_index_to_the_position_it_sets() {
+        let (mut world, entity) = a_creature_receiving_messages();
+
+        world.trigger(MoveAgent {
+            agent_id: AgentId(1),
+            from: at(100, 100),
+            direction: WalkingDirection::South,
+            stack: 1,
+        });
+        world.flush();
+
+        assert_eq!(world.get::<Position>(entity), Some(&at(100, 101)));
+        assert_eq!(world.get::<StackIndex>(entity), Some(&StackIndex(1)));
+    }
+
     /// Walking onto a hole: the step plays out before the fall.
     #[test]
     fn a_teleport_during_a_step_waits_for_the_step() {
@@ -690,10 +771,12 @@ mod tests {
             agent_id: AgentId(1),
             from: at(100, 100),
             direction: WalkingDirection::South,
+            stack: 0,
         });
         world.trigger(TeleportAgent {
             agent_id: AgentId(1),
             position: at(99, 99),
+            stack: 0,
         });
 
         run_frames(&mut world, 1);
@@ -711,11 +794,13 @@ mod tests {
         world.trigger(TeleportAgent {
             agent_id: AgentId(1),
             position: at(99, 99),
+            stack: 0,
         });
         world.trigger(MoveAgent {
             agent_id: AgentId(1),
             from: at(99, 99),
             direction: WalkingDirection::East,
+            stack: 0,
         });
 
         run_frames(&mut world, 4);
@@ -729,6 +814,7 @@ mod tests {
         world.trigger(TeleportAgent {
             agent_id: AgentId(1),
             position: at(99, 99),
+            stack: 0,
         });
 
         run_frames(&mut world, 1);
@@ -747,6 +833,7 @@ mod tests {
                 y: 100,
                 z: 6,
             },
+            stack: 0,
         });
 
         run_after_a_same_frame_despawn(&mut world, entity, teleport_agents);
@@ -767,6 +854,7 @@ mod tests {
                 y: 100,
                 z: 6,
             },
+            stack: 0,
         });
 
         world.run_system_once(teleport_agents).unwrap();
@@ -818,6 +906,7 @@ mod tests {
         world.trigger(StartAgentMove {
             agent_id: AgentId(1),
             direction: WalkingDirection::SouthEast,
+            stack: None,
         });
         world.flush();
 
@@ -826,6 +915,7 @@ mod tests {
         world.trigger(StartAgentMove {
             agent_id: AgentId(1),
             direction: WalkingDirection::East,
+            stack: None,
         });
         world.flush();
 

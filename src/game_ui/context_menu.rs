@@ -1,10 +1,19 @@
 use bevy::camera::visibility::RenderLayers;
 use bevy::prelude::*;
 
-use crate::conf::ui::{context_menu as conf, ui_colors, z_index::Z_CONTEXT_MENU};
+use crate::conf::ui::ui_colors;
 use crate::core::GameState;
 use crate::game_ui::GameUiAssets;
 use crate::game_ui::scaling::logical_size;
+
+const Z_CONTEXT_MENU: i32 = 99;
+const MIN_WIDTH: f32 = 120.0;
+const PADDING: f32 = 2.0;
+const ROW_PADDING_X: f32 = 6.0;
+const ROW_PADDING_Y: f32 = 3.0;
+const HOVER_COLOR: Srgba = Srgba::new(0.25, 0.32, 0.45, 1.0);
+const DISABLED_COLOR: Srgba = Srgba::new(0.45, 0.45, 0.45, 1.0);
+const SEPARATOR_MARGIN_Y: f32 = 2.0;
 
 #[derive(Clone, Debug)]
 pub struct ContextMenuEntry {
@@ -96,10 +105,10 @@ impl ContextMenu {
                     position_type: PositionType::Absolute,
                     left: Val::Px(at.x),
                     top: Val::Px(at.y),
-                    min_width: Val::Px(conf::MIN_WIDTH),
+                    min_width: Val::Px(MIN_WIDTH),
                     flex_direction: FlexDirection::Column,
                     border: UiRect::all(Val::Px(1.0)),
-                    padding: UiRect::all(Val::Px(conf::PADDING)),
+                    padding: UiRect::all(Val::Px(PADDING)),
                     ..default()
                 },
                 BorderColor {
@@ -145,14 +154,14 @@ fn spawn_row(
     let label_color = if entry.enabled {
         ui_colors::FONT_COLOR_CONTENT
     } else {
-        conf::DISABLED_COLOR
+        DISABLED_COLOR
     };
     let row = commands
         .spawn((
             ContextMenuRow { index },
             Node {
                 width: Val::Percent(100.0),
-                padding: UiRect::axes(Val::Px(conf::ROW_PADDING_X), Val::Px(conf::ROW_PADDING_Y)),
+                padding: UiRect::axes(Val::Px(ROW_PADDING_X), Val::Px(ROW_PADDING_Y)),
                 ..default()
             },
             BackgroundColor(Color::NONE),
@@ -175,7 +184,7 @@ fn spawn_row(
             .observe(
                 move |_: On<Pointer<Over>>, mut colors: Query<&mut BackgroundColor>| {
                     if let Ok(mut color) = colors.get_mut(row) {
-                        *color = BackgroundColor(conf::HOVER_COLOR.into());
+                        *color = BackgroundColor(HOVER_COLOR.into());
                     }
                 },
             )
@@ -212,7 +221,7 @@ fn spawn_separator(commands: &mut Commands) -> Entity {
             Node {
                 width: Val::Percent(100.0),
                 height: Val::Px(1.0),
-                margin: UiRect::vertical(Val::Px(conf::SEPARATOR_MARGIN_Y)),
+                margin: UiRect::vertical(Val::Px(SEPARATOR_MARGIN_Y)),
                 ..default()
             },
             BackgroundColor(ui_colors::DARK_BORDER_COLOR.into()),

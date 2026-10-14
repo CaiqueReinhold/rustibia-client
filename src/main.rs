@@ -1,7 +1,9 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![allow(clippy::too_many_arguments, clippy::type_complexity)]
 
+use bevy::log::LogPlugin;
 use bevy::prelude::*;
-use bevy::window::PresentMode;
+use bevy::window::{PresentMode, WindowResizeConstraints};
 
 use bevy_text_outline::TextOutlinePlugin;
 
@@ -14,6 +16,7 @@ mod config;
 mod core;
 mod game_ui;
 mod items;
+mod logging;
 mod map;
 mod network;
 mod overlay;
@@ -27,11 +30,20 @@ fn main() {
         .add_plugins(
             DefaultPlugins
                 .set(ImagePlugin::default_nearest())
+                .set(LogPlugin {
+                    custom_layer: logging::file_layer,
+                    ..default()
+                })
                 .set(WindowPlugin {
                     primary_window: Some(Window {
                         title: "Rustibia".into(),
                         name: Some("bevy.app".into()),
                         present_mode: PresentMode::AutoNoVsync,
+                        resize_constraints: WindowResizeConstraints {
+                            min_width: conf::ui::WINDOW_MIN_WIDTH,
+                            min_height: conf::ui::WINDOW_MIN_HEIGHT,
+                            ..default()
+                        },
                         ..default()
                     }),
                     ..default()

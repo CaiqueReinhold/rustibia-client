@@ -190,7 +190,7 @@ mod tests {
     fn the_use_target_includes_the_local_player() {
         let mut map = Map::default();
         let tile = Position { x: 10, y: 10, z: 7 };
-        map.index_agent(AgentId(7), &tile);
+        map.index_agent(AgentId(7), &tile, None);
 
         assert_eq!(agent_to_use_on(&map, &tile), Some(AgentId(7)));
     }
@@ -199,8 +199,8 @@ mod tests {
     fn the_use_target_is_the_topmost_agent() {
         let mut map = Map::default();
         let tile = Position { x: 10, y: 10, z: 7 };
-        map.index_agent(AgentId(1), &tile);
-        map.index_agent(AgentId(2), &tile);
+        map.index_agent(AgentId(1), &tile, None);
+        map.index_agent(AgentId(2), &tile, None);
 
         assert_eq!(agent_to_use_on(&map, &tile), Some(AgentId(2)));
     }

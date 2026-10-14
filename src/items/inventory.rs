@@ -1,7 +1,7 @@
 use bevy::{ecs::relationship::RelatedSpawnerCommands, prelude::*};
 
 use crate::{
-    conf::ui::{INVENTORY_HEIGHT, ITEM_SLOT_SIZE, SIDE_PANEL_WIDTH, ui_colors, z_index::Z_WINDOW},
+    conf::ui::{ITEM_SLOT_SIZE, SIDE_PANEL_WIDTH, ui_colors, z_index::Z_WINDOW},
     core::Appearances,
     game_ui::{GameUiAssets, Index, RightPanelDock, UIWindow, UIWindowDock, UiWindowRef, WindowId},
     items::{
@@ -10,6 +10,8 @@ use crate::{
     },
     player::{InteractionMode, MouseHoverState, components::PlayerInventory},
 };
+
+const INVENTORY_HEIGHT: f32 = 170.0;
 
 #[derive(Component, Debug)]
 pub struct InventorySlotUi {
@@ -78,6 +80,7 @@ fn spawn_inventory_display(
         TextFont {
             font: ui_assets.font.clone(),
             font_size: 9.0,
+            weight: FontWeight::BOLD,
             ..default()
         },
         TextLayout::new_with_justify(Justify::Center),

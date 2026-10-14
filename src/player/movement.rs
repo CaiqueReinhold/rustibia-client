@@ -122,6 +122,7 @@ pub fn process_move_queue(
                 commands.trigger(StartAgentMove {
                     agent_id: player.agent_id,
                     direction,
+                    stack: None,
                 });
             }
             Movement::Turn(direction) => {

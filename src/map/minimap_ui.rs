@@ -6,13 +6,10 @@ use bevy::{
 };
 
 use crate::{
-    conf::{
-        minimap::{DEFAULT_ZOOM, IMAGE_SIZE, RECENTRE_MARGIN, ZOOM_LEVELS},
-        ui::{
-            SIDE_PANEL_WIDTH,
-            ui_colors::{self, DARK_BORDER_COLOR, LIGHT_BORDER_COLOR},
-            z_index::Z_WINDOW,
-        },
+    conf::ui::{
+        SIDE_PANEL_WIDTH,
+        ui_colors::{self, DARK_BORDER_COLOR, LIGHT_BORDER_COLOR},
+        z_index::Z_WINDOW,
     },
     core::GameState,
     game_ui::{GameUiAssets, Index, RightPanelDock, UIWindow, UIWindowDock, UiWindowRef, WindowId},
@@ -22,6 +19,13 @@ use crate::{
     },
     player::components::Player,
 };
+
+const IMAGE_SIZE: u16 = 2048;
+/// How close to the texture edge the player gets before the window re-centres.
+const RECENTRE_MARGIN: u16 = 256;
+/// Tiles visible per axis at each zoom level (index 0 = most zoomed in).
+const ZOOM_LEVELS: [u8; 4] = [20, 40, 80, 160];
+const DEFAULT_ZOOM: usize = 2; // 80×80 tiles
 
 /// A tile no chunk has written yet.
 const UNEXPLORED: [u8; 4] = [0, 0, 0, 255];

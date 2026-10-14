@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use bevy::prelude::*;
@@ -11,10 +11,8 @@ use crate::map::position::Position;
 #[derive(Debug, Default)]
 pub struct MapTile {
     pub items: Vec<Arc<Item>>,
-    /// Agents standing here, in arrival order. Topmost is `.last()`, mirroring
-    /// `peek_item`. This is the client's own ordering: the server knows its own
-    /// stack order but does not send it (see the spec's follow-up task), so this
-    /// list is authoritative for the client and nothing else.
+    /// Agents standing here, bottom first; topmost is `.last()`, mirroring `peek_item`. Each
+    /// arrival is inserted at the stack index the server sent with it.
     pub agents: SmallVec<[AgentId; 1]>,
 }
 
@@ -26,6 +24,7 @@ pub struct Map {
     /// The single source of truth for the tile index: callers name the agent
     /// rather than a position, which can already be stale by the time they call.
     agent_tiles: HashMap<AgentId, Position>,
+    restacked: HashSet<Position>,
 }
 
 impl Map {
@@ -67,22 +66,30 @@ impl Map {
         self.tiles.get(pos).map_or(&[], |t| t.agents.as_slice())
     }
 
-    /// Moves `id`'s tile-index entry to `pos`, first removing it from wherever
-    /// `agent_tiles` says it was indexed before. A no-op if `id` is already
-    /// indexed at `pos` — the caller (`sync_tile_agents`) fires on every
-    /// `Changed<Position>`, including a component reinserted at its current
-    /// value (`teleport_agents` re-inserts unconditionally), and skipping the
-    /// remove-then-push in that case is what keeps arrival order from churning.
-    pub(crate) fn index_agent(&mut self, id: AgentId, pos: &Position) {
+    /// Moves `id`'s tile-index entry to `pos` at `stack`, clamped to the top, or on top when
+    /// `stack` is `None`. Re-indexing at its current tile changes nothing unless `stack` names a
+    /// different place in the list.
+    pub(crate) fn index_agent(&mut self, id: AgentId, pos: &Position, stack: Option<u8>) {
         if self.agent_tiles.get(&id) == Some(pos) {
-            return;
+            let Some(stack) = stack else {
+                return;
+            };
+            let agents = self.agents_on(pos);
+            let top = agents.len().saturating_sub(1);
+            if agents.iter().position(|a| *a == id) == Some((stack as usize).min(top)) {
+                return;
+            }
         }
         if let Some(old) = self.agent_tiles.remove(&id)
             && let Some(tile) = self.tiles.get_mut(&old)
         {
             tile.agents.retain(|a| *a != id);
+            self.restacked.insert(old);
         }
-        self.tiles.entry(pos.clone()).or_default().agents.push(id);
+        let agents = &mut self.tiles.entry(pos.clone()).or_default().agents;
+        let at = stack.map_or(agents.len(), |s| (s as usize).min(agents.len()));
+        agents.insert(at, id);
+        self.restacked.insert(pos.clone());
         self.agent_tiles.insert(id, pos.clone());
     }
 
@@ -99,7 +106,13 @@ impl Map {
             && let Some(tile) = self.tiles.get_mut(&pos)
         {
             tile.agents.retain(|a| *a != id);
+            self.restacked.insert(pos);
         }
+    }
+
+    /// The tiles whose agent list changed since the last call.
+    pub(crate) fn take_restacked(&mut self) -> Vec<Position> {
+        self.restacked.drain().collect()
     }
 
     pub fn can_walk(&self, pos: &Position) -> bool {
@@ -308,7 +321,7 @@ mod tests {
     #[test]
     fn replace_tile_preserves_agents_standing_there() {
         let mut map = Map::default();
-        map.index_agent(AgentId(5), &at(10, 10));
+        map.index_agent(AgentId(5), &at(10, 10), None);
 
         map.replace_tile(
             vec![item(ItemId(100), vec![ItemFlag::Ground], None)],
@@ -326,12 +339,65 @@ mod tests {
     #[test]
     fn indexing_an_agent_at_its_current_tile_is_a_no_op() {
         let mut map = Map::default();
-        map.index_agent(AgentId(1), &at(10, 10));
-        map.index_agent(AgentId(2), &at(10, 10));
+        map.index_agent(AgentId(1), &at(10, 10), None);
+        map.index_agent(AgentId(2), &at(10, 10), None);
 
-        map.index_agent(AgentId(1), &at(10, 10));
+        map.index_agent(AgentId(1), &at(10, 10), None);
 
         assert_eq!(map.agents_on(&at(10, 10)), &[AgentId(1), AgentId(2)]);
+    }
+
+    #[test]
+    fn an_agent_is_inserted_at_its_stack_index() {
+        let mut map = Map::default();
+        map.index_agent(AgentId(1), &at(10, 10), None);
+        map.index_agent(AgentId(2), &at(10, 10), None);
+
+        map.index_agent(AgentId(3), &at(10, 10), Some(0));
+
+        assert_eq!(
+            map.agents_on(&at(10, 10)),
+            &[AgentId(3), AgentId(1), AgentId(2)]
+        );
+    }
+
+    #[test]
+    fn a_stack_index_past_the_top_appends() {
+        let mut map = Map::default();
+        map.index_agent(AgentId(1), &at(10, 10), None);
+
+        map.index_agent(AgentId(2), &at(10, 10), Some(9));
+
+        assert_eq!(map.agents_on(&at(10, 10)), &[AgentId(1), AgentId(2)]);
+    }
+
+    #[test]
+    fn reindexing_on_the_same_tile_with_a_new_index_moves_the_agent() {
+        let mut map = Map::default();
+        map.index_agent(AgentId(1), &at(10, 10), None);
+        map.index_agent(AgentId(2), &at(10, 10), None);
+
+        map.index_agent(AgentId(2), &at(10, 10), Some(0));
+
+        assert_eq!(map.agents_on(&at(10, 10)), &[AgentId(2), AgentId(1)]);
+    }
+
+    #[test]
+    fn indexing_and_unindexing_record_every_tile_whose_list_changed() {
+        let mut map = Map::default();
+        map.index_agent(AgentId(1), &at(10, 10), None);
+        map.take_restacked();
+
+        map.index_agent(AgentId(1), &at(11, 10), None);
+        let mut moved = map.take_restacked();
+        moved.sort_by_key(|p| p.x);
+        assert_eq!(moved, vec![at(10, 10), at(11, 10)]);
+
+        map.index_agent(AgentId(1), &at(11, 10), None);
+        assert!(map.take_restacked().is_empty(), "a no-op touches nothing");
+
+        map.unindex_agent(AgentId(1));
+        assert_eq!(map.take_restacked(), vec![at(11, 10)]);
     }
 
     fn ground() -> Arc<Item> {
@@ -367,7 +433,7 @@ mod tests {
     fn eviction_clears_the_items_under_an_agent_but_keeps_the_agent_indexed() {
         let mut map = Map::default();
         map.replace_tile(vec![ground()], &at(110, 100));
-        map.index_agent(AgentId(5), &at(110, 100));
+        map.index_agent(AgentId(5), &at(110, 100), None);
 
         let evicted = map.evict_unless(|pos| in_viewport(&at(100, 100), pos));
 
@@ -379,7 +445,7 @@ mod tests {
     #[test]
     fn an_agent_only_tile_outside_is_not_reported_as_evicted() {
         let mut map = Map::default();
-        map.index_agent(AgentId(5), &at(110, 100));
+        map.index_agent(AgentId(5), &at(110, 100), None);
 
         assert!(
             map.evict_unless(|pos| in_viewport(&at(100, 100), pos))

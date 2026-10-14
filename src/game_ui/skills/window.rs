@@ -1,11 +1,16 @@
 use bevy::prelude::*;
 
 use crate::agent::HudBar;
-use crate::conf::ui::skills::DIVIDER_HEIGHT;
 use crate::conf::ui::ui_colors::{DARK_BORDER_COLOR, FONT_COLOR_CONTENT, LIGHT_BORDER_COLOR};
-use crate::conf::ui::{skills as conf, ui_colors};
 use crate::game_ui::GameUiAssets;
 use crate::game_ui::skills::{DISPLAY_ORDER, SkillProgress, SkillType, SkillsState};
+
+const BAR_FILL_COLOR: Srgba = Srgba::new(1.0, 0.0, 0.0, 1.0);
+const PADDING: f32 = 4.0;
+const ROW_GAP: f32 = 10.0;
+const BAR_HEIGHT: f32 = 5.0;
+const FONT_SIZE: f32 = 11.0;
+const DIVIDER_HEIGHT: f32 = 1.0;
 
 /// Sits on the window's content entity, which is where `AddUIWindow` puts the
 /// `UiWindowRef` the toggle looks for.
@@ -41,8 +46,8 @@ pub fn spawn_skills_content(
                 width: Val::Percent(100.0),
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(conf::ROW_GAP),
-                padding: UiRect::all(Val::Px(conf::PADDING)),
+                row_gap: Val::Px(ROW_GAP),
+                padding: UiRect::all(Val::Px(PADDING)),
                 ..default()
             },
             ImageNode {
@@ -99,7 +104,7 @@ fn spawn_label(commands: &mut Commands, ui_assets: &GameUiAssets, text: &str) ->
             Text::new(text.to_string()),
             TextFont {
                 font: ui_assets.font.clone(),
-                font_size: conf::FONT_SIZE,
+                font_size: FONT_SIZE,
                 weight: FontWeight::BOLD,
                 ..default()
             },
@@ -179,7 +184,7 @@ fn spawn_skill_row(
                 height: Val::Percent(100.0),
                 ..default()
             },
-            BackgroundColor(ui_colors::BAR_FILL_COLOR.into()),
+            BackgroundColor(BAR_FILL_COLOR.into()),
         ))
         .id();
 
@@ -187,7 +192,7 @@ fn spawn_skill_row(
         .spawn((
             Node {
                 width: Val::Percent(100.0),
-                height: Val::Px(conf::BAR_HEIGHT),
+                height: Val::Px(BAR_HEIGHT),
                 border: UiRect::all(Val::Px(1.0)),
                 ..default()
             },
