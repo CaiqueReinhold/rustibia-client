@@ -109,6 +109,7 @@ fn spawn_label(commands: &mut Commands, ui_assets: &GameUiAssets, text: &str) ->
                 ..default()
             },
             TextColor(FONT_COLOR_CONTENT.into()),
+            Pickable::IGNORE,
         ))
         .id()
 }

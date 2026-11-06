@@ -4,6 +4,7 @@ use std::time::Duration;
 use bevy::prelude::*;
 
 use crate::agent::components::Agent;
+use crate::agent::viewport::OutOfSight;
 use crate::agent::{AgentId, WalkingDirection};
 use crate::map::{
     DrawLayer, DrawOrder, FloorEntities, Map, Position, StackIndex, StackSlot, drawn_tile,
@@ -77,6 +78,7 @@ pub fn on_start_agent_move(
     let Ok((mut agent, position, mut transform, mut order, slot)) = agent_q.get_mut(entity) else {
         return;
     };
+    commands.entity(entity).remove::<OutOfSight>();
     if let Some(stack) = event.stack {
         commands.entity(entity).insert(StackIndex(stack));
     }
@@ -246,7 +248,7 @@ pub fn teleport_agents(
             commands
                 .entity(entity)
                 .try_insert((teleport.position.clone(), StackIndex(teleport.stack)))
-                .try_remove::<ShouldTeleport>();
+                .try_remove::<(ShouldTeleport, OutOfSight)>();
 
             if player.is_none() {
                 commands
@@ -820,6 +822,48 @@ mod tests {
         run_frames(&mut world, 1);
 
         assert_eq!(*world.get::<Position>(entity).unwrap(), at(99, 99));
+    }
+
+    #[test]
+    fn a_server_step_brings_an_out_of_sight_creature_back() {
+        let (mut world, entity) = a_creature_receiving_messages();
+        world.entity_mut(entity).insert(OutOfSight);
+
+        world.trigger(MoveAgent {
+            agent_id: AgentId(1),
+            from: at(100, 100),
+            direction: WalkingDirection::South,
+            stack: 0,
+        });
+        world.flush();
+
+        assert!(world.get::<OutOfSight>(entity).is_none());
+    }
+
+    /// Cleared when the teleport lands rather than when it arrives: it waits in the queue
+    /// behind any step, and until then `Position` is still the stale tile.
+    #[test]
+    fn a_teleport_brings_an_out_of_sight_creature_back_only_when_it_lands() {
+        let (mut world, entity) = a_creature_receiving_messages();
+        world.trigger(MoveAgent {
+            agent_id: AgentId(1),
+            from: at(100, 100),
+            direction: WalkingDirection::South,
+            stack: 0,
+        });
+        world.flush();
+        world.entity_mut(entity).insert(OutOfSight);
+        world.trigger(TeleportAgent {
+            agent_id: AgentId(1),
+            position: at(99, 99),
+            stack: 0,
+        });
+
+        run_frames(&mut world, 1);
+        assert!(world.get::<OutOfSight>(entity).is_some());
+
+        run_frames(&mut world, 3);
+        assert!(world.get::<OutOfSight>(entity).is_none());
     }
 
     #[test]

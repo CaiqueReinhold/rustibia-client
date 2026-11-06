@@ -215,6 +215,7 @@ fn spawn_message_row(
                 weight: FontWeight::BOLD,
                 ..default()
             },
+            Pickable::IGNORE,
         ));
         if let Some(author) = &stored.message.author {
             c.spawn((
@@ -226,6 +227,7 @@ fn spawn_message_row(
                     weight: FontWeight::BOLD,
                     ..default()
                 },
+                Pickable::IGNORE,
             ));
         }
         c.spawn((
@@ -237,6 +239,7 @@ fn spawn_message_row(
                 weight: FontWeight::BOLD,
                 ..default()
             },
+            Pickable::IGNORE,
         ));
     });
 }

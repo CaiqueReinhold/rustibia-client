@@ -437,6 +437,7 @@ fn spawn_tab_entity(
                 width: 1.0,
                 ..default()
             },
+            Pickable::IGNORE,
         ))
         .id();
     commands.entity(tab_bg).add_child(title);

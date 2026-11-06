@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 use crate::agent::components::{Agent, AgentHud, HealthState};
+use crate::agent::viewport::OutOfSight;
 use crate::agent::{DisplayName, Health, HudBar, Mana};
 use crate::game_ui::Settings;
 use crate::map::{Position, ViewportCenter, viewport::is_kept};
@@ -9,18 +10,18 @@ use crate::player::components::Player;
 pub fn update_hud_visibility(
     center: Res<ViewportCenter>,
     player_pos_q: Query<&Position, With<Player>>,
-    agents_q: Query<(&AgentHud, &Position), With<Agent>>,
+    agents_q: Query<(&AgentHud, &Position, Has<OutOfSight>), With<Agent>>,
     mut visibility_q: Query<&mut Visibility>,
 ) {
     let Ok(player_pos) = player_pos_q.single() else {
         return;
     };
-    for (hud, position) in &agents_q {
+    for (hud, position, out_of_sight) in &agents_q {
         let in_window = center
             .0
             .as_ref()
             .is_none_or(|c| is_kept(c, Some(player_pos), position));
-        let wanted = if position.z == player_pos.z && in_window {
+        let wanted = if position.z == player_pos.z && in_window && !out_of_sight {
             Visibility::Visible
         } else {
             Visibility::Hidden
@@ -265,6 +266,22 @@ mod tests {
         world
             .entity_mut(agent)
             .insert((Agent::default(), Position::new(110, 100, 7)));
+
+        world.run_system_once(update_hud_visibility).unwrap();
+
+        assert_eq!(
+            *world.get::<Visibility>(hud.root).unwrap(),
+            Visibility::Hidden
+        );
+    }
+
+    #[test]
+    fn a_hud_hides_with_an_out_of_sight_agent_back_in_the_window() {
+        let mut world = a_world_with_a_player_at_100_100_7(Some(Position::new(100, 100, 7)));
+        let (agent, hud) = a_hud_agent(&mut world);
+        world
+            .entity_mut(agent)
+            .insert((Agent::default(), Position::new(101, 100, 7), OutOfSight));
 
         world.run_system_once(update_hud_visibility).unwrap();
 

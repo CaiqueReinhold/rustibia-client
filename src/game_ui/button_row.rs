@@ -96,7 +96,7 @@ pub(super) fn spawn_button_row(
                 id: window_id,
                 dock_id: dock.id,
             },
-            Index(0),
+            Index(2),
             Node {
                 left: Val::Px(-2.0),
                 width: Val::Px(SIDE_PANEL_WIDTH),

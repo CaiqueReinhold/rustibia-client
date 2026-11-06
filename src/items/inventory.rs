@@ -320,7 +320,7 @@ pub fn spawn_inventory_ui(
                 id: window_id,
                 dock_id: dock.id,
             },
-            Index(0),
+            Index(1),
             Node {
                 left: Val::Px(-2.0),
                 width: Val::Px(SIDE_PANEL_WIDTH),

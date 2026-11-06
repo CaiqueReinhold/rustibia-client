@@ -85,7 +85,7 @@ pub fn spawn_world_hud(
                 font_size: NAME_FONT_SIZE,
                 ..default()
             }
-            .with_font_smoothing(FontSmoothing::None),
+            .with_font_smoothing(FontSmoothing::AntiAliased),
             LineHeight::Px(NAME_LINE_HEIGHT),
             TextColor(state.color()),
             TextOutline::default(),
