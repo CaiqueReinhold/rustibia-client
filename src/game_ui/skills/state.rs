@@ -65,6 +65,7 @@ mod tests {
             SkillProgress {
                 level: 99,
                 percent_bp: 1,
+                bonus: 0,
             },
         );
 
@@ -75,6 +76,7 @@ mod tests {
                 SkillProgress {
                     level: 12,
                     percent_bp: 4909,
+                    bonus: 0,
                 },
             )],
         });
@@ -96,6 +98,7 @@ mod tests {
                     SkillProgress {
                         level: 12,
                         percent_bp: 4909,
+                        bonus: 0,
                     },
                 ),
                 (
@@ -103,6 +106,7 @@ mod tests {
                     SkillProgress {
                         level: 10,
                         percent_bp: 0,
+                        bonus: 0,
                     },
                 ),
             ],
@@ -113,6 +117,7 @@ mod tests {
             progress: SkillProgress {
                 level: 13,
                 percent_bp: 0,
+                bonus: 0,
             },
         });
 
@@ -146,6 +151,7 @@ mod tests {
                 SkillProgress {
                     level: 12,
                     percent_bp: 4909,
+                    bonus: 0,
                 },
             )],
         });
@@ -169,6 +175,7 @@ mod tests {
             progress: SkillProgress {
                 level: 11,
                 percent_bp: 100,
+                bonus: 0,
             },
         });
 

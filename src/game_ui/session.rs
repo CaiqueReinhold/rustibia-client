@@ -104,6 +104,7 @@ mod tests {
                 crate::game_ui::skills::SkillProgress {
                     level: 12,
                     percent_bp: 4909,
+                    bonus: 0,
                 },
             );
         }

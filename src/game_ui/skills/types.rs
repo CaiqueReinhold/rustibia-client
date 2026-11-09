@@ -51,16 +51,22 @@ pub const DISPLAY_ORDER: [SkillType; 7] = [
     SkillType::Shielding,
 ];
 
-/// `percent_bp` is hundredths of a percent, `0..=10_000`.
+/// `percent_bp` is hundredths of a percent, `0..=10_000`, toward the next `level`; `bonus` is
+/// what worn equipment adds on top and does not move the bar.
 #[derive(Clone, Copy, Debug)]
 pub struct SkillProgress {
     pub level: u16,
     pub percent_bp: u16,
+    pub bonus: i16,
 }
 
 impl SkillProgress {
     pub fn ratio(&self) -> f32 {
         self.percent_bp as f32 / 10_000.0
+    }
+
+    pub fn shown_level(&self) -> u16 {
+        self.level.saturating_add_signed(self.bonus)
     }
 }
 
@@ -89,11 +95,24 @@ mod tests {
     }
 
     #[test]
+    fn the_shown_level_adds_the_bonus_and_stops_at_zero() {
+        let at = |level, bonus| SkillProgress {
+            level,
+            percent_bp: 0,
+            bonus,
+        };
+        assert_eq!(at(12, 4).shown_level(), 16);
+        assert_eq!(at(12, -3).shown_level(), 9);
+        assert_eq!(at(5, -10).shown_level(), 0);
+    }
+
+    #[test]
     fn a_ratio_is_the_bar_width() {
         assert_eq!(
             SkillProgress {
                 level: 1,
-                percent_bp: 0
+                percent_bp: 0,
+                bonus: 0,
             }
             .ratio(),
             0.0
@@ -101,7 +120,8 @@ mod tests {
         assert_eq!(
             SkillProgress {
                 level: 1,
-                percent_bp: 5_000
+                percent_bp: 5_000,
+                bonus: 0,
             }
             .ratio(),
             0.5
@@ -109,7 +129,8 @@ mod tests {
         assert_eq!(
             SkillProgress {
                 level: 1,
-                percent_bp: 10_000
+                percent_bp: 10_000,
+                bonus: 0,
             }
             .ratio(),
             1.0

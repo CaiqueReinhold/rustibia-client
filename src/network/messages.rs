@@ -424,6 +424,11 @@ impl<'a> Reader<'a> {
         Ok(u16::from_le_bytes([b[0], b[1]]))
     }
 
+    fn read_i16_le(&mut self) -> Result<i16, MessageDecodeError> {
+        let b = self.read_bytes(2)?;
+        Ok(i16::from_le_bytes([b[0], b[1]]))
+    }
+
     fn read_u32_le(&mut self) -> Result<u32, MessageDecodeError> {
         let b = self.read_bytes(4)?;
         Ok(u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
@@ -752,8 +757,16 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
                 let id = buf.read_u8()?;
                 let level = buf.read_u16_le()?;
                 let percent_bp = buf.read_u16_le()?;
+                let bonus = buf.read_i16_le()?;
                 match SkillType::from_id(id) {
-                    Some(skill) => skills.push((skill, SkillProgress { level, percent_bp })),
+                    Some(skill) => skills.push((
+                        skill,
+                        SkillProgress {
+                            level,
+                            percent_bp,
+                            bonus,
+                        },
+                    )),
                     None => warn!("ignoring a skill id this build does not know: {id}"),
                 }
             }
@@ -763,12 +776,17 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
             let id = buf.read_u8()?;
             let level = buf.read_u16_le()?;
             let percent_bp = buf.read_u16_le()?;
+            let bonus = buf.read_i16_le()?;
             let Some(skill) = SkillType::from_id(id) else {
                 return Err(MessageDecodeError::WrongSequence);
             };
             Ok(ServerMessage::SkillUpdated {
                 skill,
-                progress: SkillProgress { level, percent_bp },
+                progress: SkillProgress {
+                    level,
+                    percent_bp,
+                    bonus,
+                },
             })
         }
         SRV_EXPERIENCE_UPDATED => Ok(ServerMessage::ExperienceUpdated {
@@ -2050,7 +2068,7 @@ mod tests {
     fn player_skills_decodes_the_servers_frame() {
         let mut buf = BytesMut::new();
         buf.extend_from_slice(&[
-            15,
+            17,
             0,
             SRV_PLAYER_SKILLS,
             0x87,
@@ -2067,6 +2085,8 @@ mod tests {
             0,
             0xE1,
             0x10,
+            2,
+            0,
         ]);
 
         match (GameMessageCodec {}).decode(&mut buf).unwrap().unwrap() {
@@ -2076,6 +2096,7 @@ mod tests {
                 assert_eq!(skills[0].0, SkillType::Level);
                 assert_eq!(skills[0].1.level, 8);
                 assert_eq!(skills[0].1.percent_bp, 4321);
+                assert_eq!(skills[0].1.bonus, 2);
             }
             other => panic!("expected PlayerSkills, got {other:?}"),
         }
@@ -2084,13 +2105,14 @@ mod tests {
     #[test]
     fn skill_changed_decodes_the_servers_frame() {
         let mut buf = BytesMut::new();
-        buf.extend_from_slice(&[6, 0, SRV_SKILL_UPDATED, 3, 12, 0, 0x2D, 0x13]);
+        buf.extend_from_slice(&[8, 0, SRV_SKILL_UPDATED, 3, 12, 0, 0x2D, 0x13, 0xFD, 0xFF]);
 
         match (GameMessageCodec {}).decode(&mut buf).unwrap().unwrap() {
             ServerMessage::SkillUpdated { skill, progress } => {
                 assert_eq!(skill, SkillType::Sword);
                 assert_eq!(progress.level, 12);
                 assert_eq!(progress.percent_bp, 4909);
+                assert_eq!(progress.bonus, -3);
             }
             other => panic!("expected SkillUpdated, got {other:?}"),
         }
@@ -2113,7 +2135,7 @@ mod tests {
     fn an_unknown_skill_id_is_skipped_not_fatal() {
         let mut buf = BytesMut::new();
         buf.extend_from_slice(&[
-            20,
+            24,
             0,
             SRV_PLAYER_SKILLS,
             0,
@@ -2130,11 +2152,15 @@ mod tests {
             0,
             1,
             0,
+            0,
+            0,
             3,
             12,
             0,
             0x2D,
             0x13,
+            0,
+            0,
         ]);
 
         match (GameMessageCodec {}).decode(&mut buf).unwrap().unwrap() {

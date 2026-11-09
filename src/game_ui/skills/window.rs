@@ -6,6 +6,17 @@ use crate::game_ui::GameUiAssets;
 use crate::game_ui::skills::{DISPLAY_ORDER, SkillProgress, SkillType, SkillsState};
 
 const BAR_FILL_COLOR: Srgba = Srgba::new(1.0, 0.0, 0.0, 1.0);
+const BONUS_COLOR: Srgba = Srgba::new(0.267, 0.678, 0.145, 1.0);
+const MALUS_COLOR: Srgba = Srgba::new(0.863, 0.196, 0.196, 1.0);
+
+fn level_color(progress: &SkillProgress) -> Color {
+    match progress.bonus.signum() {
+        1 => BONUS_COLOR,
+        -1 => MALUS_COLOR,
+        _ => FONT_COLOR_CONTENT,
+    }
+    .into()
+}
 const PADDING: f32 = 4.0;
 const ROW_GAP: f32 = 10.0;
 const BAR_HEIGHT: f32 = 5.0;
@@ -163,7 +174,10 @@ fn spawn_skill_row(
     progress: SkillProgress,
 ) -> Entity {
     let label = spawn_label(commands, ui_assets, skill.label());
-    let value_text = spawn_label(commands, ui_assets, &progress.level.to_string());
+    let value_text = spawn_label(commands, ui_assets, &progress.shown_level().to_string());
+    commands
+        .entity(value_text)
+        .insert(TextColor(level_color(&progress)));
 
     let heading = commands
         .spawn(Node {
@@ -227,13 +241,17 @@ pub fn update_skills_window(
     speed_rows: Query<&SpeedRow>,
     mut bar_q: Query<&mut HudBar>,
     mut text_q: Query<&mut Text>,
+    mut color_q: Query<&mut TextColor>,
 ) {
     for row in &skill_rows {
         let Some(progress) = state.skills.get(&row.skill) else {
             continue;
         };
         if let Ok(mut text) = text_q.get_mut(row.value_text) {
-            text.0 = progress.level.to_string();
+            text.0 = progress.shown_level().to_string();
+        }
+        if let Ok(mut color) = color_q.get_mut(row.value_text) {
+            color.0 = level_color(progress);
         }
         if let Ok(mut bar) = bar_q.get_mut(row.bar) {
             bar.ratio = progress.ratio();
@@ -309,6 +327,7 @@ mod tests {
             SkillProgress {
                 level: 12,
                 percent_bp: 4909,
+                bonus: 0,
             },
         );
         let mut world = world_with(state);
@@ -342,6 +361,7 @@ mod tests {
             SkillProgress {
                 level: 12,
                 percent_bp: 4909,
+                bonus: 0,
             },
         );
         let mut world = world_with(state);
@@ -358,6 +378,7 @@ mod tests {
             SkillProgress {
                 level: 13,
                 percent_bp: 2_500,
+                bonus: 0,
             },
         );
         world.run_system_once(update_skills_window).unwrap();
@@ -367,5 +388,46 @@ mod tests {
         let (value_text, bar) = (row.value_text, row.bar);
         assert_eq!(world.get::<Text>(value_text).unwrap().0, "13");
         assert_eq!(world.get::<HudBar>(bar).unwrap().ratio, 0.25);
+    }
+
+    #[test]
+    fn a_bonus_is_added_to_the_level_and_coloured() {
+        let mut state = SkillsState::default();
+        state.skills.insert(
+            SkillType::Sword,
+            SkillProgress {
+                level: 12,
+                percent_bp: 4909,
+                bonus: 0,
+            },
+        );
+        let mut world = world_with(state);
+        world
+            .run_system_once(
+                |mut commands: Commands, assets: Res<GameUiAssets>, state: Res<SkillsState>| {
+                    spawn_skills_content(&mut commands, &assets, &state);
+                },
+            )
+            .unwrap();
+
+        world.resource_mut::<SkillsState>().skills.insert(
+            SkillType::Sword,
+            SkillProgress {
+                level: 12,
+                percent_bp: 5_000,
+                bonus: 4,
+            },
+        );
+        world.run_system_once(update_skills_window).unwrap();
+
+        let mut rows = world.query::<&SkillRow>();
+        let row = rows.iter(&world).next().unwrap();
+        let (value_text, bar) = (row.value_text, row.bar);
+        assert_eq!(world.get::<Text>(value_text).unwrap().0, "16");
+        assert_eq!(
+            world.get::<TextColor>(value_text).unwrap().0,
+            Color::from(BONUS_COLOR)
+        );
+        assert_eq!(world.get::<HudBar>(bar).unwrap().ratio, 0.5);
     }
 }
