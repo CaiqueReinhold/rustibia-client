@@ -140,9 +140,6 @@ pub(super) fn on_action_slot_activated(
         map: &map,
     };
 
-    if mode.is_targeting() {
-        *mode = InteractionMode::Idle;
-    }
     match activation_for(bar.action(event.slot), &ctx) {
         Activation::Cast(cast) => commands.trigger(cast),
         Activation::Intent(intent) => commands.trigger(intent),
@@ -331,6 +328,39 @@ mod tests {
                 placement: ItemPlacement::Carried,
                 item_id: ItemId(266),
             })
+        ));
+    }
+
+    fn fire_while_aiming(action: SlotAction) -> InteractionMode {
+        let mut world = World::new();
+        world.insert_resource(ActionBar::from_actions([(0, action)].into()));
+        world.init_resource::<Map>();
+        world.init_resource::<CombatTarget>();
+        world.insert_resource(InteractionMode::Targeting(TargetingSource::Spell(SpellId(
+            9,
+        ))));
+        world.add_observer(on_action_slot_activated);
+
+        world.trigger(ActionSlotActivated { slot: 0 });
+        world.flush();
+        world.remove_resource::<InteractionMode>().unwrap()
+    }
+
+    #[test]
+    fn a_slot_that_needs_no_aim_leaves_the_crosshair_up() {
+        for action in [spell(None), spell(Some(Aim::Target)), item(None)] {
+            assert!(matches!(
+                fire_while_aiming(action),
+                InteractionMode::Targeting(TargetingSource::Spell(SpellId(9)))
+            ));
+        }
+    }
+
+    #[test]
+    fn a_slot_that_aims_replaces_the_crosshair() {
+        assert!(matches!(
+            fire_while_aiming(item(Some(Aim::Crosshair))),
+            InteractionMode::Targeting(TargetingSource::Item { .. })
         ));
     }
 }
