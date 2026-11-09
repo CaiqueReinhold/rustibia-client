@@ -1,4 +1,4 @@
-use async_channel::{Receiver, Sender, bounded};
+use async_channel::{Receiver, Sender, bounded, unbounded};
 use async_net::TcpStream;
 use asynchronous_codec::Framed;
 use bevy::log::info;
@@ -60,9 +60,14 @@ pub fn connect(mut commands: Commands, credentials: Res<LoginCredentials>) {
     });
 }
 
+type Channel<T> = (Sender<T>, Receiver<T>);
+
+fn connection_channels() -> (Channel<ClientMessage>, Channel<ServerMessage>) {
+    (unbounded(), bounded(5))
+}
+
 pub(super) fn on_connect(event: On<Connect>, mut commands: Commands, ping: Res<PingState>) {
-    let (cli_send, cli_recv) = bounded(5);
-    let (srv_send, srv_recv) = bounded(5);
+    let ((cli_send, cli_recv), (srv_send, srv_recv)) = connection_channels();
     // Cloning the handle, not the value: the task writes each round trip into the
     // shared atomic behind it, which the UI reads without either side blocking.
     let ping = ping.clone();
@@ -365,6 +370,22 @@ mod tests {
             vec!["player", "position", "container"],
             "DescribePlayer routes first, then the buffer in arrival order"
         );
+    }
+
+    #[test]
+    fn sending_never_blocks_while_the_connection_task_is_not_reading() {
+        let mut world = World::new();
+        world.add_observer(on_send_message);
+        let ((cli_send, _cli_recv), (_srv_send, srv_recv)) = connection_channels();
+        world.insert_resource(ConnectionState {
+            startup_messages: None,
+            sender: cli_send,
+            receiver: srv_recv,
+        });
+
+        for _ in 0..100 {
+            world.trigger(SendMessage(ClientMessage::Ping));
+        }
     }
 
     fn world_with_pending_logout() -> World {

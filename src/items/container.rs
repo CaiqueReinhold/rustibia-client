@@ -77,6 +77,14 @@ fn on_leave_slot(
     hover_state.container_slot = None;
 }
 
+fn on_enter_container(event: On<Pointer<Over>>, mut hover_state: ResMut<MouseHoverState>) {
+    hover_state.container = Some(event.entity);
+}
+
+fn on_leave_container(_: On<Pointer<Out>>, mut hover_state: ResMut<MouseHoverState>) {
+    hover_state.container = None;
+}
+
 /// `None` when the server named an item this client doesn't have — the caller
 /// raises [`ClientOutdated`] rather than showing a container with holes in it.
 fn as_item_vec(items: &[Option<(ItemId, u8)>], configs: &ItemConfigs) -> Option<Vec<Arc<Item>>> {
@@ -159,6 +167,8 @@ pub fn on_open_container(
             Transform::default(),
         ))
         .id();
+    commands.entity(grid).observe(on_enter_container);
+    commands.entity(grid).observe(on_leave_container);
 
     for i in 0..container.capacity {
         let mut slot_cmds = commands.spawn((

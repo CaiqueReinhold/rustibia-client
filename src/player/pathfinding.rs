@@ -30,7 +30,7 @@ fn tile_cost(minimap: &MinimapData, pos: &Position) -> u32 {
     }
 }
 
-fn successors(pos: &Position, minimap: &MinimapData) -> Vec<(Position, u32)> {
+fn successors(pos: &Position, origin: &Position, minimap: &MinimapData) -> Vec<(Position, u32)> {
     use WalkingDirection::*;
     let dirs = [
         North, South, East, West, NorthEast, NorthWest, SouthEast, SouthWest,
@@ -38,7 +38,7 @@ fn successors(pos: &Position, minimap: &MinimapData) -> Vec<(Position, u32)> {
     let mut out = Vec::with_capacity(8);
     for dir in dirs {
         let next = pos.clone() + dir;
-        if !is_passable(minimap, &next) {
+        if heuristic(&next, origin) > MAX_PATH_STEPS as u32 || !is_passable(minimap, &next) {
             continue;
         }
         let base = tile_cost(minimap, &next);
@@ -65,6 +65,10 @@ pub fn compute_path(
     to: &Position,
     minimap: &MinimapData,
 ) -> Option<Vec<WalkingDirection>> {
+    if from.z != to.z || !is_passable(minimap, to) {
+        return None;
+    }
+
     // Short-circuit if target is unreachably far
     if heuristic(from, to) > MAX_PATH_STEPS as u32 {
         return None;
@@ -72,7 +76,7 @@ pub fn compute_path(
 
     let (path, _cost) = astar(
         from,
-        |pos| successors(pos, minimap),
+        |pos| successors(pos, from, minimap),
         |pos| heuristic(pos, to),
         |pos| pos == to,
     )?;
@@ -95,6 +99,9 @@ pub fn compute_path_to_adjacent(
     if from == target {
         return Some(vec![]);
     }
+    if from.z != target.z {
+        return None;
+    }
     if is_adjacent(from, target) {
         return Some(vec![]);
     }
@@ -106,7 +113,7 @@ pub fn compute_path_to_adjacent(
 
     let (path, _cost) = astar(
         from,
-        |pos| successors(pos, minimap),
+        |pos| successors(pos, from, minimap),
         |pos| heuristic(pos, target).saturating_sub(1),
         |pos| is_adjacent(pos, target),
     )?;
@@ -154,7 +161,7 @@ pub fn compute_path_adjacent_to_both(
 
     let (path, _cost) = astar(
         from,
-        |pos| successors(pos, minimap),
+        |pos| successors(pos, from, minimap),
         h,
         |pos| reaches(pos, a) && reaches(pos, b),
     )?;
@@ -177,5 +184,103 @@ fn pos_to_dir(from: &Position, to: &Position) -> WalkingDirection {
         (1, 1) => WalkingDirection::SouthEast,
         (-1, 1) => WalkingDirection::SouthWest,
         _ => WalkingDirection::North,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pos(x: u16, y: u16, z: u8) -> Position {
+        Position { x, y, z }
+    }
+
+    fn block(minimap: &mut MinimapData, p: Position) {
+        minimap.update_tile(&p, 0, 0);
+    }
+
+    fn walk(from: &Position, steps: &[WalkingDirection]) -> Vec<Position> {
+        let mut at = from.clone();
+        let mut visited = Vec::with_capacity(steps.len());
+        for step in steps {
+            at = at + *step;
+            visited.push(at.clone());
+        }
+        visited
+    }
+
+    #[test]
+    fn compute_path_refuses_a_goal_known_impassable() {
+        let mut minimap = MinimapData::default();
+        block(&mut minimap, pos(105, 100, 7));
+
+        assert_eq!(
+            compute_path(&pos(100, 100, 7), &pos(105, 100, 7), &minimap),
+            None
+        );
+    }
+
+    #[test]
+    fn compute_path_gives_up_on_an_unvisited_goal_walled_in() {
+        let mut minimap = MinimapData::default();
+        let goal = pos(110, 100, 7);
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                if (dx, dy) != (0, 0) {
+                    block(&mut minimap, goal.delta(dx, dy));
+                }
+            }
+        }
+
+        assert_eq!(compute_path(&pos(100, 100, 7), &goal, &minimap), None);
+    }
+
+    #[test]
+    fn compute_path_refuses_a_goal_on_another_floor() {
+        let minimap = MinimapData::default();
+
+        assert_eq!(
+            compute_path(&pos(100, 100, 7), &pos(105, 100, 6), &minimap),
+            None
+        );
+    }
+
+    #[test]
+    fn compute_path_to_adjacent_refuses_a_target_on_another_floor() {
+        let minimap = MinimapData::default();
+
+        assert_eq!(
+            compute_path_to_adjacent(&pos(100, 100, 7), &pos(105, 100, 6), &minimap),
+            None
+        );
+    }
+
+    #[test]
+    fn compute_path_walks_around_a_wall() {
+        let mut minimap = MinimapData::default();
+        for y in 98..=102 {
+            block(&mut minimap, pos(102, y, 7));
+        }
+        let from = pos(100, 100, 7);
+        let goal = pos(104, 100, 7);
+
+        let steps = compute_path(&from, &goal, &minimap).expect("a way round the wall");
+        let visited = walk(&from, &steps);
+
+        assert_eq!(visited.last(), Some(&goal));
+        assert!(visited.iter().all(|p| is_passable(&minimap, p)));
+    }
+
+    #[test]
+    fn compute_path_to_adjacent_reaches_beside_an_impassable_target() {
+        let mut minimap = MinimapData::default();
+        let target = pos(105, 100, 7);
+        block(&mut minimap, target.clone());
+        let from = pos(100, 100, 7);
+
+        let steps = compute_path_to_adjacent(&from, &target, &minimap).expect("a path");
+        let end = walk(&from, &steps).pop().expect("at least one step");
+
+        assert!(is_adjacent(&end, &target));
     }
 }

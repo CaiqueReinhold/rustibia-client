@@ -88,6 +88,7 @@ fn on_drag_end(
     mut mode: ResMut<InteractionMode>,
     map: Res<Map>,
     container_q: Query<(&LootContainerUI, &UiWindowRef)>,
+    inventory: Res<PlayerInventory>,
     keyboard: Res<ButtonInput<KeyCode>>,
 ) {
     let InteractionMode::Dragging {
@@ -108,7 +109,7 @@ fn on_drag_end(
     let (item, origin) = (item.clone(), origin.clone());
     *mode = InteractionMode::Idle;
 
-    let Some(to) = valid_drop_target(&item, &hover_state, &map, &container_q) else {
+    let Some(to) = valid_drop_target(&item, &hover_state, &map, &container_q, &inventory) else {
         return;
     };
 

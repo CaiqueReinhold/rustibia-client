@@ -55,6 +55,7 @@ pub fn update_hover_state(
         hover_state.agent = agent_to_use_on(&map, &tile);
         hover_state.tile_position = Some(tile);
         hover_state.container_slot = None;
+        hover_state.container = None;
     } else {
         hover_state.tile_position = None;
         hover_state.agent = None;
@@ -147,7 +148,9 @@ pub(super) fn valid_drop_target(
     hover: &MouseHoverState,
     map: &Map,
     container_q: &Query<(&LootContainerUI, &UiWindowRef)>,
+    inventory: &PlayerInventory,
 ) -> Option<ItemPlacement> {
+    let is_container = |item: &Arc<Item>| item.config.has_flag(ItemFlag::Container);
     if let Some(position) = &hover.tile_position {
         return map.can_drop_item(position).then(|| ItemPlacement::Map {
             position: position.clone(),
@@ -156,8 +159,8 @@ pub(super) fn valid_drop_target(
     }
     if let Some(container) = hover.container {
         let (container_ui, _) = container_q.get(container).ok()?;
-        let slot = hover.container_slot?;
-        if container_ui.is_full() {
+        let slot = hover.container_slot.unwrap_or(0);
+        if container_ui.is_full() && !container_ui.items.get(slot).is_some_and(is_container) {
             return None;
         }
         return Some(ItemPlacement::Container {
@@ -168,6 +171,9 @@ pub(super) fn valid_drop_target(
     info!("valid_drop_target");
     info!("Hover: {:?}", hover);
     if let Some(slot) = hover.inventory_slot {
+        if inventory.items.get(&slot).is_some_and(is_container) {
+            return Some(ItemPlacement::Inventory { slot });
+        }
         let item_slot = dragged.config.slot?;
         info!("{:?} -> {:?}", item_slot, slot);
         if item_slot == slot
@@ -236,5 +242,77 @@ mod tests {
         let hover = world.resource::<MouseHoverState>();
         assert_eq!(hover.tile_position, None);
         assert_eq!(hover.agent, None);
+    }
+
+    fn an_item(flags: Vec<ItemFlag>, slot: Option<InventorySlot>) -> Item {
+        Item::new(
+            Arc::new(crate::items::ItemConfig {
+                id: crate::items::ItemId(1),
+                name: None,
+                flags,
+                friction: None,
+                slot,
+                minimap_color: None,
+                elevation: None,
+            }),
+            1,
+        )
+    }
+
+    fn drop_on_slot(
+        dragged: Item,
+        worn: Option<Item>,
+        slot: InventorySlot,
+    ) -> Option<ItemPlacement> {
+        let inventory = PlayerInventory {
+            items: worn
+                .map(|worn| (slot, Arc::new(worn)))
+                .into_iter()
+                .collect(),
+            capacity: 0,
+        };
+        let hover = MouseHoverState {
+            inventory_slot: Some(slot),
+            ..Default::default()
+        };
+        let mut world = World::new();
+        world.init_resource::<Map>();
+        world
+            .run_system_once(
+                move |map: Res<Map>, container_q: Query<(&LootContainerUI, &UiWindowRef)>| {
+                    valid_drop_target(&dragged, &hover, &map, &container_q, &inventory)
+                },
+            )
+            .unwrap()
+    }
+
+    #[test]
+    fn an_item_with_no_slot_may_be_dropped_on_a_worn_container() {
+        let target = drop_on_slot(
+            an_item(Vec::new(), None),
+            Some(an_item(
+                vec![ItemFlag::Container],
+                Some(InventorySlot::Backpack),
+            )),
+            InventorySlot::Backpack,
+        );
+
+        assert!(matches!(
+            target,
+            Some(ItemPlacement::Inventory {
+                slot: InventorySlot::Backpack
+            })
+        ));
+    }
+
+    #[test]
+    fn an_item_with_no_slot_may_not_be_dropped_on_a_worn_non_container() {
+        let target = drop_on_slot(
+            an_item(Vec::new(), None),
+            Some(an_item(Vec::new(), Some(InventorySlot::Head))),
+            InventorySlot::Head,
+        );
+
+        assert!(target.is_none());
     }
 }
