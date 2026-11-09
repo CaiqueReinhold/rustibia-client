@@ -6,10 +6,13 @@ use crate::{
     agent::{FacingDirection, WalkingDirection},
     game_ui::{ActionSlotActivated, ContextMenuRoot, EnterChatMode, ModalDialogRoot, Settings},
     map::Map,
-    player::Hotkey,
-    player::interaction::InteractionIntent,
-    player::movement::{ChangePlayerDirection, MovePlayer},
-    player::target::{CombatTarget, TargetSquare, refresh_target_square},
+    network::RequestLogout,
+    player::{
+        Hotkey,
+        interaction::InteractionIntent,
+        movement::{ChangePlayerDirection, MovePlayer},
+        target::{CombatTarget, TargetSquare, refresh_target_square},
+    },
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -18,6 +21,7 @@ pub enum PlayerAction {
     ChangeDirection(FacingDirection),
     EnterChatMode,
     ActivateActionSlot(u16),
+    Logout,
 }
 
 #[derive(Resource)]
@@ -95,6 +99,7 @@ impl Default for Keybinds {
                 (Hotkey::plain(KeyZ), Move(Walk::SouthWest)),
                 (Hotkey::plain(KeyC), Move(Walk::SouthEast)),
                 (Hotkey::plain(Enter), PlayerAction::EnterChatMode),
+                (Hotkey::new(KeyL, true, false, false), PlayerAction::Logout),
             ]),
         }
     }
@@ -102,13 +107,16 @@ impl Default for Keybinds {
 
 #[derive(Resource, Debug)]
 pub struct KeyRepeatState {
-    pressed_key: Option<KeyCode>,
+    /// Keys still held, in press order; the last one is the one that repeats.
+    held: Vec<KeyCode>,
+    repeating: Option<KeyCode>,
     timer: Timer,
 }
 
 pub fn init_repeat_state(mut commands: Commands, settings: Res<Settings>) {
     commands.insert_resource(KeyRepeatState {
-        pressed_key: None,
+        held: Vec::new(),
+        repeating: None,
         timer: Timer::new(settings.key_repeat(), TimerMode::Repeating),
     });
 }
@@ -132,7 +140,8 @@ pub fn read_player_input(
     // typing a name there would also walk the character and fire keybinds.
     if chat_mode.active || input_focus.0.is_some() || !modals.is_empty() {
         // Reset key-repeat so movement doesn't auto-resume when typing ends.
-        key_repeat.pressed_key = None;
+        key_repeat.held.clear();
+        key_repeat.repeating = None;
         key_repeat.timer.reset();
         return;
     }
@@ -148,27 +157,18 @@ pub fn read_player_input(
                 | KeyCode::ControlRight
         )
     };
-    let just_pressed_key = keyboard.get_just_pressed().find(|k| !is_modifier(k));
-
-    let mut pressed = None;
-    if let Some(key) = just_pressed_key {
-        pressed = Some(*key);
-    } else if let Some(key) = key_repeat.pressed_key
-        && keyboard.pressed(key)
-    {
-        pressed = Some(key);
+    key_repeat.held.retain(|key| keyboard.pressed(*key));
+    for key in keyboard.get_just_pressed().filter(|k| !is_modifier(k)) {
+        key_repeat.held.retain(|held| held != key);
+        key_repeat.held.push(*key);
     }
 
-    if key_repeat.pressed_key.is_some()
-        && key_repeat.pressed_key == pressed
-        && !key_repeat.timer.just_finished()
-    {
-        return;
-    }
-
-    if key_repeat.pressed_key != pressed {
-        key_repeat.pressed_key = pressed;
+    let pressed = key_repeat.held.last().copied();
+    if key_repeat.repeating != pressed || pressed.is_some_and(|key| keyboard.just_pressed(key)) {
+        key_repeat.repeating = pressed;
         key_repeat.timer.reset();
+    } else if !key_repeat.timer.just_finished() {
+        return;
     }
 
     if let Some(key) = pressed
@@ -187,6 +187,7 @@ fn route_action(action: PlayerAction, commands: &mut Commands) {
         }
         PlayerAction::EnterChatMode => commands.trigger(EnterChatMode),
         PlayerAction::ActivateActionSlot(slot) => commands.trigger(ActionSlotActivated { slot }),
+        PlayerAction::Logout => commands.trigger(RequestLogout),
     }
 }
 
@@ -468,6 +469,62 @@ mod tests {
             assert_eq!(world.resource::<Fired>().walks, expected_walks, "{ms} ms");
         }
     }
+
+    fn release(world: &mut World, key: KeyCode) {
+        world.resource_mut::<ButtonInput<KeyCode>>().release(key);
+    }
+
+    fn press(world: &mut World, key: KeyCode) {
+        let mut keyboard = world.resource_mut::<ButtonInput<KeyCode>>();
+        keyboard.clear();
+        keyboard.press(key);
+        world.run_system_once(read_player_input).unwrap();
+    }
+
+    #[test]
+    fn a_newer_key_takes_the_repeat_and_hands_it_back_when_released() {
+        let mut world = input_world(&[KeyCode::KeyW]);
+        world
+            .resource_mut::<Keybinds>()
+            .bind_slot(3, Hotkey::plain(KeyCode::F1));
+        world.run_system_once(read_player_input).unwrap();
+
+        press(&mut world, KeyCode::F1);
+        hold_for(&mut world, Duration::from_millis(210));
+        assert_eq!(world.resource::<Fired>().walks, 1);
+        assert_eq!(world.resource::<Fired>().slots, vec![3, 3]);
+
+        release(&mut world, KeyCode::F1);
+        hold_for(&mut world, Duration::from_millis(10));
+        assert_eq!(world.resource::<Fired>().walks, 2);
+        hold_for(&mut world, Duration::from_millis(210));
+        assert_eq!(world.resource::<Fired>().walks, 3);
+        assert_eq!(world.resource::<Fired>().slots, vec![3, 3]);
+    }
+
+    #[test]
+    fn a_released_middle_key_is_skipped_when_the_repeat_hands_back() {
+        let mut world = input_world(&[KeyCode::KeyW]);
+        world.run_system_once(read_player_input).unwrap();
+        press(&mut world, KeyCode::KeyD);
+        press(&mut world, KeyCode::KeyS);
+        release(&mut world, KeyCode::KeyD);
+        release(&mut world, KeyCode::KeyS);
+        world.init_resource::<Directions>();
+        world.add_observer(|event: On<MovePlayer>, mut seen: ResMut<Directions>| {
+            seen.0.push(event.direction)
+        });
+
+        hold_for(&mut world, Duration::from_millis(10));
+
+        assert_eq!(
+            world.resource::<Directions>().0,
+            vec![WalkingDirection::North]
+        );
+    }
+
+    #[derive(Resource, Default)]
+    struct Directions(Vec<WalkingDirection>);
 
     #[test]
     fn a_new_session_keeps_the_configured_interval() {
