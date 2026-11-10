@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use bevy::prelude::*;
 use bevy::text::FontSmoothing;
@@ -8,12 +7,12 @@ use bevy_text_outline::TextOutline;
 use crate::conf::ui::{UI_ITEM_SIZE, action_bar as conf, dialog, ui_colors};
 use crate::core::{
     Appearances, CarriedItems, ItemConfigs, RuneBook, SheetEvicted, SheetUser, SpellBook,
-    SpriteAnimator, SpriteSheet,
+    SpriteSheet,
 };
 use crate::game_ui::GameUiAssets;
 use crate::game_ui::cooldown::{CooldownOverlay, spawn_cooldown_overlay};
 use crate::game_ui::scaling::logical_size;
-use crate::items::{Item, ItemId};
+use crate::items::static_item_image;
 use crate::player::{Hotkey, Keybinds};
 
 use super::activation::ActionSlotActivated;
@@ -319,8 +318,10 @@ pub(super) fn action_image(
             spell_image(book.get(*id)?.icon, assets).map(|image| (image, None))
         }
         SlotAction::Item { item_id, .. } => {
-            static_item_image(*item_id, items, appearances, assets, layouts)
-                .map(|(image, user)| (image, Some(user)))
+            static_item_image(*item_id, items, appearances, |sheet| {
+                assets.item_layout(sheet, layouts)
+            })
+            .map(|(image, user)| (image, Some(user)))
         }
     }
 }
@@ -378,38 +379,10 @@ pub(super) fn spell_image(icon: u16, assets: &ActionBarAssets) -> Option<ImageNo
     ))
 }
 
-/// The item's first frame, in the pattern its amount of one asks for; never animated.
-fn static_item_image(
-    item_id: ItemId,
-    items: &ItemConfigs,
-    appearances: &Appearances,
-    assets: &mut ActionBarAssets,
-    layouts: &mut Assets<TextureAtlasLayout>,
-) -> Option<(ImageNode, SheetUser)> {
-    let config = items.items.get(&item_id)?;
-    let sprite = appearances.get_item(item_id);
-    let sheet = appearances.get_sheet(&sprite.group);
-    let layout = assets.item_layout(sheet, layouts);
-    let (pattern_x, pattern_y, pattern_z) = Item::new(Arc::clone(config), 1)
-        .intrinsic_patterns(&sprite)
-        .unwrap_or((0, 0, 0));
-    let first_frame = SpriteAnimator::new(Arc::clone(&sprite), pattern_x, pattern_y, pattern_z)
-        .current_sprite_ids[0];
-    Some((
-        ImageNode::from_atlas_image(
-            sheet.texture(),
-            TextureAtlas {
-                layout,
-                index: first_frame as usize,
-            },
-        ),
-        SheetUser(sprite.group.clone()),
-    ))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::items::ItemId;
 
     /// The cache is what keeps a redraw from adding a layout per slot, and nothing else says so.
     #[test]

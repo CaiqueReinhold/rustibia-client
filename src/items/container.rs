@@ -6,7 +6,10 @@ use crate::{
     conf::ui::{ITEM_SLOT_SIZE, ui_colors},
     core::{Appearances, ItemConfigs},
     game_ui::{AddUIWindow, CloseUIWindow, GameUiAssets, ReplaceUIWindowContent, UiWindowRef},
-    items::{Item, ItemId, OpenParentContainer, ui_item::spawn_ui_item},
+    items::{
+        Item, ItemId, OpenParentContainer,
+        ui_item::{spawn_ui_item, static_item_image},
+    },
     network::{
         ClientMessage, SendMessage,
         events::{ClientOutdated, ContainerClosed, OpenContainer, UpdateContainer},
@@ -15,6 +18,7 @@ use crate::{
 };
 
 const LOOT_CONTAINER_DEFAULT_HEIGHT: usize = 60;
+const TITLE_ICON_SIZE: f32 = 16.0;
 const ITEM_SLOT_OUTLINE: Srgba = Srgba::new(0.35, 0.35, 0.35, 1.0);
 
 /// An open container as this player's session names it. Session-local to the server, and reused.
@@ -103,6 +107,8 @@ pub fn on_open_container(
     event: On<OpenContainer>,
     mut commands: Commands,
     configs: Res<ItemConfigs>,
+    appearances: Res<Appearances>,
+    mut texture_atlases: ResMut<Assets<TextureAtlasLayout>>,
     ui_assets: Res<GameUiAssets>,
     loot_container_q: Query<(&LootContainerUI, &UiWindowRef)>,
     nav_target: Option<Res<ContainerNavTarget>>,
@@ -141,6 +147,28 @@ pub fn on_open_container(
         commands.trigger(ClientOutdated);
         return;
     };
+    let Some(icon_image) = static_item_image(event.item_id, &configs, &appearances, |sheet| {
+        texture_atlases.add(TextureAtlasLayout::from_grid(
+            sheet.sprite_size.as_uvec2(),
+            sheet.grid_size.x as u32,
+            sheet.grid_size.y as u32,
+            None,
+            None,
+        ))
+    }) else {
+        commands.trigger(ClientOutdated);
+        return;
+    };
+    let icon = commands
+        .spawn((
+            icon_image,
+            Node {
+                width: Val::Px(TITLE_ICON_SIZE),
+                height: Val::Px(TITLE_ICON_SIZE),
+                ..default()
+            },
+        ))
+        .id();
     let container = LootContainerUI {
         container_id: event.container_id,
         capacity: event.capacity as usize,
@@ -259,12 +287,14 @@ pub fn on_open_container(
             window_id,
             content: grid,
             title: event.title.clone(),
+            icon: Some(icon),
             custom_buttons,
         }),
         None => commands.trigger(AddUIWindow {
             content: grid,
             default_height: LOOT_CONTAINER_DEFAULT_HEIGHT,
             title: event.title.clone(),
+            icon: Some(icon),
             custom_buttons,
         }),
     }

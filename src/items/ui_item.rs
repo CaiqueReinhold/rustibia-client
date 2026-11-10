@@ -5,9 +5,9 @@ use bevy_text_outline::TextOutline;
 
 use crate::{
     conf::ui::UI_ITEM_SIZE,
-    core::{Appearances, SheetUser, SpriteAnimator},
+    core::{Appearances, ItemConfigs, SheetUser, SpriteAnimator, SpriteSheet},
     game_ui::GameUiAssets,
-    items::{Item, ItemDragEnded, ItemDragStarted, ItemPlacement, instancing::ItemState},
+    items::{Item, ItemDragEnded, ItemDragStarted, ItemId, ItemPlacement, instancing::ItemState},
     player::MouseHoverState,
 };
 
@@ -106,6 +106,35 @@ pub fn spawn_ui_item(
         // whole conditional.
         Children::spawn(SpawnIter(stack_count_label(item, ui_assets).into_iter())),
     )
+}
+
+/// The item's first frame, in the pattern its amount of one asks for; never animated.
+/// `None` when this client does not know the item.
+pub fn static_item_image(
+    item_id: ItemId,
+    items: &ItemConfigs,
+    appearances: &Appearances,
+    layout_for: impl FnOnce(&SpriteSheet) -> Handle<TextureAtlasLayout>,
+) -> Option<(ImageNode, SheetUser)> {
+    let config = items.items.get(&item_id)?;
+    let sprite = appearances.get_item(item_id);
+    let sheet = appearances.get_sheet(&sprite.group);
+    let layout = layout_for(sheet);
+    let (pattern_x, pattern_y, pattern_z) = Item::new(Arc::clone(config), 1)
+        .intrinsic_patterns(&sprite)
+        .unwrap_or((0, 0, 0));
+    let first_frame = SpriteAnimator::new(Arc::clone(&sprite), pattern_x, pattern_y, pattern_z)
+        .current_sprite_ids[0];
+    Some((
+        ImageNode::from_atlas_image(
+            sheet.texture(),
+            TextureAtlas {
+                layout,
+                index: first_frame as usize,
+            },
+        ),
+        SheetUser(sprite.group.clone()),
+    ))
 }
 
 pub fn animate_ui_items(

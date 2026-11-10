@@ -21,6 +21,7 @@ mod map;
 mod network;
 mod overlay;
 mod player;
+mod util;
 
 use crate::core::{GameAssetsLoaded, GameState};
 

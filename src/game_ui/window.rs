@@ -10,16 +10,23 @@ use std::cmp::Reverse;
 use std::sync::Mutex;
 
 use crate::{
-    conf::ui::{SIDE_PANEL_WIDTH, ui_colors, z_index::Z_WINDOW},
-    game_ui::assets::GameUiAssets,
-    game_ui::scaling::{logical_center, logical_rect, logical_size, to_logical},
+    conf::ui::{
+        SIDE_PANEL_WIDTH,
+        ui_colors::{self, FONT_COLOR_CONTENT},
+        z_index::Z_WINDOW,
+    },
+    game_ui::{
+        assets::GameUiAssets,
+        scaling::{logical_center, logical_rect, logical_size, to_logical},
+    },
     player::InteractionMode,
+    util::string::Capitalize,
 };
 
 const Z_DRAGGING_WINDOW: i32 = 20;
 
 const WINDOW_MIN_HEIGHT: f32 = 32.0;
-const WINDOW_TITLE_HEIGHT: f32 = 12.0;
+const WINDOW_TITLE_HEIGHT: f32 = 14.0;
 const STIFFNESS: f32 = 40.0;
 const DAMPING: f32 = 12.0;
 const SNAP_THRESHOLD: f32 = 0.5;
@@ -165,6 +172,7 @@ pub struct AddUIWindow {
     pub content: Entity,
     pub default_height: usize,
     pub title: String,
+    pub icon: Option<Entity>,
     pub custom_buttons: Vec<Entity>,
 }
 
@@ -173,6 +181,7 @@ pub struct ReplaceUIWindowContent {
     pub window_id: WindowId,
     pub content: Entity,
     pub title: String,
+    pub icon: Option<Entity>,
     pub custom_buttons: Vec<Entity>,
 }
 
@@ -313,17 +322,38 @@ fn check_dock_hover(
 fn set_window_title_bar_content(
     bar: &mut bevy::ecs::relationship::RelatedSpawnerCommands<'_, ChildOf>,
     title: &str,
+    icon: Option<Entity>,
     ui_assets: &GameUiAssets,
     window_id: WindowId,
     custom_buttons: &[Entity],
 ) {
+    if let Some(icon) = icon {
+        let parent = bar.target_entity();
+        bar.commands_mut()
+            .entity(parent)
+            .add_one_related::<ChildOf>(icon);
+    }
+
+    let title = if title.chars().count() > 17 {
+        let mut new_t = String::with_capacity(20);
+        new_t.extend(title.chars().take(17));
+        new_t.push_str("...");
+        new_t
+    } else {
+        title.to_string()
+    };
     bar.spawn((
-        Text::new(title),
+        Text::new(title.capitalize_words()),
+        TextColor(FONT_COLOR_CONTENT.into()),
         TextFont {
             font: ui_assets.font.clone(),
-            font_size: 9.0,
+            font_size: 11.0,
             weight: FontWeight::EXTRA_BOLD,
             ..default()
+        },
+        TextLayout {
+            justify: Justify::Left,
+            linebreak: LineBreak::NoWrap,
         },
         Node {
             flex_grow: 1.0,
@@ -483,6 +513,7 @@ fn on_add_window(
                         set_window_title_bar_content(
                             bar,
                             &event.title,
+                            event.icon,
                             &ui_assets,
                             window_id,
                             &event.custom_buttons,
@@ -638,6 +669,7 @@ fn on_replace_window_content(
         set_window_title_bar_content(
             title_bar,
             &event.title,
+            event.icon,
             &ui_assets,
             event.window_id,
             &event.custom_buttons,

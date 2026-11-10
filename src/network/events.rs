@@ -97,6 +97,7 @@ pub struct ShowFloatingText {
 
 #[derive(Event, Debug)]
 pub struct OpenContainer {
+    pub item_id: ItemId,
     pub container_id: ContainerId,
     pub capacity: u8,
     pub has_parent: bool,
@@ -372,6 +373,7 @@ pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
             commands.trigger(ShowTextMessage { text, message_type });
         }
         ServerMessage::OpenContainer {
+            item_id,
             container_id,
             capacity,
             has_parent,
@@ -379,6 +381,7 @@ pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
             items,
         } => {
             commands.trigger(OpenContainer {
+                item_id,
                 container_id,
                 capacity,
                 has_parent,

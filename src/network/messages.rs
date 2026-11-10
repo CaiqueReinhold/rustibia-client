@@ -214,6 +214,7 @@ pub enum ServerMessage {
         message_type: TextMessageType,
     },
     OpenContainer {
+        item_id: ItemId,
         container_id: ContainerId,
         capacity: u8,
         has_parent: bool,
@@ -604,6 +605,7 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
             Ok(ServerMessage::TextMessage { text, message_type })
         }
         SRV_OPEN_CONTAINER => {
+            let item_id = ItemId(buf.read_u16_le()?);
             let container_id = ContainerId(buf.read_u16_le()?);
             let capacity = buf.read_u8()?;
             let has_parent = buf.read_u8()? != 0;
@@ -611,6 +613,7 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
             let title = buf.read_string(title_len)?;
             let items = decode_items(buf)?;
             Ok(ServerMessage::OpenContainer {
+                item_id,
                 container_id,
                 capacity,
                 has_parent,

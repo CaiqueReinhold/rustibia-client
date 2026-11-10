@@ -68,7 +68,7 @@ pub fn spawn_gameviewport(
     cooldown_assets: &CooldownAssets,
 ) -> Entity {
     let group_cooldowns = spawn_group_cooldowns(commands, cooldown_assets);
-    commands
+    let viewport = commands
         .spawn((
             GameViewportContainer,
             Node {
@@ -129,15 +129,11 @@ pub fn spawn_gameviewport(
                         Pickable::IGNORE,
                     )],
                 ));
-
-                let border_ent = border.target_entity();
-                border
-                    .commands_mut()
-                    .entity(border_ent)
-                    .add_child(group_cooldowns);
             });
         })
-        .id()
+        .id();
+    commands.entity(viewport).add_child(group_cooldowns);
+    viewport
 }
 
 fn spawn_group_cooldowns(commands: &mut Commands, assets: &CooldownAssets) -> Entity {

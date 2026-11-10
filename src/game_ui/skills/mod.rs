@@ -37,6 +37,7 @@ pub fn on_toggle_skills_window(
         content,
         default_height: SKILLS_WINDOW_HEIGHT,
         title: "Skills".to_string(),
+        icon: None,
         custom_buttons: Vec::new(),
     });
 }
