@@ -19,7 +19,7 @@ use super::use_kind::{start_use, use_kind};
 
 const MIN_DRAG_THRESHOLD: f32 = 5.0;
 
-fn is_drag(travel: Vec2) -> bool {
+pub(crate) fn is_drag(travel: Vec2) -> bool {
     travel.length() >= MIN_DRAG_THRESHOLD
 }
 

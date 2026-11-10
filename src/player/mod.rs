@@ -14,6 +14,7 @@ pub mod spells;
 pub mod square;
 pub mod target;
 pub use hotkey::Hotkey;
+pub(crate) use interaction::is_drag;
 pub use interaction::{
     ContainerNavTarget, InteractionIntent, InteractionMode, MouseHoverState, ObjectPicked,
     TargetingSource,

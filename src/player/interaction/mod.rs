@@ -6,6 +6,7 @@ mod thing_menu;
 mod use_kind;
 
 pub use gestures::attach_observers;
+pub(crate) use gestures::is_drag;
 pub use hover::{MouseHoverState, update_hover_state};
 pub use intent::{InteractionIntent, PendingWalkAction, on_interaction_intent, send_intent};
 pub use mode::{

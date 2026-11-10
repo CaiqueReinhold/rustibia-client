@@ -17,7 +17,7 @@ use crate::{
         Position,
         minimap::{CHUNK_SIZE, ChunkKey, MinimapData, MinimapTile},
     },
-    player::components::Player,
+    player::{InteractionIntent, components::Player, is_drag},
 };
 
 const IMAGE_SIZE: u16 = 2048;
@@ -75,6 +75,10 @@ fn centred_origin(player: &Position) -> UVec2 {
 
 #[derive(Component)]
 struct MinimapImageNode;
+
+/// On the image node while a primary press on it has travelled far enough to be a drag.
+#[derive(Component)]
+struct MinimapDragged;
 
 pub struct MinimapPlugin;
 
@@ -241,6 +245,7 @@ fn setup_minimap(
                 ..default()
             },
             BackgroundColor(Color::WHITE),
+            Pickable::IGNORE,
         ))
         .id();
 
@@ -255,6 +260,7 @@ fn setup_minimap(
                 ..default()
             },
             BackgroundColor(Color::WHITE),
+            Pickable::IGNORE,
         ))
         .id();
 
@@ -277,6 +283,9 @@ fn setup_minimap(
             },
         ))
         .add_children(&[cross_h, cross_v])
+        .observe(on_minimap_click)
+        .observe(on_minimap_drag)
+        .observe(on_minimap_drag_end)
         .id();
 
     let image_node_wrapper = commands
@@ -436,6 +445,52 @@ fn player_centered_rect(player: &Position, origin: UVec2, zoom: &MinimapZoom) ->
     }
 }
 
+/// The world tile drawn under `hit`, which is normalised to the image node:
+/// (-0.5, -0.5) at its top-left, (0.5, 0.5) at its bottom-right.
+fn tile_at(hit: Vec2, view: Rect, origin: UVec2, z: u8) -> Position {
+    let texel = (view.min + (hit + 0.5) * view.size())
+        .floor()
+        .clamp(view.min, view.max - 1.0);
+    Position {
+        x: (origin.x + texel.x as u32) as u16,
+        y: (origin.y + texel.y as u32) as u16,
+        z,
+    }
+}
+
+fn on_minimap_click(
+    mut click: On<Pointer<Click>>,
+    mut commands: Commands,
+    window: Res<MinimapWindow>,
+    player: Single<&Position, With<Player>>,
+    node: Single<(&ImageNode, Has<MinimapDragged>), With<MinimapImageNode>>,
+) {
+    click.propagate(false);
+    let (image, dragged) = *node;
+    if click.button != PointerButton::Primary || dragged {
+        return;
+    }
+    let (Some(hit), Some(view)) = (click.hit.position, image.rect) else {
+        return;
+    };
+    commands.trigger(InteractionIntent::WalkTo(tile_at(
+        hit.truncate(),
+        view,
+        window.origin,
+        player.z,
+    )));
+}
+
+fn on_minimap_drag(drag: On<Pointer<Drag>>, mut commands: Commands) {
+    if drag.button == PointerButton::Primary && is_drag(drag.distance) {
+        commands.entity(drag.entity).insert(MinimapDragged);
+    }
+}
+
+fn on_minimap_drag_end(drag: On<Pointer<DragEnd>>, mut commands: Commands) {
+    commands.entity(drag.entity).remove::<MinimapDragged>();
+}
+
 fn minimap_color_to_rgb(color: u8) -> (u8, u8, u8) {
     (color / 36 % 6 * 51, color / 6 % 6 * 51, color % 6 * 51)
 }
@@ -443,7 +498,15 @@ fn minimap_color_to_rgb(color: u8) -> (u8, u8, u8) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bevy::ecs::system::RunSystemOnce;
+    use bevy::{
+        camera::NormalizedRenderTarget,
+        ecs::system::RunSystemOnce,
+        picking::{
+            backend::HitData,
+            pointer::{Location, PointerId},
+        },
+    };
+    use std::time::Duration;
 
     /// Where `map1.otbm` puts a player: the real Tibia coordinate space, tens of
     /// thousands of tiles from the origin the texture used to be pinned to.
@@ -522,6 +585,55 @@ mod tests {
 
         assert_eq!(rect.center(), Vec2::splat(IMAGE_SIZE as f32 / 2.0));
         assert_eq!(rect.max - rect.min, Vec2::splat(tiles));
+    }
+
+    #[test]
+    fn the_centre_of_the_view_is_the_players_tile() {
+        let window = window_at(&SPAWN);
+        let view = player_centered_rect(&SPAWN, window.origin, &MinimapZoom(DEFAULT_ZOOM));
+
+        assert_eq!(tile_at(Vec2::ZERO, view, window.origin, SPAWN.z), SPAWN);
+    }
+
+    #[test]
+    fn the_corners_of_the_view_are_its_first_and_last_tiles() {
+        let window = window_at(&SPAWN);
+        let view = player_centered_rect(&SPAWN, window.origin, &MinimapZoom(DEFAULT_ZOOM));
+        let half = ZOOM_LEVELS[DEFAULT_ZOOM] as u16 / 2;
+
+        assert_eq!(
+            tile_at(Vec2::splat(-0.5), view, window.origin, SPAWN.z),
+            Position {
+                x: SPAWN.x - half,
+                y: SPAWN.y - half,
+                z: SPAWN.z
+            }
+        );
+        assert_eq!(
+            tile_at(Vec2::splat(0.5), view, window.origin, SPAWN.z),
+            Position {
+                x: SPAWN.x + half - 1,
+                y: SPAWN.y + half - 1,
+                z: SPAWN.z
+            }
+        );
+    }
+
+    /// At the window's edge the view cannot centre on the player, so the middle of
+    /// the image is not where the player is drawn.
+    #[test]
+    fn a_view_clamped_at_the_window_edge_maps_to_the_tile_drawn() {
+        let corner = Position { x: 10, y: 10, z: 7 };
+        let window = window_at(&corner);
+        let view = player_centered_rect(&corner, window.origin, &MinimapZoom(DEFAULT_ZOOM));
+        let tiles = ZOOM_LEVELS[DEFAULT_ZOOM] as f32;
+        let over_the_player = Vec2::splat(10.5 / tiles - 0.5);
+
+        assert_eq!(tile_at(over_the_player, view, window.origin, 7), corner);
+        assert_eq!(
+            tile_at(Vec2::ZERO, view, window.origin, 7),
+            Position { x: 40, y: 40, z: 7 }
+        );
     }
 
     #[test]
@@ -637,5 +749,160 @@ mod tests {
         };
 
         assert_eq!(window.retarget(&upstairs), Some(centred_origin(&upstairs)));
+    }
+
+    #[derive(Resource, Default)]
+    struct Walked(Vec<Position>);
+
+    /// A player at `SPAWN` and a minimap image node showing the default zoom around
+    /// them, with every `WalkTo` recorded in `Walked`.
+    fn a_world_with_a_minimap() -> (World, Entity) {
+        let mut world = World::new();
+        let window = window_at(&SPAWN);
+        let view = player_centered_rect(&SPAWN, window.origin, &MinimapZoom(DEFAULT_ZOOM));
+        world.insert_resource(window);
+        world.init_resource::<Walked>();
+        world.spawn((
+            Player {
+                agent_id: crate::agent::AgentId(1),
+            },
+            SPAWN,
+        ));
+        let node = world
+            .spawn((
+                MinimapImageNode,
+                ImageNode {
+                    rect: Some(view),
+                    ..default()
+                },
+            ))
+            .observe(on_minimap_click)
+            .observe(on_minimap_drag)
+            .observe(on_minimap_drag_end)
+            .id();
+        world.add_observer(
+            |intent: On<InteractionIntent>, mut walked: ResMut<Walked>| {
+                if let InteractionIntent::WalkTo(tile) = &*intent {
+                    walked.0.push(tile.clone());
+                }
+            },
+        );
+        (world, node)
+    }
+
+    fn pointer<E: std::fmt::Debug + Clone + Reflect>(entity: Entity, event: E) -> Pointer<E> {
+        Pointer {
+            entity,
+            pointer_id: PointerId::Mouse,
+            pointer_location: Location {
+                target: NormalizedRenderTarget::None {
+                    width: 1,
+                    height: 1,
+                },
+                position: Vec2::ZERO,
+            },
+            event,
+        }
+    }
+
+    fn click(world: &mut World, node: Entity, button: PointerButton, hit: Vec2) {
+        world.trigger(pointer(
+            node,
+            Click {
+                button,
+                hit: HitData::new(Entity::PLACEHOLDER, 0.0, Some(hit.extend(0.0)), None),
+                duration: Duration::ZERO,
+            },
+        ));
+        world.flush();
+    }
+
+    fn drag(world: &mut World, node: Entity, distance: Vec2) {
+        world.trigger(pointer(
+            node,
+            Drag {
+                button: PointerButton::Primary,
+                distance,
+                delta: distance,
+            },
+        ));
+        world.flush();
+    }
+
+    fn release(world: &mut World, node: Entity, distance: Vec2) {
+        world.trigger(pointer(
+            node,
+            DragEnd {
+                button: PointerButton::Primary,
+                distance,
+            },
+        ));
+        world.flush();
+    }
+
+    #[test]
+    fn a_click_walks_to_the_tile_under_the_cursor() {
+        let (mut world, node) = a_world_with_a_minimap();
+
+        click(
+            &mut world,
+            node,
+            PointerButton::Primary,
+            Vec2::new(0.25, -0.25),
+        );
+
+        assert_eq!(
+            world.resource::<Walked>().0,
+            vec![Position {
+                x: SPAWN.x + 20,
+                y: SPAWN.y - 20,
+                z: SPAWN.z
+            }]
+        );
+    }
+
+    #[test]
+    fn a_secondary_click_walks_nowhere() {
+        let (mut world, node) = a_world_with_a_minimap();
+
+        click(&mut world, node, PointerButton::Secondary, Vec2::ZERO);
+
+        assert!(world.resource::<Walked>().0.is_empty());
+    }
+
+    /// Bevy emits `Click` before `DragEnd`, so the click arrives while the drag
+    /// still stands. Leftward, because travel is a signed vector.
+    #[test]
+    fn a_press_that_travelled_is_not_a_click() {
+        let (mut world, node) = a_world_with_a_minimap();
+        let travel = Vec2::new(-6.0, 0.0);
+
+        drag(&mut world, node, travel);
+        click(&mut world, node, PointerButton::Primary, Vec2::ZERO);
+        release(&mut world, node, travel);
+
+        assert!(world.resource::<Walked>().0.is_empty());
+    }
+
+    #[test]
+    fn the_click_after_a_finished_drag_walks() {
+        let (mut world, node) = a_world_with_a_minimap();
+        let travel = Vec2::new(-6.0, 0.0);
+        drag(&mut world, node, travel);
+        release(&mut world, node, travel);
+
+        click(&mut world, node, PointerButton::Primary, Vec2::ZERO);
+
+        assert_eq!(world.resource::<Walked>().0, vec![SPAWN]);
+    }
+
+    #[test]
+    fn a_press_that_barely_moved_is_still_a_click() {
+        let (mut world, node) = a_world_with_a_minimap();
+
+        drag(&mut world, node, Vec2::new(3.0, 0.0));
+        click(&mut world, node, PointerButton::Primary, Vec2::ZERO);
+
+        assert_eq!(world.resource::<Walked>().0, vec![SPAWN]);
     }
 }
