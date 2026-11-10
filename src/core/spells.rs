@@ -3,7 +3,12 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 
-use crate::{agent::AgentId, map::Position, network::events::SpellListReceived};
+use crate::{
+    agent::AgentId,
+    items::ItemId,
+    map::Position,
+    network::events::{RuneListReceived, SpellListReceived},
+};
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(transparent)]
@@ -55,6 +60,13 @@ pub struct SpellInfo {
     pub group: SpellGroup,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RuneInfo {
+    pub item_id: ItemId,
+    pub spell_id: SpellId,
+    pub group: SpellGroup,
+}
+
 /// `None` until the server's list arrives, which is not the same as an empty list.
 #[derive(Resource, Debug, Default)]
 pub struct SpellBook(Option<Vec<SpellInfo>>);
@@ -75,6 +87,23 @@ impl SpellBook {
 
 pub fn on_spell_list(event: On<SpellListReceived>, mut book: ResMut<SpellBook>) {
     *book = SpellBook::new(event.spells.clone());
+}
+
+#[derive(Resource, Debug, Default)]
+pub struct RuneBook(HashMap<ItemId, RuneInfo>);
+
+impl RuneBook {
+    pub fn new(runes: impl IntoIterator<Item = RuneInfo>) -> Self {
+        Self(runes.into_iter().map(|rune| (rune.item_id, rune)).collect())
+    }
+
+    pub fn get(&self, item_id: ItemId) -> Option<&RuneInfo> {
+        self.0.get(&item_id)
+    }
+}
+
+pub fn on_rune_list(event: On<RuneListReceived>, mut book: ResMut<RuneBook>) {
+    *book = RuneBook::new(event.runes.iter().copied());
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -103,12 +132,13 @@ impl Cooldown {
 
 /// Instants are `Time<Real>::elapsed()`.
 #[derive(Resource, Debug, Default)]
-pub struct SpellCooldowns {
+pub struct Cooldowns {
     spells: HashMap<SpellId, Cooldown>,
     groups: [Option<Cooldown>; SpellGroup::COUNT],
+    use_item: Option<Cooldown>,
 }
 
-impl SpellCooldowns {
+impl Cooldowns {
     pub fn start_spell(&mut self, id: SpellId, now: Duration, length: Duration) {
         if !length.is_zero() {
             self.spells.insert(id, Cooldown { start: now, length });
@@ -118,6 +148,12 @@ impl SpellCooldowns {
     pub fn start_group(&mut self, group: SpellGroup, now: Duration, length: Duration) {
         if !length.is_zero() {
             self.groups[group.index()] = Some(Cooldown { start: now, length });
+        }
+    }
+
+    pub fn start_use(&mut self, now: Duration, length: Duration) {
+        if !length.is_zero() {
+            self.use_item = Some(Cooldown { start: now, length });
         }
     }
 
@@ -135,6 +171,18 @@ impl SpellCooldowns {
             .chain(self.group(group, now))
             .max_by_key(|state| state.remaining)
     }
+
+    pub fn item(&self, now: Duration) -> Option<CooldownState> {
+        self.use_item?.state(now)
+    }
+
+    /// The later-ending of the use cooldown, the rune's spell's own and its group's.
+    pub fn rune(&self, spell: SpellId, group: SpellGroup, now: Duration) -> Option<CooldownState> {
+        self.item(now)
+            .into_iter()
+            .chain(self.spell(spell, group, now))
+            .max_by_key(|state| state.remaining)
+    }
 }
 
 #[cfg(test)]
@@ -149,7 +197,7 @@ mod tests {
 
     #[test]
     fn a_cooldown_reports_what_has_recovered_and_what_remains() {
-        let mut cooldowns = SpellCooldowns::default();
+        let mut cooldowns = Cooldowns::default();
         cooldowns.start_group(SpellGroup::Attack, START, ms(2000));
         let at = |elapsed| cooldowns.group(SpellGroup::Attack, START + ms(elapsed));
 
@@ -175,7 +223,7 @@ mod tests {
 
     #[test]
     fn a_slot_follows_whichever_of_spell_and_group_ends_later() {
-        let mut spell_later = SpellCooldowns::default();
+        let mut spell_later = Cooldowns::default();
         spell_later.start_spell(SpellId(2), START, ms(4000));
         spell_later.start_group(SpellGroup::Attack, START, ms(2000));
         assert_eq!(
@@ -186,7 +234,7 @@ mod tests {
             })
         );
 
-        let mut group_later = SpellCooldowns::default();
+        let mut group_later = Cooldowns::default();
         group_later.start_spell(SpellId(2), START, ms(1500));
         group_later.start_group(SpellGroup::Attack, START, ms(2000));
         assert_eq!(
@@ -200,7 +248,7 @@ mod tests {
 
     #[test]
     fn a_slot_is_shaded_by_either_cooldown_alone() {
-        let mut only_spell = SpellCooldowns::default();
+        let mut only_spell = Cooldowns::default();
         only_spell.start_spell(SpellId(2), START, ms(2000));
         assert!(
             only_spell
@@ -213,7 +261,7 @@ mod tests {
                 .is_none()
         );
 
-        let mut only_group = SpellCooldowns::default();
+        let mut only_group = Cooldowns::default();
         only_group.start_group(SpellGroup::Attack, START, ms(2000));
         assert!(
             only_group
@@ -229,7 +277,7 @@ mod tests {
 
     #[test]
     fn a_zero_length_starts_nothing() {
-        let mut cooldowns = SpellCooldowns::default();
+        let mut cooldowns = Cooldowns::default();
         cooldowns.start_spell(SpellId(2), START, Duration::ZERO);
         cooldowns.start_group(SpellGroup::Attack, START, Duration::ZERO);
 
@@ -238,7 +286,7 @@ mod tests {
 
     #[test]
     fn a_new_cooldown_replaces_the_old_one() {
-        let mut cooldowns = SpellCooldowns::default();
+        let mut cooldowns = Cooldowns::default();
         cooldowns.start_group(SpellGroup::Attack, START, ms(2000));
         cooldowns.start_group(SpellGroup::Attack, START + ms(500), ms(1000));
 
@@ -292,5 +340,77 @@ mod tests {
         let book = world.resource::<SpellBook>();
         assert_eq!(book.get(SpellId(4)), Some(&a_spell(4)));
         assert!(book.get(SpellId(2)).is_none());
+    }
+
+    #[test]
+    fn an_item_follows_the_use_cooldown_alone() {
+        let mut cooldowns = Cooldowns::default();
+        cooldowns.start_group(SpellGroup::Attack, START, ms(2000));
+        assert_eq!(cooldowns.item(START), None);
+
+        cooldowns.start_use(START, ms(1000));
+        assert_eq!(
+            cooldowns.item(START + ms(250)),
+            Some(CooldownState {
+                recovered: 0.25,
+                remaining: ms(750)
+            })
+        );
+    }
+
+    #[test]
+    fn a_rune_follows_whichever_of_use_spell_and_group_ends_later() {
+        let remaining = |cooldowns: &Cooldowns| {
+            cooldowns
+                .rune(SpellId(41), SpellGroup::Attack, START)
+                .map(|state| state.remaining)
+        };
+
+        let mut use_later = Cooldowns::default();
+        use_later.start_use(START, ms(3000));
+        use_later.start_spell(SpellId(41), START, ms(2000));
+        use_later.start_group(SpellGroup::Attack, START, ms(1000));
+        assert_eq!(remaining(&use_later), Some(ms(3000)));
+
+        let mut spell_later = Cooldowns::default();
+        spell_later.start_use(START, ms(1000));
+        spell_later.start_spell(SpellId(41), START, ms(2000));
+        assert_eq!(remaining(&spell_later), Some(ms(2000)));
+
+        let mut group_later = Cooldowns::default();
+        group_later.start_use(START, ms(1000));
+        group_later.start_group(SpellGroup::Attack, START, ms(4000));
+        assert_eq!(remaining(&group_later), Some(ms(4000)));
+
+        assert_eq!(remaining(&Cooldowns::default()), None);
+    }
+
+    #[test]
+    fn the_rune_list_fills_the_rune_book() {
+        let sudden_death = RuneInfo {
+            item_id: ItemId(3155),
+            spell_id: SpellId(41),
+            group: SpellGroup::Attack,
+        };
+        let mut world = World::new();
+        world.init_resource::<RuneBook>();
+        world.add_observer(on_rune_list);
+
+        world.trigger(RuneListReceived {
+            runes: vec![sudden_death],
+        });
+        world.flush();
+
+        let book = world.resource::<RuneBook>();
+        assert_eq!(book.get(ItemId(3155)), Some(&sudden_death));
+        assert_eq!(book.get(ItemId(3031)), None);
+    }
+
+    #[test]
+    fn a_zero_length_use_starts_nothing() {
+        let mut cooldowns = Cooldowns::default();
+        cooldowns.start_use(START, Duration::ZERO);
+
+        assert_eq!(cooldowns.item(START), None);
     }
 }

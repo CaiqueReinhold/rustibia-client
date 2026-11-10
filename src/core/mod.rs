@@ -6,6 +6,7 @@ use bevy::time::common_conditions::on_real_timer;
 
 mod animation;
 mod assets;
+mod carried;
 mod effects;
 mod floating_text;
 mod instances;
@@ -21,6 +22,7 @@ mod text;
 
 pub use animation::*;
 pub use assets::*;
+pub use carried::CarriedItems;
 pub use floating_text::FloatingTextType;
 pub use instances::*;
 pub use items::ItemConfigs;
@@ -29,7 +31,8 @@ pub use session::{
 };
 pub use sheet_eviction::{SheetEvicted, SheetUser};
 pub use spells::{
-    CooldownState, SpellBook, SpellCooldowns, SpellGroup, SpellId, SpellInfo, SpellTarget,
+    CooldownState, Cooldowns, RuneBook, RuneInfo, SpellBook, SpellGroup, SpellId, SpellInfo,
+    SpellTarget,
 };
 pub use sprite::*;
 pub use status::{PlayerStatus, PlayerStatuses};
@@ -53,8 +56,12 @@ impl Plugin for CorePlugin {
             .init_resource::<systems::PingState>()
             .init_resource::<systems::PingTimer>()
             .init_resource::<spells::SpellBook>()
-            .init_resource::<spells::SpellCooldowns>()
+            .init_resource::<spells::Cooldowns>()
             .add_observer(spells::on_spell_list)
+            .init_resource::<spells::RuneBook>()
+            .add_observer(spells::on_rune_list)
+            .init_resource::<carried::CarriedItems>()
+            .add_observer(carried::on_carried_items)
             .init_resource::<status::PlayerStatuses>()
             .add_observer(status::on_player_status_updated)
             .init_resource::<InstanceManager<effects::EffectInstance>>()

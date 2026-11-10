@@ -5,7 +5,7 @@ use bevy::prelude::*;
 use bevy::text::FontSmoothing;
 use bevy_text_outline::TextOutline;
 
-use crate::core::{CooldownState, SpellCooldowns, SpellGroup, SpellId};
+use crate::core::{CooldownState, Cooldowns, SpellGroup, SpellId};
 
 const COOLDOWN_SHADE: Srgba = Srgba::new(0.345098, 0.345098, 0.345098, 0.666667);
 const FONT_SIZE: f32 = 10.0;
@@ -17,13 +17,17 @@ const GROUP_SHEET_ROWS: u32 = 2;
 pub(super) enum CooldownOverlay {
     Spell { id: SpellId, group: SpellGroup },
     Group(SpellGroup),
+    Item,
+    Rune { spell: SpellId, group: SpellGroup },
 }
 
 impl CooldownOverlay {
-    fn state(self, cooldowns: &SpellCooldowns, now: Duration) -> Option<CooldownState> {
+    fn state(self, cooldowns: &Cooldowns, now: Duration) -> Option<CooldownState> {
         match self {
             CooldownOverlay::Spell { id, group } => cooldowns.spell(id, group, now),
             CooldownOverlay::Group(group) => cooldowns.group(group, now),
+            CooldownOverlay::Item => cooldowns.item(now),
+            CooldownOverlay::Rune { spell, group } => cooldowns.rune(spell, group, now),
         }
     }
 }
@@ -137,7 +141,7 @@ fn shade_gradient(recovered: f32) -> BackgroundGradient {
 
 pub(super) fn update_cooldown_overlays(
     time: Res<Time<Real>>,
-    cooldowns: Res<SpellCooldowns>,
+    cooldowns: Res<Cooldowns>,
     mut overlays: Query<(&CooldownOverlay, &mut BackgroundGradient)>,
     mut timers: Query<(&CooldownTimer, &mut Text)>,
 ) {
@@ -166,6 +170,27 @@ mod tests {
 
     fn ms(millis: u64) -> Duration {
         Duration::from_millis(millis)
+    }
+
+    #[test]
+    fn an_item_overlay_tracks_the_use_cooldown_and_a_rune_overlay_its_spell_too() {
+        let mut cooldowns = Cooldowns::default();
+        cooldowns.start_use(Duration::ZERO, ms(1000));
+        cooldowns.start_group(SpellGroup::Attack, Duration::ZERO, ms(2000));
+        let remaining = |tracks: CooldownOverlay| {
+            tracks
+                .state(&cooldowns, Duration::ZERO)
+                .map(|state| state.remaining)
+        };
+
+        assert_eq!(remaining(CooldownOverlay::Item), Some(ms(1000)));
+        assert_eq!(
+            remaining(CooldownOverlay::Rune {
+                spell: SpellId(41),
+                group: SpellGroup::Attack,
+            }),
+            Some(ms(2000))
+        );
     }
 
     #[test]
@@ -200,7 +225,7 @@ mod tests {
     fn a_cooling_overlay_is_shaded_and_timed_then_cleared_when_ready() {
         let mut world = World::new();
         world.init_resource::<Time<Real>>();
-        let mut cooldowns = SpellCooldowns::default();
+        let mut cooldowns = Cooldowns::default();
         cooldowns.start_group(SpellGroup::Attack, Duration::ZERO, ms(2000));
         world.insert_resource(cooldowns);
 

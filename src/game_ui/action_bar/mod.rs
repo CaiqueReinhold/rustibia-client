@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::core::{ActiveCharacter, GameState, SessionCleanup, SpellBook};
+use crate::core::{ActiveCharacter, CarriedItems, GameState, RuneBook, SessionCleanup, SpellBook};
 use crate::player::Keybinds;
 
 mod activation;
@@ -36,6 +36,8 @@ impl Plugin for ActionBarPlugin {
                         resource_changed::<ActionBar>
                             .or(resource_changed::<Keybinds>)
                             .or(resource_changed::<SpellBook>)
+                            .or(resource_changed::<RuneBook>)
+                            .or(resource_changed::<CarriedItems>)
                             .or(resource_changed::<bar::VisibleSlots>),
                     ),
                     persistence::save_action_bar

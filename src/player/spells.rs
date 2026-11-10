@@ -3,8 +3,11 @@ use std::time::Duration;
 use bevy::prelude::*;
 
 use crate::{
-    core::{SpellBook, SpellCooldowns, SpellId, SpellTarget},
-    network::{ClientMessage, SendMessage, events::SpellCast},
+    core::{Cooldowns, SpellId, SpellTarget},
+    network::{
+        ClientMessage, SendMessage,
+        events::{SpellCast, UseCooldownStarted},
+    },
 };
 
 #[derive(Event, Debug)]
@@ -25,8 +28,7 @@ pub fn on_cast_spell_requested(event: On<CastSpellRequested>, mut commands: Comm
 pub fn on_spell_cast(
     event: On<SpellCast>,
     time: Res<Time<Real>>,
-    book: Res<SpellBook>,
-    mut cooldowns: ResMut<SpellCooldowns>,
+    mut cooldowns: ResMut<Cooldowns>,
 ) {
     let now = time.elapsed();
     cooldowns.start_spell(
@@ -34,23 +36,25 @@ pub fn on_spell_cast(
         now,
         Duration::from_millis(event.spell_cooldown_ms.into()),
     );
-    match book.get(event.spell_id) {
-        Some(spell) => cooldowns.start_group(
-            spell.group,
-            now,
-            Duration::from_millis(event.group_cooldown_ms.into()),
-        ),
-        None => warn!(
-            "cast accepted for spell {}, which is not in the spell book; its group cooldown is not shown",
-            event.spell_id.0
-        ),
-    }
+    cooldowns.start_group(
+        event.group,
+        now,
+        Duration::from_millis(event.group_cooldown_ms.into()),
+    );
+}
+
+pub fn on_use_cooldown(
+    event: On<UseCooldownStarted>,
+    time: Res<Time<Real>>,
+    mut cooldowns: ResMut<Cooldowns>,
+) {
+    cooldowns.start_use(time.elapsed(), Duration::from_millis(event.ms.into()));
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::{SpellGroup, SpellInfo};
+    use crate::core::SpellGroup;
     use crate::map::Position;
 
     #[derive(Resource, Default)]
@@ -86,42 +90,35 @@ mod tests {
         ));
     }
 
-    fn a_world_knowing_spell_two() -> World {
+    fn a_world_at_five_seconds() -> World {
         let mut world = World::new();
         world.init_resource::<Time<Real>>();
-        world.init_resource::<SpellCooldowns>();
-        world.insert_resource(SpellBook::new(vec![SpellInfo {
-            id: SpellId(2),
-            name: "Fire Wave".to_owned(),
-            words: "exevo flam hur".to_owned(),
-            level: 18,
-            icon: 44,
-            aimable: false,
-            group: SpellGroup::Attack,
-        }]));
+        world.init_resource::<Cooldowns>();
         world.add_observer(on_spell_cast);
+        world.add_observer(on_use_cooldown);
         world
             .resource_mut::<Time<Real>>()
             .advance_by(Duration::from_secs(5));
         world
     }
 
-    fn cast(world: &mut World, spell: u16, spell_ms: u32, group_ms: u32) {
+    fn cast(world: &mut World, spell: u16, spell_ms: u32, group_ms: u32, group: SpellGroup) {
         world.trigger(SpellCast {
             spell_id: SpellId(spell),
             spell_cooldown_ms: spell_ms,
             group_cooldown_ms: group_ms,
+            group,
         });
         world.flush();
     }
 
     #[test]
     fn an_accepted_cast_starts_the_spell_and_its_group_from_now() {
-        let mut world = a_world_knowing_spell_two();
-        cast(&mut world, 2, 2000, 4000);
+        let mut world = a_world_at_five_seconds();
+        cast(&mut world, 2, 2000, 4000, SpellGroup::Attack);
 
         let now = Duration::from_secs(6);
-        let cooldowns = world.resource::<SpellCooldowns>();
+        let cooldowns = world.resource::<Cooldowns>();
         assert_eq!(
             cooldowns
                 .spell(SpellId(2), SpellGroup::Healing, now)
@@ -137,19 +134,30 @@ mod tests {
     }
 
     #[test]
-    fn a_spell_missing_from_the_book_starts_only_its_own_cooldown() {
-        let mut world = a_world_knowing_spell_two();
-        cast(&mut world, 9, 2000, 4000);
+    fn a_rune_cast_starts_the_group_the_server_named() {
+        let mut world = a_world_at_five_seconds();
+        cast(&mut world, 41, 2000, 2000, SpellGroup::Attack);
 
-        let now = Duration::from_secs(5);
-        let cooldowns = world.resource::<SpellCooldowns>();
         assert!(
-            cooldowns
-                .spell(SpellId(9), SpellGroup::Healing, now)
+            world
+                .resource::<Cooldowns>()
+                .group(SpellGroup::Attack, Duration::from_secs(5))
                 .is_some()
         );
-        for group in SpellGroup::ALL {
-            assert!(cooldowns.group(group, now).is_none(), "{group:?}");
-        }
+    }
+
+    #[test]
+    fn a_use_cooldown_starts_from_now() {
+        let mut world = a_world_at_five_seconds();
+        world.trigger(UseCooldownStarted { ms: 1000 });
+        world.flush();
+
+        assert_eq!(
+            world
+                .resource::<Cooldowns>()
+                .item(Duration::from_millis(5500))
+                .map(|state| state.remaining),
+            Some(Duration::from_millis(500))
+        );
     }
 }

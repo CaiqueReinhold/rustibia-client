@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
-use crate::core::spells::{SpellBook, SpellCooldowns};
+use crate::core::carried::CarriedItems;
+use crate::core::spells::{Cooldowns, RuneBook, SpellBook};
 use crate::core::status::PlayerStatuses;
 use crate::core::systems::{PingState, PingTimer};
 
@@ -56,7 +57,9 @@ pub(super) fn cleanup_session(mut commands: Commands, ping: Res<PingState>) {
     ping.reset();
     commands.insert_resource(PingTimer::default());
     commands.insert_resource(SpellBook::default());
-    commands.insert_resource(SpellCooldowns::default());
+    commands.insert_resource(Cooldowns::default());
+    commands.insert_resource(RuneBook::default());
+    commands.insert_resource(CarriedItems::default());
     commands.insert_resource(PlayerStatuses::default());
     commands.remove_resource::<ActiveCharacter>();
 }
@@ -90,7 +93,7 @@ mod tests {
 
     #[test]
     fn cleanup_forgets_the_character_and_its_spells() {
-        use crate::core::spells::{SpellBook, SpellCooldowns, SpellGroup, SpellId, SpellInfo};
+        use crate::core::spells::{Cooldowns, SpellBook, SpellGroup, SpellId, SpellInfo};
 
         let mut world = World::new();
         world.init_resource::<PingState>();
@@ -105,7 +108,7 @@ mod tests {
             aimable: false,
             group: SpellGroup::Healing,
         }]));
-        let mut cooldowns = SpellCooldowns::default();
+        let mut cooldowns = Cooldowns::default();
         cooldowns.start_group(SpellGroup::Healing, Duration::ZERO, Duration::from_secs(1));
         world.insert_resource(cooldowns);
 
@@ -115,7 +118,7 @@ mod tests {
         assert!(world.resource::<SpellBook>().spells().is_none());
         assert!(
             world
-                .resource::<SpellCooldowns>()
+                .resource::<Cooldowns>()
                 .group(SpellGroup::Healing, Duration::ZERO)
                 .is_none()
         );
@@ -136,5 +139,26 @@ mod tests {
             *world.resource::<PlayerStatuses>(),
             PlayerStatuses::default()
         );
+    }
+
+    #[test]
+    fn cleanup_forgets_the_runes_and_what_was_carried() {
+        use crate::core::{CarriedItems, RuneBook, RuneInfo, SpellGroup, SpellId};
+        use crate::items::ItemId;
+
+        let mut world = World::new();
+        world.init_resource::<PingState>();
+        world.init_resource::<PingTimer>();
+        world.insert_resource(RuneBook::new([RuneInfo {
+            item_id: ItemId(3155),
+            spell_id: SpellId(41),
+            group: SpellGroup::Attack,
+        }]));
+        world.insert_resource(CarriedItems::new([(ItemId(3031), 5)]));
+
+        world.run_system_once(cleanup_session).unwrap();
+
+        assert_eq!(world.resource::<RuneBook>().get(ItemId(3155)), None);
+        assert_eq!(world.resource::<CarriedItems>().count(ItemId(3031)), None);
     }
 }

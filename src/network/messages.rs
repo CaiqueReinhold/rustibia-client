@@ -9,8 +9,8 @@ use crate::{
     agent::{AgentId, AgentKind, FacingDirection, Health, Mana, WalkingDirection},
     conf::map::{STACK_MAX_VISIBLE_ITEMS, TILES_X, TILES_Y},
     core::{
-        ChatMessageType, EffectId, FloatingTextType, MissileId, OutfitColors, OutfitId, SayTarget,
-        SpellGroup, SpellId, SpellInfo, SpellTarget, TextMessageType,
+        ChatMessageType, EffectId, FloatingTextType, MissileId, OutfitColors, OutfitId, RuneInfo,
+        SayTarget, SpellGroup, SpellId, SpellInfo, SpellTarget, TextMessageType,
     },
     game_ui::{ShopOffer, SkillProgress, SkillType},
     items::{ContainerId, InventorySlot, ItemId},
@@ -163,6 +163,9 @@ const SRV_DAMAGED_BY: u8 = 35;
 const SRV_DIED: u8 = 36;
 const SRV_SHOP: u8 = 37;
 const SRV_SHOP_CLOSED: u8 = 38;
+const SRV_CARRIED_ITEMS: u8 = 39;
+const SRV_USE_COOLDOWN: u8 = 40;
+const SRV_RUNE_LIST: u8 = 41;
 
 #[derive(Clone, Debug)]
 pub enum ServerMessage {
@@ -321,6 +324,7 @@ pub enum ServerMessage {
         spell_id: SpellId,
         spell_cooldown_ms: u32,
         group_cooldown_ms: u32,
+        group: SpellGroup,
     },
     SpellList {
         spells: Vec<SpellInfo>,
@@ -340,6 +344,15 @@ pub enum ServerMessage {
         goods: Vec<(ItemId, u8, u16)>,
     },
     ShopClosed,
+    CarriedItems {
+        items: Vec<(ItemId, u32)>,
+    },
+    UseCooldown {
+        ms: u32,
+    },
+    RuneList {
+        runes: Vec<RuneInfo>,
+    },
 }
 
 impl Display for ServerMessage {
@@ -806,6 +819,7 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
             spell_id: SpellId(buf.read_u16_le()?),
             spell_cooldown_ms: buf.read_u32_le()?,
             group_cooldown_ms: buf.read_u32_le()?,
+            group: SpellGroup::from_id(buf.read_u8()?).ok_or(MessageDecodeError::WrongSequence)?,
         }),
         SRV_SPELL_LIST => {
             let count = buf.read_u16_le()?;
@@ -887,6 +901,33 @@ fn decode_message(buf: &mut Reader) -> Result<ServerMessage, MessageDecodeError>
             })
         }
         SRV_SHOP_CLOSED => Ok(ServerMessage::ShopClosed),
+        SRV_CARRIED_ITEMS => {
+            let count = buf.read_u16_le()?;
+            let mut items = Vec::with_capacity(count as usize);
+            for _ in 0..count {
+                items.push((ItemId(buf.read_u16_le()?), buf.read_u32_le()?));
+            }
+            Ok(ServerMessage::CarriedItems { items })
+        }
+        SRV_USE_COOLDOWN => Ok(ServerMessage::UseCooldown {
+            ms: buf.read_u32_le()?,
+        }),
+        SRV_RUNE_LIST => {
+            let count = buf.read_u16_le()?;
+            let mut runes = Vec::with_capacity(count as usize);
+            for _ in 0..count {
+                let item_id = ItemId(buf.read_u16_le()?);
+                let spell_id = SpellId(buf.read_u16_le()?);
+                let group =
+                    SpellGroup::from_id(buf.read_u8()?).ok_or(MessageDecodeError::WrongSequence)?;
+                runes.push(RuneInfo {
+                    item_id,
+                    spell_id,
+                    group,
+                });
+            }
+            Ok(ServerMessage::RuneList { runes })
+        }
         _ => Err(MessageDecodeError::WrongSequence),
     }
 }
@@ -1334,12 +1375,10 @@ mod tests {
         );
     }
 
+    /// Its twin is `spell_cast_encodes_a_known_frame` in the server's `messages.rs`.
     #[test]
-    fn spell_cast_decodes_both_cooldowns() {
-        let mut buf = BytesMut::new();
-        buf.extend_from_slice(&[
-            11,
-            0,
+    fn spell_cast_decodes_both_cooldowns_and_the_group() {
+        let mut buf = frame(&[
             SRV_SPELL_CAST,
             0x04,
             0x00,
@@ -1351,6 +1390,7 @@ mod tests {
             0x0F,
             0x00,
             0x00,
+            1,
         ]);
 
         match (GameMessageCodec {}).decode(&mut buf).unwrap().unwrap() {
@@ -1358,12 +1398,78 @@ mod tests {
                 spell_id,
                 spell_cooldown_ms,
                 group_cooldown_ms,
+                group,
             } => {
                 assert_eq!(spell_id, SpellId(4));
                 assert_eq!(spell_cooldown_ms, 2000);
                 assert_eq!(group_cooldown_ms, 4000);
+                assert_eq!(group, SpellGroup::Healing);
             }
             other => panic!("expected SpellCast, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_spell_cast_with_an_unknown_group_is_refused() {
+        let mut buf = frame(&[
+            SRV_SPELL_CAST,
+            0x04,
+            0x00,
+            0xD0,
+            0x07,
+            0x00,
+            0x00,
+            0xA0,
+            0x0F,
+            0x00,
+            0x00,
+            9,
+        ]);
+
+        assert!((GameMessageCodec {}).decode(&mut buf).is_err());
+    }
+
+    /// Its twin is `carried_items_encode_a_known_frame` in the server's `messages.rs`.
+    #[test]
+    fn carried_items_decode_the_servers_frame() {
+        let mut buf = frame(&[
+            39, 2, 0, 0xD7, 0x0B, 0xD8, 0x04, 0, 0, 0x0C, 0x01, 7, 0, 0, 0,
+        ]);
+
+        match (GameMessageCodec {}).decode(&mut buf).unwrap().unwrap() {
+            ServerMessage::CarriedItems { items } => {
+                assert_eq!(items, vec![(ItemId(3031), 1240), (ItemId(268), 7)]);
+            }
+            other => panic!("expected CarriedItems, got {other:?}"),
+        }
+    }
+
+    /// Its twin is `use_cooldown_encodes_a_known_frame` in the server's `messages.rs`.
+    #[test]
+    fn use_cooldown_decodes_the_servers_frame() {
+        let mut buf = frame(&[40, 0xE8, 0x03, 0, 0]);
+
+        match (GameMessageCodec {}).decode(&mut buf).unwrap().unwrap() {
+            ServerMessage::UseCooldown { ms } => assert_eq!(ms, 1000),
+            other => panic!("expected UseCooldown, got {other:?}"),
+        }
+    }
+
+    /// Its twin is `rune_list_encodes_a_known_frame` in the server's `messages.rs`.
+    #[test]
+    fn rune_list_decodes_the_servers_frame() {
+        let mut buf = frame(&[41, 1, 0, 0x53, 0x0C, 41, 0, 0]);
+
+        match (GameMessageCodec {}).decode(&mut buf).unwrap().unwrap() {
+            ServerMessage::RuneList { runes } => assert_eq!(
+                runes,
+                vec![RuneInfo {
+                    item_id: ItemId(3155),
+                    spell_id: SpellId(41),
+                    group: SpellGroup::Attack,
+                }]
+            ),
+            other => panic!("expected RuneList, got {other:?}"),
         }
     }
 

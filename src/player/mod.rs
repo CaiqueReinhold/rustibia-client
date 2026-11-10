@@ -120,6 +120,7 @@ impl Plugin for PlayerPlugin {
             .add_observer(target::on_target_lost)
             .add_observer(attacker_mark::on_player_damaged_by)
             .add_observer(spells::on_cast_spell_requested)
-            .add_observer(spells::on_spell_cast);
+            .add_observer(spells::on_spell_cast)
+            .add_observer(spells::on_use_cooldown);
     }
 }

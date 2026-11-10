@@ -4,8 +4,8 @@ use crate::{
     agent::{AgentId, AgentKind, FacingDirection, Health, Mana, WalkingDirection},
     conf::map::{TILES_X, TILES_Y},
     core::{
-        ChatMessageType, EffectId, FloatingTextType, MissileId, OutfitColors, OutfitId, SpellId,
-        SpellInfo, TextMessageType,
+        ChatMessageType, EffectId, FloatingTextType, MissileId, OutfitColors, OutfitId, RuneInfo,
+        SpellGroup, SpellId, SpellInfo, TextMessageType,
     },
     game_ui::{ShopOffer, SkillProgress, SkillType},
     items::{ContainerId, InventorySlot, ItemId},
@@ -249,12 +249,30 @@ pub struct SpellCast {
     pub spell_id: SpellId,
     pub spell_cooldown_ms: u32,
     pub group_cooldown_ms: u32,
+    pub group: SpellGroup,
 }
 
 /// Sent once at login: every spell of the character's vocation.
 #[derive(Event, Debug)]
 pub struct SpellListReceived {
     pub spells: Vec<SpellInfo>,
+}
+
+/// Sent once at login: every rune in the server's catalogue, whoever can cast it.
+#[derive(Event, Debug)]
+pub struct RuneListReceived {
+    pub runes: Vec<RuneInfo>,
+}
+
+/// Everything carried, by item id. An id absent from the table is not carried.
+#[derive(Event, Debug)]
+pub struct CarriedItemsReceived {
+    pub items: Vec<(ItemId, u32)>,
+}
+
+#[derive(Event, Debug)]
+pub struct UseCooldownStarted {
+    pub ms: u32,
 }
 
 #[derive(Event, Debug)]
@@ -540,11 +558,13 @@ pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
             spell_id,
             spell_cooldown_ms,
             group_cooldown_ms,
+            group,
         } => {
             commands.trigger(SpellCast {
                 spell_id,
                 spell_cooldown_ms,
                 group_cooldown_ms,
+                group,
             });
         }
         ServerMessage::SpellList { spells } => {
@@ -574,6 +594,15 @@ pub fn route_event(msg: ServerMessage, commands: &mut Commands) {
         }
         ServerMessage::ShopClosed => {
             commands.trigger(ShopClosed);
+        }
+        ServerMessage::CarriedItems { items } => {
+            commands.trigger(CarriedItemsReceived { items });
+        }
+        ServerMessage::UseCooldown { ms } => {
+            commands.trigger(UseCooldownStarted { ms });
+        }
+        ServerMessage::RuneList { runes } => {
+            commands.trigger(RuneListReceived { runes });
         }
     }
 }

@@ -7,7 +7,8 @@ use bevy_text_outline::TextOutline;
 
 use crate::conf::ui::{UI_ITEM_SIZE, action_bar as conf, dialog, ui_colors};
 use crate::core::{
-    Appearances, ItemConfigs, SheetEvicted, SheetUser, SpellBook, SpriteAnimator, SpriteSheet,
+    Appearances, CarriedItems, ItemConfigs, RuneBook, SheetEvicted, SheetUser, SpellBook,
+    SpriteAnimator, SpriteSheet,
 };
 use crate::game_ui::GameUiAssets;
 use crate::game_ui::cooldown::{CooldownOverlay, spawn_cooldown_overlay};
@@ -20,7 +21,8 @@ use super::menu::OpenSlotMenu;
 use super::state::{ActionBar, SlotAction};
 
 const SLOT_GAP: f32 = 2.0;
-const HOTKEY_FONT_SIZE: f32 = 9.0;
+const LABEL_FONT_SIZE: f32 = 9.0;
+const EMPTY_ICON_ALPHA: f32 = 0.35;
 const SPELL_ICON_SIZE: u32 = 30;
 const SPELL_ICON_COLUMNS: u32 = 12;
 const SPELL_ICON_ROWS: u32 = 11;
@@ -189,6 +191,8 @@ pub(super) fn redraw_slots(
     bar: Res<ActionBar>,
     keybinds: Res<Keybinds>,
     book: Res<SpellBook>,
+    runes: Res<RuneBook>,
+    carried: Res<CarriedItems>,
     items: Res<ItemConfigs>,
     appearances: Res<Appearances>,
     mut assets: ResMut<ActionBarAssets>,
@@ -200,8 +204,9 @@ pub(super) fn redraw_slots(
         let slot = bar.slot(&keybinds, cell.0);
         commands.entity(entity).despawn_children();
 
+        let count = slot.action.and_then(|action| slot_count(action, &carried));
         let mut children = Vec::new();
-        if let Some((image, user)) = slot.action.and_then(|action| {
+        if let Some((mut image, user)) = slot.action.and_then(|action| {
             action_image(
                 &action,
                 &book,
@@ -211,6 +216,7 @@ pub(super) fn redraw_slots(
                 &mut layouts,
             )
         }) {
+            image.color = icon_tint(count);
             let mut icon = commands.spawn(icon_bundle(image));
             if let Some(user) = user {
                 icon.insert(user);
@@ -225,13 +231,16 @@ pub(super) fn redraw_slots(
         }
         if let Some(tracks) = slot
             .action
-            .and_then(|action| cooldown_overlay_for(action, &book))
+            .and_then(|action| cooldown_overlay_for(action, &book, &runes))
         {
             children.push(spawn_cooldown_overlay(
                 &mut commands,
                 tracks,
                 Some(&ui_assets.font),
             ));
+        }
+        if let Some(count) = count {
+            children.push(commands.spawn(count_label(count, &ui_assets)).id());
         }
         if let Some(hotkey) = slot.hotkey {
             children.push(commands.spawn(hotkey_label(&hotkey, &ui_assets)).id());
@@ -253,17 +262,38 @@ pub(super) fn icon_bundle(image: ImageNode) -> impl Bundle {
 }
 
 fn hotkey_label(hotkey: &Hotkey, ui_assets: &GameUiAssets) -> impl Bundle {
-    (
+    corner_label(
+        hotkey.short_label(),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(0.0),
             right: Val::Px(1.0),
             ..default()
         },
-        Text::new(hotkey.short_label()),
+        ui_assets,
+    )
+}
+
+fn count_label(count: u32, ui_assets: &GameUiAssets) -> impl Bundle {
+    corner_label(
+        count_text(count),
+        Node {
+            position_type: PositionType::Absolute,
+            bottom: Val::Px(0.0),
+            right: Val::Px(1.0),
+            ..default()
+        },
+        ui_assets,
+    )
+}
+
+fn corner_label(text: impl Into<String>, node: Node, ui_assets: &GameUiAssets) -> impl Bundle {
+    (
+        node,
+        Text::new(text),
         TextFont {
             font: ui_assets.font.clone(),
-            font_size: HOTKEY_FONT_SIZE,
+            font_size: LABEL_FONT_SIZE,
             ..default()
         }
         .with_font_smoothing(FontSmoothing::AntiAliased),
@@ -295,13 +325,46 @@ pub(super) fn action_image(
     }
 }
 
-fn cooldown_overlay_for(action: SlotAction, book: &SpellBook) -> Option<CooldownOverlay> {
+fn cooldown_overlay_for(
+    action: SlotAction,
+    book: &SpellBook,
+    runes: &RuneBook,
+) -> Option<CooldownOverlay> {
     match action {
         SlotAction::Spell { id, .. } => Some(CooldownOverlay::Spell {
             id,
             group: book.get(id)?.group,
         }),
-        SlotAction::Item { .. } => None,
+        SlotAction::Item { item_id, .. } => Some(match runes.get(item_id) {
+            Some(rune) => CooldownOverlay::Rune {
+                spell: rune.spell_id,
+                group: rune.group,
+            },
+            None => CooldownOverlay::Item,
+        }),
+    }
+}
+
+fn slot_count(action: SlotAction, carried: &CarriedItems) -> Option<u32> {
+    match action {
+        SlotAction::Item { item_id, .. } => carried.count(item_id),
+        SlotAction::Spell { .. } => None,
+    }
+}
+
+fn count_text(count: u32) -> String {
+    if count < 1000 {
+        count.to_string()
+    } else {
+        format!("{}k", count / 1000)
+    }
+}
+
+fn icon_tint(count: Option<u32>) -> Color {
+    if count == Some(0) {
+        Color::WHITE.with_alpha(EMPTY_ICON_ALPHA)
+    } else {
+        Color::WHITE
     }
 }
 
@@ -393,8 +456,8 @@ mod tests {
     }
 
     #[test]
-    fn only_a_spell_the_book_knows_is_overlaid() {
-        use crate::core::{SpellGroup, SpellId, SpellInfo};
+    fn a_slot_is_overlaid_by_what_locks_it() {
+        use crate::core::{RuneBook, RuneInfo, SpellGroup, SpellId, SpellInfo};
 
         let book = SpellBook::new(vec![SpellInfo {
             id: SpellId(2),
@@ -405,39 +468,99 @@ mod tests {
             aimable: false,
             group: SpellGroup::Attack,
         }]);
+        let runes = RuneBook::new([RuneInfo {
+            item_id: ItemId(3155),
+            spell_id: SpellId(41),
+            group: SpellGroup::Attack,
+        }]);
+        let overlay = |action| cooldown_overlay_for(action, &book, &runes);
 
         assert_eq!(
-            cooldown_overlay_for(
-                SlotAction::Spell {
-                    id: SpellId(2),
-                    aim: None
-                },
-                &book
-            ),
+            overlay(SlotAction::Spell {
+                id: SpellId(2),
+                aim: None
+            }),
             Some(CooldownOverlay::Spell {
                 id: SpellId(2),
                 group: SpellGroup::Attack
             })
         );
         assert_eq!(
-            cooldown_overlay_for(
-                SlotAction::Spell {
-                    id: SpellId(9),
-                    aim: None
-                },
-                &book
-            ),
+            overlay(SlotAction::Spell {
+                id: SpellId(9),
+                aim: None
+            }),
             None
         );
         assert_eq!(
-            cooldown_overlay_for(
+            overlay(SlotAction::Item {
+                item_id: ItemId(3155),
+                aim: None
+            }),
+            Some(CooldownOverlay::Rune {
+                spell: SpellId(41),
+                group: SpellGroup::Attack
+            })
+        );
+        assert_eq!(
+            overlay(SlotAction::Item {
+                item_id: ItemId(3031),
+                aim: None
+            }),
+            Some(CooldownOverlay::Item)
+        );
+    }
+
+    #[test]
+    fn a_count_shows_thousands_rounded_down() {
+        assert_eq!(count_text(0), "0");
+        assert_eq!(count_text(1), "1");
+        assert_eq!(count_text(999), "999");
+        assert_eq!(count_text(1000), "1k");
+        assert_eq!(count_text(12_999), "12k");
+    }
+
+    #[test]
+    fn only_an_item_slot_is_counted_and_only_once_a_table_has_arrived() {
+        use crate::core::{CarriedItems, SpellId};
+
+        let potion = SlotAction::Item {
+            item_id: ItemId(268),
+            aim: None,
+        };
+        let carried = CarriedItems::new([(ItemId(268), 7)]);
+
+        assert_eq!(slot_count(potion, &CarriedItems::default()), None);
+        assert_eq!(slot_count(potion, &carried), Some(7));
+        assert_eq!(
+            slot_count(
                 SlotAction::Item {
                     item_id: ItemId(3031),
                     aim: None
                 },
-                &book
+                &carried
+            ),
+            Some(0)
+        );
+        assert_eq!(
+            slot_count(
+                SlotAction::Spell {
+                    id: SpellId(2),
+                    aim: None
+                },
+                &carried
             ),
             None
+        );
+    }
+
+    #[test]
+    fn only_an_empty_slot_is_dimmed() {
+        assert_eq!(icon_tint(None), Color::WHITE);
+        assert_eq!(icon_tint(Some(3)), Color::WHITE);
+        assert_eq!(
+            icon_tint(Some(0)),
+            Color::WHITE.with_alpha(EMPTY_ICON_ALPHA)
         );
     }
 
