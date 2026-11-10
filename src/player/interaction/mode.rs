@@ -34,8 +34,7 @@ pub enum InteractionMode {
     #[default]
     Idle,
     Dragging {
-        item: Arc<Item>,
-        origin: ItemPlacement,
+        carried: Option<(Arc<Item>, ItemPlacement)>,
         crossed_threshold: bool,
     },
     Targeting(TargetingSource),
@@ -147,4 +146,29 @@ pub fn on_targeting_inventory_updated(
         };
         *slot == event.slot && !event.item_id.map(|id| id == item_id).unwrap_or(false)
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_drag_carrying_nothing_counts_once_past_the_threshold() {
+        let mode = InteractionMode::Dragging {
+            carried: None,
+            crossed_threshold: true,
+        };
+
+        assert!(mode.drag_crossed_threshold());
+    }
+
+    #[test]
+    fn a_drag_carrying_nothing_is_still_a_click_under_the_threshold() {
+        let mode = InteractionMode::Dragging {
+            carried: None,
+            crossed_threshold: false,
+        };
+
+        assert!(!mode.drag_crossed_threshold());
+    }
 }

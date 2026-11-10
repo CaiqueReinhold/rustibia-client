@@ -7,7 +7,7 @@ use crate::{
         item::ItemFlag,
         material::{ItemInstance, ItemMaterial},
     },
-    map::{DrawLayer, DrawOrder, DrawRank, FloorEntities, Map, Position},
+    map::{DrawLayer, DrawOrder, DrawRank, FloorEntities, Map, Position, draws_before},
 };
 use bevy::prelude::*;
 use bevy::{asset::RenderAssetUsages, mesh::MeshTag, render::storage::ShaderStorageBuffer};
@@ -16,6 +16,51 @@ use std::sync::Arc;
 
 #[derive(Component)]
 pub struct SpawnedItem;
+
+/// A lying item's cell on a tile it spreads onto: `tile` is the one it covers,
+/// `home` the item's own. It draws with the item, over everything between the
+/// two, until a creature, effect or missile is drawn over it; then it keys to
+/// that one's tile, under it.
+#[derive(Component, Debug, Clone, PartialEq)]
+pub struct SpreadCell {
+    tile: Position,
+    home: Position,
+    slot: u32,
+}
+
+impl SpreadCell {
+    /// Whether something keyed to `drawn` overlaps this cell and would be
+    /// covered by it. A 64 px sprite reaches one tile up and left of its key.
+    fn is_under(&self, drawn: &Position) -> bool {
+        drawn.z == self.tile.z
+            && matches!(drawn.x.wrapping_sub(self.tile.x), 0 | 1)
+            && matches!(drawn.y.wrapping_sub(self.tile.y), 0 | 1)
+            && draws_before(drawn, &self.home)
+    }
+
+    /// `under` is the tile of the first thing drawn over the cell, if any.
+    fn placement<'a>(&'a self, under: Option<&'a Position>) -> (&'a Position, DrawLayer, u32) {
+        match under {
+            Some(tile) => (tile, DrawLayer::Lying, 0),
+            None => (&self.home, DrawLayer::Items, self.slot),
+        }
+    }
+}
+
+pub fn settle_spread_cells(
+    mut cells: Query<(&SpreadCell, &mut DrawOrder), With<SpawnedItem>>,
+    others: Query<&DrawOrder, Without<SpawnedItem>>,
+) {
+    for (cell, mut order) in &mut cells {
+        let under = others
+            .iter()
+            .filter(|other| other.at_or_above(DrawLayer::Creature) && cell.is_under(&other.pos))
+            .map(|other| &other.pos)
+            .reduce(|first, pos| if draws_before(pos, first) { pos } else { first });
+        let (pos, layer, slot) = cell.placement(under);
+        DrawOrder::move_to(&mut order, pos, layer, slot);
+    }
+}
 
 #[derive(Resource, Debug, Default)]
 pub struct ItemState {
@@ -169,21 +214,16 @@ fn lying_cells(sprite_size: Vec2, bbox: Rect) -> Vec<(IVec2, Rect)> {
     cells
 }
 
-fn cell_order(position: &Position, offset: IVec2, stack_index: u32) -> DrawOrder {
-    if offset == IVec2::ZERO {
-        return DrawOrder::new(
-            position.clone(),
-            DrawRank::Standing,
-            DrawLayer::Items,
-            stack_index,
-        );
-    }
-    let tile = Position::new(
-        position.x.saturating_add_signed(offset.x as i16),
-        position.y.saturating_add_signed(offset.y as i16),
-        position.z,
-    );
-    DrawOrder::new(tile, DrawRank::Standing, DrawLayer::Lying, 0)
+fn spread_cell(position: &Position, offset: IVec2, stack_index: u32) -> Option<SpreadCell> {
+    (offset != IVec2::ZERO).then(|| SpreadCell {
+        tile: Position::new(
+            position.x.saturating_add_signed(offset.x as i16),
+            position.y.saturating_add_signed(offset.y as i16),
+            position.z,
+        ),
+        home: position.clone(),
+        slot: stack_index,
+    })
 }
 
 fn spawn_item(
@@ -259,8 +299,11 @@ fn spawn_item(
             patterns,
             cell_box,
             Vec3::ZERO,
-            cell_order(position, offset, stack_index as u32),
+            DrawOrder::new(position.clone(), rank, layer, stack_index as u32),
         );
+        if let Some(spread) = spread_cell(position, offset, stack_index as u32) {
+            commands.entity(cell).insert(spread);
+        }
         commands.entity(holder).add_child(cell);
     }
     holder
@@ -481,33 +524,152 @@ mod tests {
         );
     }
 
-    #[test]
-    fn a_corpses_own_cell_keeps_its_stack_slot() {
-        let tile = Position::new(1000, 1000, 7);
+    fn corpse_cell(offset: IVec2) -> SpreadCell {
+        spread_cell(&Position::new(1000, 1000, 7), offset, 3).unwrap()
+    }
 
+    fn cell_key(cell: &SpreadCell, under: Option<&Position>) -> f32 {
+        let (pos, layer, slot) = cell.placement(under);
+        key(pos, layer, slot)
+    }
+
+    fn key(pos: &Position, layer: DrawLayer, slot: u32) -> f32 {
+        let origin = crate::map::DrawOrigin::around(&Position::new(1000, 1000, 7));
+        DrawOrder::new(pos.clone(), DrawRank::Standing, layer, slot).key(&origin)
+    }
+
+    #[test]
+    fn a_corpses_own_tile_has_no_spread_cell() {
         assert_eq!(
-            cell_order(&tile, IVec2::ZERO, 3),
-            DrawOrder::new(tile.clone(), DrawRank::Standing, DrawLayer::Items, 3)
+            spread_cell(&Position::new(1000, 1000, 7), IVec2::ZERO, 3),
+            None
         );
     }
 
     #[test]
-    fn a_spread_cell_keys_to_the_tile_it_covers() {
-        let tile = Position::new(1000, 1000, 7);
-
+    fn a_spread_cell_names_the_tile_it_covers() {
         assert_eq!(
-            cell_order(&tile, IVec2::new(-1, -1), 3),
-            DrawOrder::new(
-                Position::new(999, 999, 7),
-                DrawRank::Standing,
-                DrawLayer::Lying,
-                0
-            )
+            corpse_cell(IVec2::new(-1, -1)).tile,
+            Position::new(999, 999, 7)
         );
         assert_eq!(
-            cell_order(&tile, IVec2::new(0, -1), 3).pos,
+            corpse_cell(IVec2::new(0, -1)).tile,
             Position::new(1000, 999, 7)
         );
+    }
+
+    /// A 64 px wall on a tile between a cell's and the corpse's reaches back
+    /// over the cell. Left alone, the cell must cover it as the corpse's own
+    /// tile does, or the wall cuts the corpse in two.
+    #[test]
+    fn an_undisturbed_cell_draws_over_a_wall_between_it_and_the_corpse() {
+        let north_west = corpse_cell(IVec2::new(-1, -1));
+
+        for wall_tile in [Position::new(1000, 999, 7), Position::new(999, 1000, 7)] {
+            for layer in [DrawLayer::Bottom, DrawLayer::Top] {
+                assert!(key(&wall_tile, layer, 15) < cell_key(&north_west, None));
+            }
+        }
+    }
+
+    #[test]
+    fn a_cell_a_creature_stands_on_draws_under_it() {
+        let cell = corpse_cell(IVec2::new(-1, -1));
+        let under = cell_key(&cell, Some(&cell.tile));
+
+        assert!(under < key(&cell.tile, DrawLayer::Creature, 0));
+        assert!(key(&cell.tile, DrawLayer::Items, 15) < under);
+    }
+
+    /// The screenshot case: a creature on the corpse's north tile reaches the
+    /// north-west cell, and the wall west of the corpse reaches it too. Keyed
+    /// to the creature's tile the cell stays over that wall; keyed to its own
+    /// it would go under.
+    #[test]
+    fn a_cell_drops_no_further_than_the_creature_over_it() {
+        let cell = corpse_cell(IVec2::new(-1, -1));
+        let creature = Position::new(1000, 999, 7);
+        let wall = Position::new(999, 1000, 7);
+        let under = cell_key(&cell, Some(&creature));
+
+        assert!(cell.is_under(&creature));
+        assert!(key(&wall, DrawLayer::Top, 15) < under);
+        assert!(under < key(&creature, DrawLayer::Creature, 0));
+    }
+
+    #[test]
+    fn a_cell_is_under_whatever_is_keyed_to_the_tiles_reaching_it() {
+        let cell = corpse_cell(IVec2::new(-1, 0));
+
+        assert!(cell.is_under(&Position::new(999, 1000, 7)));
+        assert!(cell.is_under(&Position::new(999, 1001, 7)));
+
+        assert!(
+            !cell.is_under(&Position::new(998, 1000, 7)),
+            "left of the cell"
+        );
+        assert!(!cell.is_under(&Position::new(999, 1002, 7)), "out of reach");
+        assert!(
+            !cell.is_under(&Position::new(999, 1000, 6)),
+            "another floor"
+        );
+    }
+
+    /// From the corpse's own tile on, tile order already draws it over the
+    /// whole corpse, and dropping the cell would only hand it to a wall.
+    #[test]
+    fn a_cell_stays_put_for_what_draws_after_the_corpse_anyway() {
+        let cell = corpse_cell(IVec2::new(-1, 0));
+
+        assert!(!cell.is_under(&Position::new(1000, 1000, 7)));
+        assert!(!cell.is_under(&Position::new(1000, 1001, 7)));
+    }
+
+    #[test]
+    fn a_cell_drops_only_while_a_creature_is_over_it() {
+        let mut app = App::new();
+        app.add_systems(Update, settle_spread_cells);
+        let home = Position::new(1000, 1000, 7);
+        let spread = corpse_cell(IVec2::new(-1, -1));
+        let north = Position::new(1000, 999, 7);
+        let at = |pos: &Position, layer| DrawOrder::new(pos.clone(), DrawRank::Standing, layer, 0);
+        let with_the_corpse = DrawOrder::new(home, DrawRank::Standing, DrawLayer::Items, 3);
+        let cell = app
+            .world_mut()
+            .spawn((SpawnedItem, spread.clone(), with_the_corpse.clone()))
+            .id();
+        let creature = app
+            .world_mut()
+            .spawn(at(&Position::new(990, 990, 7), DrawLayer::Creature))
+            .id();
+        let order = |app: &App| app.world().get::<DrawOrder>(cell).unwrap().clone();
+
+        app.update();
+        assert_eq!(order(&app), with_the_corpse);
+
+        app.world_mut()
+            .entity_mut(creature)
+            .insert(at(&north, DrawLayer::Creature));
+        app.update();
+        assert_eq!(order(&app), at(&north, DrawLayer::Lying));
+
+        let nearer = app
+            .world_mut()
+            .spawn(at(&spread.tile, DrawLayer::Effect))
+            .id();
+        app.update();
+        assert_eq!(
+            order(&app),
+            at(&spread.tile, DrawLayer::Lying),
+            "under the first of the two"
+        );
+
+        app.world_mut().despawn(nearer);
+        app.world_mut()
+            .entity_mut(creature)
+            .insert(at(&north, DrawLayer::PassingThrough));
+        app.update();
+        assert_eq!(order(&app), with_the_corpse);
     }
 
     /// Grounds and borders are the pass that goes first, so nothing they draw

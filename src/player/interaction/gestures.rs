@@ -17,7 +17,11 @@ use super::mode::{InteractionMode, ObjectPicked, TargetingSource};
 use super::thing_menu::{MenuAgent, OpenThingMenu, ThingMenuTarget};
 use super::use_kind::{start_use, use_kind};
 
-const MIN_DRAG_THRESHOLD: f32 = 1.0;
+const MIN_DRAG_THRESHOLD: f32 = 5.0;
+
+fn is_drag(travel: Vec2) -> bool {
+    travel.length() >= MIN_DRAG_THRESHOLD
+}
 
 pub fn attach_observers(event: On<Add, MainUI>, mut commands: Commands) {
     commands
@@ -30,23 +34,24 @@ pub fn attach_observers(event: On<Add, MainUI>, mut commands: Commands) {
 
 fn on_drag(event: On<Pointer<Drag>>, mut commands: Commands, mut mode: ResMut<InteractionMode>) {
     let InteractionMode::Dragging {
-        item,
-        origin,
+        carried,
         crossed_threshold,
     } = &mut *mode
     else {
         return;
     };
 
-    if *crossed_threshold || event.distance.max_element().abs() < MIN_DRAG_THRESHOLD {
+    if *crossed_threshold || !is_drag(event.distance) {
         return;
     }
 
     *crossed_threshold = true;
-    commands.trigger(ItemDragStarted {
-        item: item.clone(),
-        origin: origin.clone(),
-    });
+    if let Some((item, origin)) = carried {
+        commands.trigger(ItemDragStarted {
+            item: item.clone(),
+            origin: origin.clone(),
+        });
+    }
 }
 
 fn on_drag_start(
@@ -65,18 +70,12 @@ fn on_drag_start(
         return;
     }
 
-    let Some(target) = cursor_target(&hover_state, &map, &container_q, &inventory, MapPick::Top)
-    else {
-        return;
-    };
-
-    if target.item.config.has_flag(ItemFlag::Unmove) {
-        return;
-    }
+    let carried = cursor_target(&hover_state, &map, &container_q, &inventory, MapPick::Top)
+        .filter(|target| !target.item.config.has_flag(ItemFlag::Unmove))
+        .map(|target| (target.item, target.placement));
 
     *mode = InteractionMode::Dragging {
-        item: target.item,
-        origin: target.placement,
+        carried,
         crossed_threshold: false,
     };
 }
@@ -91,23 +90,25 @@ fn on_drag_end(
     inventory: Res<PlayerInventory>,
     keyboard: Res<ButtonInput<KeyCode>>,
 ) {
+    if !matches!(*mode, InteractionMode::Dragging { .. }) {
+        return;
+    }
     let InteractionMode::Dragging {
-        item,
-        origin,
+        carried,
         crossed_threshold,
-    } = &*mode
+    } = std::mem::take(&mut *mode)
     else {
+        return;
+    };
+
+    let Some((item, origin)) = carried else {
         return;
     };
 
     commands.trigger(ItemDragEnded);
     if !crossed_threshold {
-        *mode = InteractionMode::Idle;
         return;
     }
-
-    let (item, origin) = (item.clone(), origin.clone());
-    *mode = InteractionMode::Idle;
 
     let Some(to) = valid_drop_target(&item, &hover_state, &map, &container_q, &inventory) else {
         return;
@@ -354,5 +355,25 @@ mod tests {
     #[test]
     fn a_spell_crosshair_off_the_map_casts_nothing() {
         assert!(crosshair_cast(SpellId(4), None).is_none());
+    }
+
+    #[test]
+    fn travel_under_the_threshold_is_not_a_drag() {
+        assert!(!is_drag(Vec2::ZERO));
+        assert!(!is_drag(Vec2::new(3.0, 3.0)));
+        assert!(!is_drag(Vec2::new(-4.9, 0.0)));
+    }
+
+    #[test]
+    fn travel_at_the_threshold_is_a_drag() {
+        assert!(is_drag(Vec2::new(5.0, 0.0)));
+        assert!(is_drag(Vec2::new(0.0, 5.0)));
+    }
+
+    #[test]
+    fn leftward_and_upward_travel_is_a_drag() {
+        assert!(is_drag(Vec2::new(-200.0, 2.0)));
+        assert!(is_drag(Vec2::new(2.0, -200.0)));
+        assert!(is_drag(Vec2::new(-4.0, -4.0)));
     }
 }

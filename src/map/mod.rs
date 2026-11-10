@@ -17,6 +17,7 @@ pub use crate::map::position::Position;
 pub use crate::map::storage::Map;
 pub use draw_order::{
     DRAW_KEY_MAX, DrawLayer, DrawOrder, DrawOrigin, DrawRank, TARGET_SQUARE_LOCAL_Z, drawn_tile,
+    draws_before,
 };
 pub use floors::FloorEntities;
 pub use minimap::MinimapData;

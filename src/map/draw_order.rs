@@ -12,14 +12,15 @@
 //! stable sort to break in entity-iteration order.
 //!
 //! ```text
-//! ((((MAX_FLOOR - z) * RANKS + rank) * ROWS + row) * COLS + col) * TILE_SPAN
+//! ((((MAX_FLOOR - z) * RANKS + rank) * DIAGONALS + row + col) * COLS + col) * TILE_SPAN
 //!     + layer * SLOT_COUNT + slot
 //! ```
 //!
-//! Tiles run left to right then top to bottom, and a tile further down-and-right
-//! draws over one up-and-left. That direction follows from the sprites: a 64 px
-//! quad centres on its tile's top-left corner, so it covers its own tile plus
-//! the three above and to the left, and nothing ever overflows down-right.
+//! Tiles run by anti-diagonal, `row + col`, and within one from bottom-left to
+//! top-right, which is OTClient's traversal. A tile further down-and-right
+//! draws over one up-and-left, and that direction follows from the sprites: a
+//! 64 px quad centres on its tile's top-left corner, so it covers its own tile
+//! plus the three above and to the left, and nothing ever overflows down-right.
 //!
 //! `row`/`col` are **viewport-relative**, which is what keeps the key inside
 //! 2^24 — absolute map coordinates are `u16` each and would need 36 bits before
@@ -76,9 +77,9 @@ pub enum DrawLayer {
     PassingThrough = 2,
     Bottom = 3,
     Items = 4,
-    /// A lying corpse's cell on a tile it spreads onto but is not on
-    /// (`items::instancing::lying_cells`): over that tile's items, under
-    /// whoever stands there.
+    /// A lying corpse's cell that a creature, effect or missile on this tile
+    /// is drawn over (`items::instancing::SpreadCell`): over the tile's items,
+    /// under whoever stands there.
     Lying = 5,
     Hover = 6,
     Target = 7,
@@ -94,12 +95,13 @@ const RANKS: i32 = 3;
 const MARGIN: i32 = VIEW_MARGIN_TILES as i32;
 const COLS: i32 = TILES_X as i32 + 2 * MARGIN;
 const ROWS: i32 = TILES_Y as i32 + 2 * MARGIN;
+const DIAGONALS: i32 = ROWS + COLS - 1;
 /// Keys per tile: one per (layer, slot) pair.
 const TILE_SPAN: i32 = (LAYER_COUNT * SLOT_COUNT) as i32;
 
 /// One past the largest key this scheme can produce. The game camera's near and
 /// far planes are set from it — a key outside them is clipped, silently.
-pub const DRAW_KEY_MAX: f32 = (FLOOR_COUNT * RANKS * ROWS * COLS * TILE_SPAN) as f32;
+pub const DRAW_KEY_MAX: f32 = (FLOOR_COUNT * RANKS * DIAGONALS * COLS * TILE_SPAN) as f32;
 
 /// The tile at the top-left of the drawn window, and the floor it was measured
 /// on. Mirrors `map::events::iter_viewport`, including its per-floor parallax:
@@ -144,6 +146,11 @@ impl DrawOrder {
         tile_base(origin, &self.pos, self.rank) + self.offset
     }
 
+    /// Whether this draws in `layer` or in a later one.
+    pub fn at_or_above(&self, layer: DrawLayer) -> bool {
+        self.offset >= layer_offset(layer, 0)
+    }
+
     /// Leaves the component clean when neither argument changed. `move_agent`
     /// calls this every frame of every step, and a dirty `DrawOrder` costs a
     /// transform write and a hierarchy re-propagation.
@@ -168,7 +175,13 @@ fn tile_base(origin: &DrawOrigin, pos: &Position, rank: DrawRank) -> f32 {
     let row = (pos.y as i32 - (origin.y + parallax) + MARGIN).clamp(0, ROWS - 1);
     let floor = (MAX_FLOOR as i32 - pos.z as i32).clamp(0, FLOOR_COUNT - 1);
 
-    (((((floor * RANKS + rank as i32) * ROWS) + row) * COLS + col) * TILE_SPAN) as f32
+    (((((floor * RANKS + rank as i32) * DIAGONALS) + row + col) * COLS + col) * TILE_SPAN) as f32
+}
+
+/// Whether tile `a` is drawn before tile `b` on the same floor.
+pub fn draws_before(a: &Position, b: &Position) -> bool {
+    let diagonal = |pos: &Position| pos.x as u32 + pos.y as u32;
+    (diagonal(a), a.x) < (diagonal(b), b.x)
 }
 
 /// A drawable's position within its tile. `slot` separates items in one stack;
@@ -283,21 +296,53 @@ mod tests {
         assert!(key(&here, DrawLayer::Top, 15) < key(&east, DrawLayer::Ground, 0));
     }
 
-    /// Row-major, not diagonal. A key that summed the two axes would give
-    /// `(x+1, y-1)` and `(x, y)` the same value, leaving the stable sort to
-    /// break the tie in entity-iteration order.
+    /// A key that only summed the two axes would give `(x+1, y-1)` and `(x, y)`
+    /// the same value, leaving the stable sort to break the tie in
+    /// entity-iteration order.
     #[test]
-    fn tiles_run_left_to_right_then_top_to_bottom() {
+    fn tiles_run_by_diagonal_then_bottom_left_to_top_right() {
         let here = Position::new(1000, 1000, 7);
         let east = Position::new(1001, 1000, 7);
+        let south = Position::new(1000, 1001, 7);
         let north_east = Position::new(1001, 999, 7);
         let south_west = Position::new(999, 1001, 7);
+        let ground = |pos: &Position| key(pos, DrawLayer::Ground, 0);
 
-        assert!(key(&here, DrawLayer::Ground, 0) < key(&east, DrawLayer::Ground, 0));
-        // The row wins over the column: a tile one row down draws later than one
-        // a row up, whatever its column.
-        assert!(key(&north_east, DrawLayer::Ground, 0) < key(&here, DrawLayer::Ground, 0));
-        assert!(key(&here, DrawLayer::Ground, 0) < key(&south_west, DrawLayer::Ground, 0));
+        assert!(ground(&here) < ground(&south));
+        assert!(ground(&south) < ground(&east));
+        assert!(ground(&south_west) < ground(&here));
+        assert!(ground(&here) < ground(&north_east));
+        assert!(ground(&north_east) < ground(&south));
+    }
+
+    #[test]
+    fn draws_before_agrees_with_the_keys() {
+        let here = Position::new(1000, 1000, 7);
+        for dx in -2i16..=2 {
+            for dy in -2i16..=2 {
+                let other = Position::new(
+                    here.x.wrapping_add_signed(dx),
+                    here.y.wrapping_add_signed(dy),
+                    7,
+                );
+                assert_eq!(
+                    draws_before(&other, &here),
+                    key(&other, DrawLayer::Ground, 0) < key(&here, DrawLayer::Ground, 0),
+                    "{other} against {here}"
+                );
+            }
+        }
+    }
+
+    /// A 64 px wall down-left of a tile reaches the square left of that tile,
+    /// and so does a 64 px corpse or outfit on it. The wall is the further of
+    /// the two.
+    #[test]
+    fn a_wall_down_left_draws_under_what_is_on_the_tile() {
+        let here = Position::new(1000, 1000, 7);
+        let south_west = Position::new(999, 1001, 7);
+
+        assert!(key(&south_west, DrawLayer::Top, 15) < key(&here, DrawLayer::Items, 0));
     }
 
     /// Within one tile, the order the game is specified in.
@@ -378,7 +423,7 @@ mod tests {
         // Same cell within their own floors: the gap is exactly one floor, and
         // a floor is RANKS windows wide.
         let gap = above.key(&origin) - here.key(&origin);
-        assert_eq!(gap, (RANKS * ROWS * COLS * TILE_SPAN) as f32);
+        assert_eq!(gap, (RANKS * DIAGONALS * COLS * TILE_SPAN) as f32);
 
         // Without the parallax, the same-screen-cell tile would key a row and a
         // column further on, which is what the assertion above pins.
@@ -582,7 +627,8 @@ mod tests {
         ]
     }
 
-    /// A 2x2 corpse on (1000, 1000) as `items::instancing::cell_order` keys it.
+    /// A 2x2 corpse on (1000, 1000) as `items::instancing::SpreadCell` keys it
+    /// while something stands on each cell's own tile.
     fn corpse_cell(tile: &Position) -> f32 {
         if *tile == Position::new(1000, 1000, 7) {
             key(tile, DrawLayer::Items, 15)
@@ -685,9 +731,9 @@ mod tests {
         let top_left = Position::new(window.min_x, window.min_y, 7);
 
         let floor = MAX_FLOOR as i32 - 7;
-        let expected = ((((floor * RANKS + DrawRank::Ground as i32) * ROWS + MARGIN) * COLS
-            + MARGIN)
-            * TILE_SPAN) as f32;
+        let expected =
+            ((((floor * RANKS + DrawRank::Ground as i32) * DIAGONALS + 2 * MARGIN) * COLS + MARGIN)
+                * TILE_SPAN) as f32;
         assert_eq!(tile_base(&origin, &top_left, DrawRank::Ground), expected);
     }
 

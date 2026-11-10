@@ -72,6 +72,12 @@ impl Plugin for ItemsPlugin {
             instancing::upload_instance_buffer.run_if(in_state(GameState::InGame)),
         )
         .add_systems(
+            PostUpdate,
+            instancing::settle_spread_cells
+                .before(crate::map::DrawOrderSet)
+                .run_if(in_state(GameState::InGame)),
+        )
+        .add_systems(
             OnExit(GameState::InGame),
             session::cleanup_session.in_set(SessionCleanup),
         )
