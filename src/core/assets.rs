@@ -42,7 +42,6 @@ pub fn pool_load_task(
     mut game_assets: ResMut<GameAssetsLoaded>,
     asset_server: Res<AssetServer>,
 ) {
-    info!("pooling load tasks");
     if tasks.sprite_conf_task.is_finished()
         && tasks.sprite_sheet_task.is_finished()
         && !game_assets.sheets_loaded

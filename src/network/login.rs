@@ -76,13 +76,13 @@ fn get_session_token(email: String, password: String, client: &Client) -> Result
             let status = response.status();
             match response.json::<AuthResponse>() {
                 Ok(session) => return Ok(session.session_token),
-                Err(e) => error!(
+                Err(e) => warn!(
                     "auth request to {} returned {}, but the body could not be read: {}",
                     endpoint, status, e
                 ),
             }
         }
-        Err(e) => error!("auth request to {} failed: {}", endpoint, e),
+        Err(e) => warn!("auth request to {} failed: {}", endpoint, e),
     }
     Err("Failed to authenticate. Try again later or contact support.".to_owned())
 }
@@ -104,23 +104,21 @@ fn get_character_list(session_token: String, client: &Client) -> Result<Characte
                         session_token,
                     });
                 }
-                Err(e) => error!(
+                Err(e) => warn!(
                     "character list request to {} returned {}, but the body could not be read: {}",
                     endpoint, status, e
                 ),
             }
         }
-        Err(e) => error!("character list request to {} failed: {}", endpoint, e),
+        Err(e) => warn!("character list request to {} failed: {}", endpoint, e),
     }
     Err("Failed to authenticate. Try again later or contact support.".to_owned())
 }
 
 fn auth_and_get_characters(email: String, password: String) -> Result<CharacterList, String> {
     let client = Client::new();
-    info!("auth_and_get_characters");
     let session_token = get_session_token(email, password, &client)?;
     let characters = get_character_list(session_token, &client)?;
-    info!("characters: {:?}", characters);
     Ok(characters)
 }
 
@@ -177,13 +175,13 @@ fn fetch_game_token(session_token: String, character_id: u32) -> Result<String, 
                 Ok(game_token) => {
                     return Ok(game_token.auth_token);
                 }
-                Err(e) => error!(
+                Err(e) => warn!(
                     "Request game token returned {}, but the body could not be read: {}",
                     status, e
                 ),
             }
         }
-        Err(e) => error!("Game token request failed: {}", e),
+        Err(e) => warn!("Game token request failed: {}", e),
     }
     Err("Failed to connect. Try again later or contact support.".to_owned())
 }

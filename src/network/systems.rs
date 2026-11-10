@@ -1,7 +1,6 @@
 use async_channel::{Receiver, Sender, bounded, unbounded};
 use async_net::TcpStream;
 use asynchronous_codec::Framed;
-use bevy::log::info;
 use bevy::{prelude::*, tasks::IoTaskPool};
 use futures::{FutureExt, SinkExt, StreamExt};
 use futures_rustls::client::TlsStream;
@@ -13,7 +12,7 @@ use crate::{
     core::{GameState, PingState},
     network::{
         events,
-        messages::{ClientMessage, GameMessageCodec, ServerMessage},
+        messages::{ClientMessage, GameMessageCodec, GameToken, ServerMessage},
         tls,
     },
 };
@@ -84,7 +83,7 @@ pub(super) fn on_connect(event: On<Connect>, mut commands: Commands, ping: Res<P
             {
                 Ok(conn) => conn.run().await,
                 Err(e) => {
-                    error!(
+                    warn!(
                         "could not connect to {}: {e}",
                         config::CONFIG.server_address
                     );
@@ -96,11 +95,11 @@ pub(super) fn on_connect(event: On<Connect>, mut commands: Commands, ping: Res<P
 
     if cli_send
         .send_blocking(ClientMessage::Login {
-            auth_token: event.auth_token.clone(),
+            auth_token: GameToken(event.auth_token.clone()),
         })
         .is_err()
     {
-        error!("Connection failed");
+        warn!("The connection task ended before the login was sent");
     };
 
     commands.insert_resource(ConnectionState {
@@ -173,7 +172,7 @@ pub(super) fn on_send_message(event: On<SendMessage>, connection: Option<Res<Con
 
     let connection = connection.unwrap();
     if let Err(e) = connection.sender.send_blocking(event.0.clone()) {
-        error!("Error sending client message: {e}");
+        warn!("Could not queue a message for the server: {e}");
     };
 }
 
@@ -253,7 +252,7 @@ impl PersistentConnection {
                             self.stream.send(ClientMessage::Ping).await?;
                         }
                         Ok(msg) => {
-                            info!("sending msg: {:?}", msg);
+                            trace!("sending {msg:?}");
                             self.stream.send(msg).await?;
                         }
                         Err(_) => break,
@@ -268,13 +267,13 @@ impl PersistentConnection {
                             }
                         }
                         Some(Ok(msg)) => {
-                            info!("receiveing msg: {}", msg);
+                            trace!("received {msg}");
                             if self.sender.send(msg).await.is_err() {
                                 break;
                             }
                         }
                         Some(Err(e)) => {
-                            error!("Error reading from server: {e}");
+                            warn!("Lost the connection to the server: {e}");
                             break;
                         }
                         None => break,
@@ -282,8 +281,6 @@ impl PersistentConnection {
                 }
             };
         }
-
-        info!("loop ended");
 
         Ok(())
     }

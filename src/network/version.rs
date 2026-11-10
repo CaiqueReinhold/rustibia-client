@@ -46,7 +46,7 @@ fn fetch() -> VersionCheck {
     let response = match Client::new().get(&endpoint).send() {
         Ok(response) => response,
         Err(e) => {
-            error!("version check against {} failed: {}", endpoint, e);
+            warn!("version check against {} failed: {}", endpoint, e);
             return VersionCheck::Unreachable;
         }
     };
@@ -61,7 +61,7 @@ fn fetch() -> VersionCheck {
             check
         }
         Err(e) => {
-            error!(
+            warn!(
                 "version check against {} returned {}, but the body could not be read: {}",
                 endpoint, status, e
             );

@@ -35,14 +35,14 @@ impl SheetMetrics {
             self.loads += 1;
             if let Some(evicted) = self.evicted_at.remove(*group) {
                 let gap = now.saturating_sub(evicted);
-                info!("sheet {group} reloaded {} after eviction", minutes(gap));
+                debug!("sheet {group} reloaded {} after eviction", minutes(gap));
                 self.reload_gaps.push(gap);
             }
         }
 
         if now.saturating_sub(self.last_summary) >= SUMMARY_PERIOD {
             self.last_summary = now;
-            info!("{}", self.summary(resident, users, total));
+            debug!("{}", self.summary(resident, users, total));
         }
     }
 
@@ -50,7 +50,7 @@ impl SheetMetrics {
         self.resident.remove(group);
         self.evicted_at.insert(group.to_owned(), now);
         self.evictions += 1;
-        info!("sheet {group} evicted ({})", mebibytes(sheet_bytes(sheet)));
+        debug!("sheet {group} evicted ({})", mebibytes(sheet_bytes(sheet)));
     }
 
     fn summary(

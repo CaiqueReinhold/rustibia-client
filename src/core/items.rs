@@ -1,4 +1,4 @@
-use bevy::{ecs::resource::Resource, log::info};
+use bevy::{ecs::resource::Resource, log::warn};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
@@ -56,8 +56,8 @@ fn read_item_config(config: &Value) -> Option<Arc<ItemConfig>> {
             8 => InventorySlot::Feet,
             9 => InventorySlot::Ring,
             10 => InventorySlot::Trinket,
-            _ => {
-                info!("{:?}", config);
+            other => {
+                warn!("ignoring an item config with unknown inventory slot {other}: {config:?}");
                 return None;
             }
         })

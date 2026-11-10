@@ -78,7 +78,6 @@ pub fn sync_targeting_cursor(
         return;
     }
 
-    info!("Is targeting: {}. Last active: {}", active, *last_active);
     *last_active = active;
     let icon = if active {
         bevy::window::SystemCursorIcon::Crosshair

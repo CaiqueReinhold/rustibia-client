@@ -7,7 +7,7 @@ use crate::{
     conf::ui::UI_ITEM_SIZE,
     core::{Appearances, ItemConfigs, SheetUser, SpriteAnimator, SpriteSheet},
     game_ui::GameUiAssets,
-    items::{Item, ItemDragEnded, ItemDragStarted, ItemId, ItemPlacement, instancing::ItemState},
+    items::{Item, ItemDragEnded, ItemDragStarted, ItemId},
     player::MouseHoverState,
 };
 
@@ -21,9 +21,7 @@ pub struct UiItem {
 }
 
 #[derive(Component)]
-pub struct UiItemDragging {
-    origin: ItemPlacement,
-}
+pub struct UiItemDragging;
 
 /// The number drawn over a stack, or `None` when the item has no count to show.
 /// See [`Item::is_countable_stack`] for why a fluid container has none.
@@ -154,26 +152,10 @@ pub fn item_drag_started(
     mut texture_atlases: ResMut<Assets<TextureAtlasLayout>>,
     ui_assets: Res<GameUiAssets>,
     hover_state: Res<MouseHoverState>,
-    state: Res<ItemState>,
-    stack_item_q: Query<&Children>,
     drag_item_q: Query<Entity, With<UiItemDragging>>,
 ) {
     for e in drag_item_q {
         commands.entity(e).despawn();
-    }
-
-    if let ItemPlacement::Map { position, index } = &event.origin {
-        let Some(stack_entity) = state.occupied_tiles.get(position) else {
-            return;
-        };
-        let Ok(stack_items) = stack_item_q.get(*stack_entity) else {
-            return;
-        };
-        let Some(item_entity) = stack_items.get(*index) else {
-            return;
-        };
-
-        commands.entity(*item_entity).insert(Visibility::Hidden);
     }
 
     commands
@@ -184,36 +166,18 @@ pub fn item_drag_started(
             &ui_assets,
             &hover_state.screen_position,
         ))
-        .insert((
-            UiItemDragging {
-                origin: event.origin.clone(),
-            },
-            ZIndex(DRAGGED_ITEM_UI_Z),
-        ));
+        .insert((UiItemDragging, ZIndex(DRAGGED_ITEM_UI_Z)));
 }
 
 pub fn item_drag_ended(
     _: On<ItemDragEnded>,
     mut commands: Commands,
-    state: Res<ItemState>,
-    stack_item_q: Query<&Children>,
-    drag_item_q: Query<(Entity, &UiItemDragging)>,
+    drag_item_q: Query<Entity, With<UiItemDragging>>,
 ) {
-    let Ok((entity, drag_item)) = drag_item_q.single() else {
+    let Ok(entity) = drag_item_q.single() else {
         return;
     };
-    if let ItemPlacement::Map { position, index } = &drag_item.origin {
-        let Some(stack_entity) = state.occupied_tiles.get(position) else {
-            return;
-        };
-        let Ok(stack_items) = stack_item_q.get(*stack_entity) else {
-            return;
-        };
-        let Some(item) = stack_items.get(*index) else {
-            return;
-        };
-        commands.entity(*item).insert(Visibility::Visible);
-    };
+
     commands.entity(entity).despawn();
 }
 

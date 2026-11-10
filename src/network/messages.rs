@@ -43,11 +43,20 @@ const CLI_SHOP_BUY: u8 = 19;
 const CLI_SHOP_SELL: u8 = 20;
 const CLI_CLOSE_SHOP: u8 = 21;
 
+#[derive(Clone)]
+pub struct GameToken(pub String);
+
+impl std::fmt::Debug for GameToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("GameToken(..)")
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum ClientMessage {
     Ping,
     Login {
-        auth_token: String,
+        auth_token: GameToken,
     },
     MovePlayer {
         direction: WalkingDirection,
@@ -1095,7 +1104,7 @@ impl Encoder for GameMessageCodec {
             }
             ClientMessage::Login { auth_token } => {
                 dst.put_u8(CLI_LOGIN);
-                dst.put_slice(auth_token.as_bytes());
+                dst.put_slice(auth_token.0.as_bytes());
             }
             ClientMessage::MovePlayer { direction } => {
                 dst.put_u8(CLI_MOVE_PLAYER);
@@ -1300,6 +1309,15 @@ fn encode_chat_message_type(t: ChatMessageType) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_login_message_does_not_print_its_token() {
+        let message = ClientMessage::Login {
+            auth_token: GameToken("7.secret".to_owned()),
+        };
+
+        assert!(!format!("{message:?}").contains("secret"));
+    }
     use asynchronous_codec::Encoder;
 
     /// Encodes `msg` and returns the payload with the 2-byte length prefix stripped,

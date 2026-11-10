@@ -1299,7 +1299,6 @@ fn update_preview_order(
     let drag = drag_q.single().unwrap();
     let (mut preview, mut preview_node) = preview_q.single_mut().unwrap();
 
-    info!("{:?}", drag);
     preview.index = drag.current_index;
     if drag.current_dock == Some(drag.start_dock) {
         preview_node.position_type = PositionType::Relative;
@@ -1307,13 +1306,11 @@ fn update_preview_order(
         preview_node.position_type = PositionType::Absolute;
         return;
     }
-    info!("{:?}", preview_node.position_type);
 
     let windows = windows_q
         .iter_mut()
         .filter(|(_, w, _)| w.dock_id == drag.start_dock);
-    windows.for_each(|(mut idx, w, z)| {
-        info!("{:?} {:?}", w.id, z);
+    windows.for_each(|(mut idx, _, _)| {
         if idx.0 == drag.prev_index {
             idx.0 = drag.current_index;
         } else if drag.prev_index < drag.current_index {
@@ -1406,7 +1403,6 @@ fn on_window_scroll(
 
     for mouse_wheel in mouse_wheel_reader.read() {
         let mut delta = -Vec2::new(mouse_wheel.x, mouse_wheel.y);
-        info!("{:?}", delta);
 
         if mouse_wheel.unit == MouseScrollUnit::Line {
             delta *= LINE_HEIGHT;
@@ -1447,15 +1443,6 @@ fn inner_apply_order<T: Ord + Component + Copy + std::fmt::Debug>(
 ) {
     commands.entity(container).detach_all_children();
 
-    info!("-------------");
-    window_q
-        .iter()
-        .sort_by_key::<&T, _>(|i| **i)
-        .filter(|(_, w, _, _)| w.dock_id == dock_id)
-        .for_each(|(e, w, i, _)| {
-            info!("{:?} {:?} {:?}", e, w, i);
-        });
-
     let iter = window_q
         .iter()
         .sort_by_key::<&T, _>(|i| **i)
@@ -1463,7 +1450,6 @@ fn inner_apply_order<T: Ord + Component + Copy + std::fmt::Debug>(
         .map(|(e, _, _, t)| (e, t));
 
     for (i, (e, t)) in iter.enumerate() {
-        info!("Added {}", e);
         commands.entity(container).add_child(e);
         commands.entity(e).insert(PreviousPosition {
             position: t.translation,
@@ -1472,7 +1458,6 @@ fn inner_apply_order<T: Ord + Component + Copy + std::fmt::Debug>(
         if let Some((prev_ent, prev)) = preview
             && i == prev.index
         {
-            info!("{}, {:?}", i, prev);
             commands.entity(container).add_child(prev_ent);
         }
     }

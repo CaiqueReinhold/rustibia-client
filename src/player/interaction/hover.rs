@@ -168,14 +168,11 @@ pub(super) fn valid_drop_target(
             slot,
         });
     }
-    info!("valid_drop_target");
-    info!("Hover: {:?}", hover);
     if let Some(slot) = hover.inventory_slot {
         if inventory.items.get(&slot).is_some_and(is_container) {
             return Some(ItemPlacement::Inventory { slot });
         }
         let item_slot = dragged.config.slot?;
-        info!("{:?} -> {:?}", item_slot, slot);
         if item_slot == slot
             || (item_slot == InventorySlot::BothHands && slot == InventorySlot::LeftHand)
         {

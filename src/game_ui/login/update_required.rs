@@ -72,6 +72,6 @@ pub(super) fn on_update_required_button(
         return;
     };
     if let Err(e) = webbrowser::open(download_url) {
-        error!("could not open {download_url} in a browser: {e}");
+        warn!("could not open {download_url} in a browser: {e}");
     }
 }

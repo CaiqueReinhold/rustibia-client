@@ -7,7 +7,6 @@ use crate::items::{ContainerId, Item, ItemPlacement};
 #[derive(Event)]
 pub struct ItemDragStarted {
     pub item: Arc<Item>,
-    pub origin: ItemPlacement,
 }
 
 #[derive(Event)]

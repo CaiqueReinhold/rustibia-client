@@ -77,7 +77,7 @@ fn read_from(paths: &[PathBuf]) -> ClientConfig {
             }
             // A typo in the file must not silently connect the player somewhere
             // else, so the parse error is loud even though it is not fatal.
-            Err(e) => error!("failed to parse {}: {e}", path.display()),
+            Err(e) => warn!("failed to parse {}: {e}", path.display()),
         }
         break;
     }

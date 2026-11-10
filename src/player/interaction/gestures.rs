@@ -46,11 +46,8 @@ fn on_drag(event: On<Pointer<Drag>>, mut commands: Commands, mut mode: ResMut<In
     }
 
     *crossed_threshold = true;
-    if let Some((item, origin)) = carried {
-        commands.trigger(ItemDragStarted {
-            item: item.clone(),
-            origin: origin.clone(),
-        });
+    if let Some((item, _)) = carried {
+        commands.trigger(ItemDragStarted { item: item.clone() });
     }
 }
 
